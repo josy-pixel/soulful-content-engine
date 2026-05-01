@@ -49,6 +49,13 @@
                       placeholder="#wellness #mindfulness #intentionalliving">{{ post.hashtags if post else '' }}</textarea>
           </div>
 
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Image URL <small class="text-muted">(sent to Make.com on approval)</small></label>
+            <input type="url" name="image_url" class="form-control"
+                   value="{{ post.image_url if post else '' }}"
+                   placeholder="https://example.com/image.jpg">
+          </div>
+
           <div class="row g-3 mb-3">
             {% if not post %}
             <div class="col-md-6">

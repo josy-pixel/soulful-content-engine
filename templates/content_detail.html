@@ -51,9 +51,29 @@
           <small class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Posted: <strong>{{ post.posted_date }}</strong></small>
         </div>
         {% endif %}
+        {% if post.image_url %}
+        <div class="mt-3">
+          <small class="text-muted fw-semibold d-block mb-1"><i class="bi bi-image me-1"></i>Image</small>
+          <a href="{{ post.image_url }}" target="_blank" rel="noopener">
+            <img src="{{ post.image_url }}" alt="Post image"
+                 class="img-thumbnail" style="max-height:180px;object-fit:cover">
+          </a>
+        </div>
+        {% endif %}
         {% if post.notes %}
         <div class="mt-3 p-2 bg-light rounded">
           <small class="text-muted"><i class="bi bi-sticky me-1"></i>{{ post.notes }}</small>
+        </div>
+        {% endif %}
+
+        {% if post.status == 'approved' %}
+        <div class="mt-3 d-flex align-items-center gap-2">
+          <span class="badge bg-success"><i class="bi bi-send-fill me-1"></i>Sent to Make.com</span>
+          <button class="btn btn-sm btn-outline-secondary" id="retestWebhookBtn"
+                  data-postid="{{ post.id }}">
+            <i class="bi bi-arrow-clockwise"></i> Resend webhook
+          </button>
+          <span id="webhookTestResult" class="small ms-1"></span>
         </div>
         {% endif %}
       </div>
@@ -213,13 +233,12 @@
 {% endblock %}
 
 {% block scripts %}
-{% if post.status == 'posted' %}
 <script>
+{% if post.status == 'posted' %}
 document.getElementById('savePerfBtn').addEventListener('click', async () => {
   const fields = ['likes','comments','shares','saves','reach','impressions','clicks'];
   const payload = { notes: document.getElementById('pm_notes').value };
   fields.forEach(f => payload[f] = parseInt(document.getElementById('pm_'+f).value) || 0);
-
   const res = await fetch('/api/performance/{{ post.id }}', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -227,6 +246,32 @@ document.getElementById('savePerfBtn').addEventListener('click', async () => {
   });
   if (res.ok) { location.reload(); }
 });
-</script>
 {% endif %}
+
+{% if post.status == 'approved' %}
+const retestBtn = document.getElementById('retestWebhookBtn');
+if (retestBtn) {
+  retestBtn.addEventListener('click', async () => {
+    retestBtn.disabled = true;
+    const result = document.getElementById('webhookTestResult');
+    result.textContent = 'Sending…';
+    try {
+      const res = await fetch('/webhook/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ post_id: {{ post.id }} }),
+      });
+      const data = await res.json();
+      result.textContent = data.ok ? '✓ Sent successfully' : '✗ ' + data.error;
+      result.className = 'small ms-1 ' + (data.ok ? 'text-success' : 'text-danger');
+    } catch (e) {
+      result.textContent = '✗ Request failed';
+      result.className = 'small ms-1 text-danger';
+    } finally {
+      retestBtn.disabled = false;
+    }
+  });
+}
+{% endif %}
+</script>
 {% endblock %}

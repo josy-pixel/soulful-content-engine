@@ -88,6 +88,13 @@ def init_db():
     ''')
     conn.commit()
 
+    # Non-destructive migration: add image_url if this is an existing DB
+    try:
+        conn.execute("ALTER TABLE content_posts ADD COLUMN image_url TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
+
     existing = c.execute('SELECT COUNT(*) FROM clients').fetchone()[0]
     if existing == 0:
         _seed_data(c)
@@ -322,11 +329,11 @@ def create_post(data):
     conn = get_db()
     c = conn.cursor()
     c.execute('''
-        INSERT INTO content_posts (client_id,platform,topic,caption,hashtags,status,scheduled_date,notes)
-        VALUES (?,?,?,?,?,?,?,?)
+        INSERT INTO content_posts (client_id,platform,topic,caption,hashtags,image_url,status,scheduled_date,notes)
+        VALUES (?,?,?,?,?,?,?,?,?)
     ''', (
         data['client_id'], data['platform'], data['topic'], data['caption'],
-        data.get('hashtags', ''), data.get('status', 'draft'),
+        data.get('hashtags', ''), data.get('image_url', ''), data.get('status', 'draft'),
         data.get('scheduled_date') or None, data.get('notes', '')
     ))
     post_id = c.lastrowid
@@ -340,9 +347,9 @@ def create_post(data):
 def update_post(post_id, data):
     conn = get_db()
     conn.execute('''
-        UPDATE content_posts SET topic=?,caption=?,hashtags=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
+        UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
         WHERE id=?
-    ''', (data['topic'], data['caption'], data.get('hashtags', ''),
+    ''', (data['topic'], data['caption'], data.get('hashtags', ''), data.get('image_url', ''),
           data.get('scheduled_date') or None, data.get('notes', ''), post_id))
     conn.commit()
     conn.close()

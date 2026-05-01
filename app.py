@@ -5,6 +5,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from dotenv import load_dotenv
 import database as db
 import claude_api as ai
+import webhooks
 
 load_dotenv()
 
@@ -250,7 +251,60 @@ def content_status(post_id):
         return redirect(url_for('content_detail', post_id=post_id))
     db.update_post_status(post_id, new_status, notes)
     flash(f'Status updated to "{new_status.replace("_", " ").title()}".', 'success')
+
+    if new_status == 'approved':
+        post = db.get_post(post_id)
+        ok, err = webhooks.send_to_make(post)
+        if ok:
+            flash('Post sent to Make.com webhook.', 'success')
+        elif err and 'not configured' not in err:
+            flash(f'Make.com webhook failed: {err}', 'warning')
+
     return redirect(url_for('content_detail', post_id=post_id))
+
+
+# ── Webhooks ───────────────────────────────────────────────────────────────────
+
+@app.route('/webhook/publish', methods=['POST'])
+def webhook_publish():
+    """Inbound endpoint — Make.com calls this after publishing a post.
+
+    Expected JSON body:
+        { "post_id": 123, "secret": "...", "posted_url": "https://..." }
+    """
+    data = request.get_json(silent=True) or {}
+
+    secret = data.get('secret', request.args.get('secret', ''))
+    if not webhooks.verify_secret(secret):
+        return jsonify({'error': 'Forbidden'}), 403
+
+    post_id = data.get('post_id')
+    if not post_id:
+        return jsonify({'error': 'post_id is required'}), 400
+
+    post = db.get_post(int(post_id))
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    notes = data.get('posted_url', '') or 'Marked posted by Make.com'
+    db.update_post_status(int(post_id), 'posted', notes, changed_by='make.com')
+    return jsonify({'ok': True, 'post_id': post_id, 'status': 'posted'})
+
+
+@app.route('/webhook/test', methods=['POST'])
+def webhook_test():
+    """Fire the Make.com webhook for a post manually (for testing)."""
+    data = request.get_json(silent=True) or {}
+    post_id = data.get('post_id')
+    if not post_id:
+        return jsonify({'error': 'post_id is required'}), 400
+    post = db.get_post(int(post_id))
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+    ok, err = webhooks.send_to_make(post)
+    if ok:
+        return jsonify({'ok': True, 'message': 'Webhook fired successfully'})
+    return jsonify({'ok': False, 'error': err}), 500
 
 
 @app.route('/content/<int:post_id>/delete', methods=['POST'])
