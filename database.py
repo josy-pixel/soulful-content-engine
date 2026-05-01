@@ -1,8 +1,10 @@
 import sqlite3
 import json
+import os
 from datetime import datetime, timedelta
 
-DB_PATH = 'soulful_content.db'
+# Render mounts a persistent disk at /data — fall back to local file for dev
+DB_PATH = os.environ.get('DB_PATH', 'soulful_content.db')
 
 
 def get_db():

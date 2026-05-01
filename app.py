@@ -22,9 +22,14 @@ STATUS_TRANSITIONS = {
 }
 
 
+_db_ready = False
+
 @app.before_request
 def setup():
-    db.init_db()
+    global _db_ready
+    if not _db_ready:
+        db.init_db()
+        _db_ready = True
 
 
 # ── Dashboard ──────────────────────────────────────────────────────────────────
