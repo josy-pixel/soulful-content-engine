@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Scheduling — Soulful Content Engine{% endblock %}
+{% block page_title %}Scheduling Tracker{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('content_new') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> New Post
+  </a>
+{% endblock %}
+
+{% block content %}
+{% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<!-- Summary row -->
+{% set upcoming = scheduled | selectattr('status', 'in', ['approved','scheduled']) | list %}
+{% set overdue  = scheduled | selectattr('is_overdue', 'equalto', true) | list %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--primary-soft)"><i class="bi bi-calendar3 text-primary"></i></div>
+      <div class="stat-value">{{ scheduled|length }}</div>
+      <div class="stat-label">Total Scheduled</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#d1fae5"><i class="bi bi-calendar-check text-success"></i></div>
+      <div class="stat-value">{{ upcoming|length }}</div>
+      <div class="stat-label">Upcoming</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fee2e2"><i class="bi bi-exclamation-triangle text-danger"></i></div>
+      <div class="stat-value">{{ overdue|length }}</div>
+      <div class="stat-label">Overdue</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fef3c7"><i class="bi bi-clock" style="color:#d97706"></i></div>
+      <div class="stat-value">{{ scheduled | selectattr('status', 'equalto', 'posted') | list | length }}</div>
+      <div class="stat-label">Posted</div>
+    </div>
+  </div>
+</div>
+
+<!-- Timeline -->
+{% if scheduled %}
+<div class="card">
+  <div class="card-header"><i class="bi bi-list-ul me-2"></i>Content Timeline</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Scheduled Date</th>
+            <th>Client</th>
+            <th>Platform</th>
+            <th>Topic</th>
+            <th>Status</th>
+            <th>Days</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in scheduled %}
+          <tr class="{{ 'table-danger' if p.is_overdue else '' }}">
+            <td>
+              <span class="fw-semibold">{{ p.scheduled_date[:10] if p.scheduled_date else '—' }}</span>
+              {% if p.scheduled_date %}
+              <br><small class="text-muted">{{ p.scheduled_date[11:16] if p.scheduled_date|length > 10 else '' }}</small>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <div class="client-avatar sm" style="background:{{ p.logo_color }}">{{ p.client_name[0] }}</div>
+                {{ p.client_name }}
+              </div>
+            </td>
+            <td>
+              <i class="bi {{ platform_icons.get(p.platform,'bi-globe') }} platform-icon platform-{{ p.platform }} me-1"></i>
+              <span class="text-capitalize">{{ p.platform }}</span>
+            </td>
+            <td>
+              <a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">
+                {{ p.topic }}
+              </a>
+            </td>
+            <td><span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span></td>
+            <td>
+              {% if p.days_until is not none %}
+                {% if p.is_overdue %}
+                <span class="text-danger fw-bold">Overdue</span>
+                {% elif p.days_until == 0 %}
+                <span class="text-warning fw-bold">Today</span>
+                {% elif p.days_until == 1 %}
+                <span class="text-primary">Tomorrow</span>
+                {% else %}
+                <span class="text-muted">{{ p.days_until }}d</span>
+                {% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-calendar3 display-4 text-muted"></i>
+  <h5 class="mt-3">No scheduled posts</h5>
+  <p class="text-muted">Schedule posts by setting a scheduled date when creating or editing content.</p>
+  <a href="{{ url_for('content_new') }}" class="btn btn-primary">Create Post</a>
+</div>
+{% endif %}
+{% endblock %}

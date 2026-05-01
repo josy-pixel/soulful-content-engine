@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Post' if post else 'New Post' }} — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ 'Edit Post' if post else 'New Post' }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <form method="POST">
+          {% if not post %}
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Client *</label>
+              <select name="client_id" class="form-select" required>
+                <option value="">Select client…</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}" {% if preselect.get('client_id')|string==c.id|string %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Platform *</label>
+              <select name="platform" class="form-select" required>
+                <option value="">Select platform…</option>
+                {% for p in platforms %}
+                <option value="{{ p }}" {% if preselect.get('platform')==p %}selected{% endif %}>{{ p|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Topic / Title *</label>
+            <input type="text" name="topic" class="form-control" value="{{ post.topic if post else '' }}" required
+                   placeholder="e.g. Morning mindfulness routine">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Caption *</label>
+            <textarea name="caption" class="form-control" rows="8" required
+                      placeholder="Your caption text…">{{ post.caption if post else '' }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Hashtags</label>
+            <textarea name="hashtags" class="form-control" rows="2"
+                      placeholder="#wellness #mindfulness #intentionalliving">{{ post.hashtags if post else '' }}</textarea>
+          </div>
+
+          <div class="row g-3 mb-3">
+            {% if not post %}
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Status</label>
+              <select name="status" class="form-select">
+                {% for s in statuses %}
+                <option value="{{ s }}">{{ s.replace('_',' ')|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Scheduled Date</label>
+              <input type="datetime-local" name="scheduled_date" class="form-control"
+                     value="{{ post.scheduled_date[:16] if post and post.scheduled_date else '' }}">
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Internal Notes</label>
+            <textarea name="notes" class="form-control" rows="2"
+                      placeholder="Notes for the team…">{{ post.notes if post else '' }}</textarea>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-floppy-fill"></i> {{ 'Save Changes' if post else 'Create Post' }}
+            </button>
+            {% if post %}
+            <a href="{{ url_for('content_detail', post_id=post.id) }}" class="btn btn-outline-secondary">Cancel</a>
+            {% else %}
+            <a href="{{ url_for('content_list') }}" class="btn btn-outline-secondary">Cancel</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

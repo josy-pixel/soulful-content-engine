@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}{{ post.topic }} — Soulful Content Engine{% endblock %}
+{% block page_title %}Post Detail{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('content_edit', post_id=post.id) }}" class="btn btn-outline-secondary btn-sm me-2">
+    <i class="bi bi-pencil"></i> Edit
+  </a>
+  <form method="POST" action="{{ url_for('content_delete', post_id=post.id) }}" class="d-inline"
+        onsubmit="return confirm('Delete this post?')">
+    <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i> Delete</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+{% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<div class="row g-4">
+
+  <!-- Main content -->
+  <div class="col-lg-8">
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3 mb-3">
+          <div class="client-avatar" style="background:{{ post.logo_color }}">{{ post.client_name[0] }}</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">{{ post.client_name }}</div>
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} platform-icon platform-{{ post.platform }}"></i>
+              <span class="text-capitalize text-muted small">{{ post.platform }}</span>
+              <span class="badge bg-{{ status_colors.get(post.status,'secondary') }}">{{ post.status.replace('_',' ') }}</span>
+            </div>
+          </div>
+          <small class="text-muted">{{ post.updated_at[:16] }}</small>
+        </div>
+
+        <h5 class="mb-3">{{ post.topic }}</h5>
+        <div class="caption-box mb-3">{{ post.caption }}</div>
+
+        {% if post.hashtags %}
+        <div class="hashtag-box">{{ post.hashtags }}</div>
+        {% endif %}
+
+        {% if post.scheduled_date %}
+        <div class="mt-3">
+          <small class="text-muted"><i class="bi bi-calendar-event me-1"></i>Scheduled: <strong>{{ post.scheduled_date }}</strong></small>
+        </div>
+        {% endif %}
+        {% if post.posted_date %}
+        <div class="mt-3">
+          <small class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Posted: <strong>{{ post.posted_date }}</strong></small>
+        </div>
+        {% endif %}
+        {% if post.notes %}
+        <div class="mt-3 p-2 bg-light rounded">
+          <small class="text-muted"><i class="bi bi-sticky me-1"></i>{{ post.notes }}</small>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Performance metrics -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-graph-up me-2"></i>Performance Metrics</span>
+        {% if post.status == 'posted' %}
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#perfModal">
+          <i class="bi bi-plus-lg"></i> Add Metrics
+        </button>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if metrics %}
+        {% set m = metrics[0] %}
+        <div class="row g-3 mb-3">
+          {% set metric_items = [('Likes','heart-fill','danger',m.likes),('Comments','chat-fill','primary',m.comments),('Shares','share-fill','info',m.shares),('Saves','bookmark-fill','warning',m.saves),('Reach','eye-fill','success',m.reach),('Impressions','bar-chart-fill','secondary',m.impressions),('Clicks','cursor-fill','dark',m.clicks)] %}
+          {% for label,icon,color,val in metric_items %}
+          <div class="col-6 col-sm-4 col-md-3">
+            <div class="metric-mini">
+              <i class="bi bi-{{ icon }} text-{{ color }}"></i>
+              <div class="metric-val">{{ "{:,}".format(val or 0) }}</div>
+              <div class="metric-lbl">{{ label }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if m.reach and m.reach > 0 %}
+        {% set eng = ((m.likes or 0) + (m.comments or 0) + (m.shares or 0)) / m.reach * 100 %}
+        <div class="alert alert-light border">
+          <strong>Engagement Rate:</strong> {{ "%.2f"|format(eng) }}%
+          <small class="text-muted ms-2">(Likes + Comments + Shares) ÷ Reach</small>
+        </div>
+        {% endif %}
+        {% if metrics|length > 1 %}
+        <small class="text-muted">Showing most recent entry. {{ metrics|length }} total entries.</small>
+        {% endif %}
+        {% else %}
+        <div class="text-center text-muted py-3">
+          {% if post.status == 'posted' %}
+          <p>No metrics logged yet. Add your first performance data above.</p>
+          {% else %}
+          <p>Metrics can be added once the post is marked as <strong>Posted</strong>.</p>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar: Workflow -->
+  <div class="col-lg-4">
+
+    <!-- Approval workflow -->
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-arrow-left-right me-2"></i>Approval Workflow</div>
+      <div class="card-body">
+        {% set all_statuses = ['draft','needs_review','approved','scheduled','posted'] %}
+        {% set status_idx = all_statuses.index(post.status) if post.status in all_statuses else 0 %}
+        {% set s_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+        <div class="workflow-stepper mb-3">
+          {% for s in all_statuses %}
+          {% set idx = loop.index0 %}
+          <div class="workflow-step {% if post.status == s %}active bg-{{ s_colors[s] }}{% elif idx < status_idx %}done{% endif %}">
+            <div class="step-dot"></div>
+            <div class="step-label text-capitalize">{{ s.replace('_',' ') }}</div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% if allowed_transitions %}
+        <form method="POST" action="{{ url_for('content_status', post_id=post.id) }}">
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">Move to</label>
+            <select name="status" class="form-select form-select-sm">
+              {% for t in allowed_transitions %}
+              <option value="{{ t }}">{{ t.replace('_',' ')|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <textarea name="notes" class="form-control form-control-sm" rows="2"
+                      placeholder="Notes (optional)…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-arrow-right-circle"></i> Update Status
+          </button>
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">This post has been posted. No further status changes.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Approval history -->
+    <div class="card">
+      <div class="card-header"><i class="bi bi-clock-history me-2"></i>History</div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush">
+          {% for h in history %}
+          <li class="list-group-item py-2">
+            <div class="d-flex justify-content-between">
+              <small class="fw-semibold">
+                {% if h.from_status %}<span class="text-muted">{{ h.from_status.replace('_',' ') }} →</span>{% endif %}
+                {{ h.to_status.replace('_',' ')|capitalize }}
+              </small>
+              <small class="text-muted">{{ h.changed_at[:10] }}</small>
+            </div>
+            {% if h.notes %}
+            <small class="text-muted">{{ h.notes }}</small>
+            {% endif %}
+          </li>
+          {% else %}
+          <li class="list-group-item text-muted small">No history yet.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Performance modal -->
+{% if post.status == 'posted' %}
+<div class="modal fade" id="perfModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Performance Metrics</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2">
+          {% for field in ['likes','comments','shares','saves','reach','impressions','clicks'] %}
+          <div class="col-6">
+            <label class="form-label fw-semibold small text-capitalize">{{ field }}</label>
+            <input type="number" id="pm_{{ field }}" class="form-control form-control-sm" value="0" min="0">
+          </div>
+          {% endfor %}
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Notes</label>
+            <textarea id="pm_notes" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="savePerfBtn">Save Metrics</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if post.status == 'posted' %}
+<script>
+document.getElementById('savePerfBtn').addEventListener('click', async () => {
+  const fields = ['likes','comments','shares','saves','reach','impressions','clicks'];
+  const payload = { notes: document.getElementById('pm_notes').value };
+  fields.forEach(f => payload[f] = parseInt(document.getElementById('pm_'+f).value) || 0);
+
+  const res = await fetch('/api/performance/{{ post.id }}', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) { location.reload(); }
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Content Library — Soulful Content Engine{% endblock %}
+{% block page_title %}Content Library{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('content_new') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> New Post
+  </a>
+{% endblock %}
+
+{% block content %}
+{% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<!-- Filters -->
+<div class="card mb-4">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <select name="client_id" class="form-select form-select-sm">
+          <option value="">All Clients</option>
+          {% for c in clients %}
+          <option value="{{ c.id }}" {% if filter_client==c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="platform" class="form-select form-select-sm">
+          <option value="">All Platforms</option>
+          {% for p in platforms %}
+          <option value="{{ p }}" {% if filter_platform==p %}selected{% endif %}>{{ p|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All Statuses</option>
+          {% for s in statuses %}
+          <option value="{{ s }}" {% if filter_status==s %}selected{% endif %}>{{ s.replace('_',' ')|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
+        <a href="{{ url_for('content_list') }}" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+      </div>
+      <div class="col-auto ms-auto text-muted small">{{ posts|length }} post{% if posts|length != 1 %}s{% endif %}</div>
+    </form>
+  </div>
+</div>
+
+{% if posts %}
+<div class="row g-3">
+  {% for post in posts %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card content-card h-100">
+      <div class="content-card-top">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <div class="client-avatar sm" style="background:{{ post.logo_color }}">{{ post.client_name[0] }}</div>
+          <span class="fw-semibold small">{{ post.client_name }}</span>
+          <span class="ms-auto">
+            <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} platform-icon platform-{{ post.platform }}"></i>
+          </span>
+        </div>
+        <span class="badge bg-{{ status_colors.get(post.status,'secondary') }} mb-2">{{ post.status.replace('_',' ') }}</span>
+        <h6 class="mb-1">{{ post.topic }}</h6>
+        <p class="text-muted small caption-preview">{{ post.caption }}</p>
+      </div>
+      <div class="content-card-footer">
+        {% if post.scheduled_date %}
+        <small class="text-muted"><i class="bi bi-calendar3 me-1"></i>{{ post.scheduled_date[:10] }}</small>
+        {% elif post.posted_date %}
+        <small class="text-success"><i class="bi bi-check-circle me-1"></i>Posted {{ post.posted_date[:10] }}</small>
+        {% else %}
+        <small class="text-muted">{{ post.updated_at[:10] }}</small>
+        {% endif %}
+        <a href="{{ url_for('content_detail', post_id=post.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-collection display-4 text-muted"></i>
+  <h5 class="mt-3">No posts found</h5>
+  <p class="text-muted">Try adjusting your filters or create a new post.</p>
+  <div class="d-flex gap-2 justify-content-center">
+    <a href="{{ url_for('caption_generator') }}" class="btn btn-primary"><i class="bi bi-magic"></i> Generate Caption</a>
+    <a href="{{ url_for('content_new') }}" class="btn btn-outline-secondary">Manual Post</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

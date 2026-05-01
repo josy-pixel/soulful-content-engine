@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Performance — Soulful Content Engine{% endblock %}
+{% block page_title %}Performance Tracker{% endblock %}
+
+{% block content %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<!-- Filters -->
+<div class="card mb-4">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <select name="client_id" class="form-select form-select-sm">
+          <option value="">All Clients</option>
+          {% for c in clients %}
+          <option value="{{ c.id }}" {% if filter_client==c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="platform" class="form-select form-select-sm">
+          <option value="">All Platforms</option>
+          {% for p in platforms %}
+          <option value="{{ p }}" {% if filter_platform==p %}selected{% endif %}>{{ p|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
+        <a href="{{ url_for('performance') }}" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Aggregate stats -->
+{% if posts %}
+{% set with_metrics = posts | selectattr('metrics') | list %}
+{% if with_metrics %}
+{% set total_likes = with_metrics | sum(attribute='metrics.likes') %}
+{% set total_comments = with_metrics | sum(attribute='metrics.comments') %}
+{% set total_shares = with_metrics | sum(attribute='metrics.shares') %}
+{% set total_reach = with_metrics | sum(attribute='metrics.reach') %}
+{% set total_impressions = with_metrics | sum(attribute='metrics.impressions') %}
+
+<div class="row g-3 mb-4">
+  {% for label, val, icon, color in [('Total Likes', total_likes, 'heart-fill', 'danger'), ('Total Comments', total_comments, 'chat-fill', 'primary'), ('Total Shares', total_shares, 'share-fill', 'info'), ('Total Reach', total_reach, 'eye-fill', 'success')] %}
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--primary-soft)"><i class="bi bi-{{ icon }} text-{{ color }}"></i></div>
+      <div class="stat-value">{{ "{:,}".format(val) }}</div>
+      <div class="stat-label">{{ label }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Posts table -->
+<div class="card">
+  <div class="card-header"><i class="bi bi-table me-2"></i>Post Performance</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Post</th>
+            <th>Client</th>
+            <th>Platform</th>
+            <th>Posted</th>
+            <th class="text-center">Likes</th>
+            <th class="text-center">Comments</th>
+            <th class="text-center">Shares</th>
+            <th class="text-center">Reach</th>
+            <th class="text-center">Eng.%</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in posts %}
+          <tr>
+            <td>
+              <a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">
+                {{ p.topic }}
+              </a>
+            </td>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <div class="client-avatar sm" style="background:{{ p.logo_color }}">{{ p.client_name[0] }}</div>
+                {{ p.client_name }}
+              </div>
+            </td>
+            <td>
+              <i class="bi {{ platform_icons.get(p.platform,'bi-globe') }} platform-icon platform-{{ p.platform }}"></i>
+              <span class="text-capitalize">{{ p.platform }}</span>
+            </td>
+            <td><small class="text-muted">{{ p.posted_date[:10] if p.posted_date else '—' }}</small></td>
+            {% if p.metrics %}
+            <td class="text-center">{{ "{:,}".format(p.metrics.likes or 0) }}</td>
+            <td class="text-center">{{ "{:,}".format(p.metrics.comments or 0) }}</td>
+            <td class="text-center">{{ "{:,}".format(p.metrics.shares or 0) }}</td>
+            <td class="text-center">{{ "{:,}".format(p.metrics.reach or 0) }}</td>
+            <td class="text-center">
+              {% if p.engagement_rate is not none %}
+              <span class="badge {{ 'bg-success' if p.engagement_rate > 3 else 'bg-warning text-dark' if p.engagement_rate > 1 else 'bg-danger' }}">
+                {{ p.engagement_rate }}%
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            {% else %}
+            <td colspan="5" class="text-center text-muted small">
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                      data-bs-target="#perfModal" data-postid="{{ p.id }}" data-posttopic="{{ p.topic }}">
+                + Add Metrics
+              </button>
+            </td>
+            {% endif %}
+            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-graph-up-arrow display-4 text-muted"></i>
+  <h5 class="mt-3">No posted content yet</h5>
+  <p class="text-muted">Mark posts as "Posted" to track their performance metrics here.</p>
+</div>
+{% endif %}
+
+<!-- Add metrics modal -->
+<div class="modal fade" id="perfModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Metrics — <span id="modalPostTopic"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modalPostId">
+        <div class="row g-2">
+          {% for field in ['likes','comments','shares','saves','reach','impressions','clicks'] %}
+          <div class="col-6">
+            <label class="form-label fw-semibold small text-capitalize">{{ field }}</label>
+            <input type="number" id="pm_{{ field }}" class="form-control form-control-sm" value="0" min="0">
+          </div>
+          {% endfor %}
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Notes</label>
+            <textarea id="pm_notes" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="savePerfBtn">Save Metrics</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const perfModal = document.getElementById('perfModal');
+if (perfModal) {
+  perfModal.addEventListener('show.bs.modal', e => {
+    const btn = e.relatedTarget;
+    if (btn) {
+      document.getElementById('modalPostId').value = btn.dataset.postid || '';
+      document.getElementById('modalPostTopic').textContent = btn.dataset.posttopic || '';
+    }
+  });
+}
+
+const savePerfBtn = document.getElementById('savePerfBtn');
+if (savePerfBtn) {
+  savePerfBtn.addEventListener('click', async () => {
+    const postId = document.getElementById('modalPostId').value;
+    if (!postId) return;
+    const fields = ['likes','comments','shares','saves','reach','impressions','clicks'];
+    const payload = { notes: document.getElementById('pm_notes').value };
+    fields.forEach(f => payload[f] = parseInt(document.getElementById('pm_'+f).value) || 0);
+
+    const res = await fetch(`/api/performance/${postId}`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) location.reload();
+  });
+}
+</script>
+{% endblock %}

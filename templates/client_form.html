@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if client else 'New' }} Client — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ 'Edit Client' if client else 'New Client' }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Client Name *</label>
+            <input type="text" name="name" class="form-control" value="{{ client.name if client else '' }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Description</label>
+            <textarea name="description" class="form-control" rows="3">{{ client.description if client else '' }}</textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Contact Email</label>
+            <input type="email" name="contact_email" class="form-control" value="{{ client.contact_email if client else '' }}">
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Brand Colour</label>
+            <div class="d-flex align-items-center gap-3">
+              <input type="color" name="logo_color" class="form-control form-control-color"
+                     value="{{ client.logo_color if client else '#6366f1' }}" style="width:60px;height:40px">
+              <small class="text-muted">Used for client avatar and accents.</small>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-lg"></i> {{ 'Save Changes' if client else 'Create Client' }}
+            </button>
+            <a href="{{ url_for('clients') }}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

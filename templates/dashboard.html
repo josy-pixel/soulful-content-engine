@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Soulful Content Engine{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('caption_generator') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-magic"></i> Generate Caption
+  </a>
+{% endblock %}
+
+{% block content %}
+{% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+
+<!-- KPI row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--primary-soft)"><i class="bi bi-collection-fill text-primary"></i></div>
+      <div class="stat-value">{{ stats.total_posts }}</div>
+      <div class="stat-label">Total Posts</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#d1fae5"><i class="bi bi-check-circle-fill text-success"></i></div>
+      <div class="stat-value">{{ stats.status_counts.get('posted', 0) }}</div>
+      <div class="stat-label">Published</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fef3c7"><i class="bi bi-eye-fill" style="color:#d97706"></i></div>
+      <div class="stat-value">{{ "{:,}".format(stats.total_reach) }}</div>
+      <div class="stat-label">Total Reach</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#ede9fe"><i class="bi bi-heart-fill" style="color:#7c3aed"></i></div>
+      <div class="stat-value">{{ "{:,}".format(stats.total_likes) }}</div>
+      <div class="stat-label">Total Likes</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- Status breakdown -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-funnel-fill me-2"></i>Content by Status</div>
+      <div class="card-body">
+        {% for s in ['draft','needs_review','approved','scheduled','posted'] %}
+        {% set cnt = stats.status_counts.get(s, 0) %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <a href="{{ url_for('content_list', status=s) }}" class="text-decoration-none">
+            <span class="badge bg-{{ status_colors[s] }} me-2">{{ cnt }}</span>
+            <span class="text-capitalize">{{ s.replace('_',' ') }}</span>
+          </a>
+          <div class="progress flex-grow-1 ms-3" style="height:6px">
+            <div class="progress-bar bg-{{ status_colors[s] }}" style="width:{{ (cnt / stats.total_posts * 100)|int if stats.total_posts else 0 }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Client breakdown -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-people-fill me-2"></i>Posts by Client</div>
+      <div class="card-body">
+        {% for c in stats.client_counts %}
+        <div class="d-flex align-items-center mb-3">
+          <div class="client-avatar me-3" style="background:{{ c.logo_color }}">{{ c.name[0] }}</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">{{ c.name }}</div>
+            <div class="progress mt-1" style="height:5px">
+              <div class="progress-bar" style="background:{{ c.logo_color }};width:{{ (c.cnt / stats.total_posts * 100)|int if stats.total_posts else 0 }}%"></div>
+            </div>
+          </div>
+          <span class="ms-3 fw-bold text-muted">{{ c.cnt }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Platform breakdown -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-share-fill me-2"></i>Posts by Platform</div>
+      <div class="card-body">
+        {% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+        {% for p in stats.platform_counts %}
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi {{ platform_icons.get(p.platform,'bi-globe') }} me-2 platform-icon platform-{{ p.platform }}"></i>
+          <span class="text-capitalize flex-grow-1">{{ p.platform }}</span>
+          <span class="badge bg-light text-dark">{{ p.cnt }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Upcoming scheduled -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-calendar-event me-2"></i>Upcoming Schedule</span>
+        <a href="{{ url_for('scheduling') }}" class="btn btn-sm btn-outline-primary">View all</a>
+      </div>
+      <div class="card-body p-0">
+        {% if stats.upcoming %}
+        <ul class="list-group list-group-flush">
+          {% for p in stats.upcoming %}
+          <li class="list-group-item">
+            <div class="d-flex align-items-center gap-3">
+              <div class="client-avatar" style="background:{{ p.logo_color }}">{{ p.client_name[0] }}</div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold text-truncate">{{ p.topic }}</div>
+                <small class="text-muted">{{ p.client_name }} · {{ p.platform|capitalize }}</small>
+              </div>
+              <small class="text-nowrap text-muted">{{ p.scheduled_date }}</small>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="p-4 text-center text-muted">No upcoming scheduled posts.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent activity -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-clock-history me-2"></i>Recent Activity</span>
+        <a href="{{ url_for('content_list') }}" class="btn btn-sm btn-outline-primary">View all</a>
+      </div>
+      <div class="card-body p-0">
+        {% if stats.recent %}
+        <ul class="list-group list-group-flush">
+          {% for p in stats.recent %}
+          <li class="list-group-item">
+            <div class="d-flex align-items-center gap-3">
+              <div class="client-avatar sm" style="background:{{ p.logo_color }}">{{ p.client_name[0] }}</div>
+              <div class="flex-grow-1 min-w-0">
+                <a href="{{ url_for('content_detail', post_id=p.id) }}" class="fw-semibold text-truncate d-block text-decoration-none text-dark">{{ p.topic }}</a>
+                <small class="text-muted">{{ p.platform|capitalize }}</small>
+              </div>
+              <span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="p-4 text-center text-muted">No content yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

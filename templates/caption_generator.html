@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Caption Generator — Soulful Content Engine{% endblock %}
+{% block page_title %}Caption Generator{% endblock %}
+
+{% block content %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+{% set platform_colors = {'instagram':'#e1306c','facebook':'#1877f2','tiktok':'#010101','linkedin':'#0077b5','youtube':'#ff0000'} %}
+
+<div class="row g-4">
+
+  <!-- Generator form -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-magic me-2"></i>Generate with Claude AI</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Client *</label>
+          <select id="genClient" class="form-select">
+            <option value="">Select client…</option>
+            {% for c in clients %}
+            <option value="{{ c.id }}" {% if preselect_client==c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Platform *</label>
+          <div class="platform-grid">
+            {% for p in platforms %}
+            <label class="platform-tile {% if preselect_platform==p %}selected{% endif %}">
+              <input type="radio" name="platform" value="{{ p }}" {% if preselect_platform==p %}checked{% endif %} hidden>
+              <i class="bi {{ platform_icons.get(p,'bi-globe') }}" style="color:{{ platform_colors.get(p,'#6366f1') }}"></i>
+              <span>{{ p|capitalize }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Topic / Content Idea *</label>
+          <input type="text" id="genTopic" class="form-control" placeholder="e.g. Morning mindfulness routine">
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label fw-semibold">Extra Context <small class="text-muted">(optional)</small></label>
+          <textarea id="genContext" class="form-control" rows="2"
+                    placeholder="Key points, tone notes, specific call-to-action…"></textarea>
+        </div>
+
+        <button id="generateBtn" class="btn btn-primary w-100">
+          <i class="bi bi-magic me-1"></i> Generate Caption
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result panel -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-file-text me-2"></i>Generated Caption</span>
+        <div class="d-flex gap-2">
+          <button id="regenBtn" class="btn btn-sm btn-outline-secondary d-none">
+            <i class="bi bi-arrow-clockwise"></i> Regenerate
+          </button>
+          <button id="copyBtn" class="btn btn-sm btn-outline-secondary d-none">
+            <i class="bi bi-clipboard"></i> Copy
+          </button>
+        </div>
+      </div>
+      <div class="card-body d-flex flex-column">
+
+        <!-- Empty state -->
+        <div id="emptyState" class="empty-state my-auto">
+          <i class="bi bi-magic display-4 text-muted"></i>
+          <p class="mt-3 text-muted">Your generated caption will appear here.<br>
+          Select a client, platform, and topic, then click Generate.</p>
+        </div>
+
+        <!-- Loading state -->
+        <div id="loadingState" class="d-none text-center my-auto">
+          <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem"></div>
+          <p class="text-muted">Claude is crafting your caption…</p>
+        </div>
+
+        <!-- Result -->
+        <div id="resultState" class="d-none flex-column h-100">
+          <div id="platformBadge" class="mb-2"></div>
+          <textarea id="captionResult" class="form-control flex-grow-1 mb-3" rows="8" style="resize:none;font-size:0.95rem"></textarea>
+          <div>
+            <label class="form-label fw-semibold">Hashtags</label>
+            <textarea id="hashtagResult" class="form-control mb-3" rows="2" style="resize:none;font-size:0.85rem;color:#6366f1"></textarea>
+          </div>
+
+          <div class="border rounded p-3 bg-light">
+            <p class="fw-semibold mb-2"><i class="bi bi-floppy-fill me-1"></i>Save to Content Library</p>
+            <div class="row g-2 mb-2">
+              <div class="col-md-6">
+                <select id="saveStatus" class="form-select form-select-sm">
+                  <option value="draft">Save as Draft</option>
+                  <option value="needs_review">Mark as Needs Review</option>
+                  <option value="approved">Mark as Approved</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <input type="datetime-local" id="saveScheduled" class="form-control form-control-sm"
+                       placeholder="Schedule date (optional)">
+              </div>
+            </div>
+            <button id="saveBtn" class="btn btn-success w-100">
+              <i class="bi bi-check-circle"></i> Save Post
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const platformTiles = document.querySelectorAll('.platform-tile');
+platformTiles.forEach(tile => {
+  tile.addEventListener('click', () => {
+    platformTiles.forEach(t => t.classList.remove('selected'));
+    tile.classList.add('selected');
+    tile.querySelector('input').checked = true;
+  });
+});
+
+const platformColors = {
+  instagram: '#e1306c', facebook: '#1877f2', tiktok: '#010101',
+  linkedin: '#0077b5', youtube: '#ff0000'
+};
+
+let lastResult = {};
+
+document.getElementById('generateBtn').addEventListener('click', generate);
+document.getElementById('regenBtn').addEventListener('click', generate);
+
+async function generate() {
+  const clientId = document.getElementById('genClient').value;
+  const platform = document.querySelector('input[name="platform"]:checked')?.value;
+  const topic = document.getElementById('genTopic').value.trim();
+
+  if (!clientId || !platform || !topic) {
+    alert('Please select a client, platform, and enter a topic.');
+    return;
+  }
+
+  show('loadingState');
+  document.getElementById('generateBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/generate-caption', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        client_id: parseInt(clientId),
+        platform,
+        topic,
+        extra_context: document.getElementById('genContext').value.trim(),
+      }),
+    });
+    const data = await res.json();
+    if (data.error) { alert('Error: ' + data.error); show('emptyState'); return; }
+
+    document.getElementById('captionResult').value = data.caption;
+    document.getElementById('hashtagResult').value = data.hashtags || '';
+    document.getElementById('platformBadge').innerHTML =
+      `<span class="badge" style="background:${platformColors[platform] || '#6366f1'}">${platform.charAt(0).toUpperCase()+platform.slice(1)}</span>`;
+
+    lastResult = { clientId, platform, topic };
+
+    show('resultState');
+    document.getElementById('regenBtn').classList.remove('d-none');
+    document.getElementById('copyBtn').classList.remove('d-none');
+  } catch (e) {
+    alert('Request failed. Check your network and API key.');
+    show('emptyState');
+  } finally {
+    document.getElementById('generateBtn').disabled = false;
+  }
+}
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const text = document.getElementById('captionResult').value + '\n\n' +
+               document.getElementById('hashtagResult').value;
+  navigator.clipboard.writeText(text);
+  const btn = document.getElementById('copyBtn');
+  btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
+  setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy', 2000);
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const caption = document.getElementById('captionResult').value.trim();
+  const hashtags = document.getElementById('hashtagResult').value.trim();
+  const status = document.getElementById('saveStatus').value;
+  const scheduled = document.getElementById('saveScheduled').value;
+
+  if (!caption) { alert('Caption is empty.'); return; }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+  try {
+    const res = await fetch('/api/save-caption', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        client_id: parseInt(lastResult.clientId),
+        platform: lastResult.platform,
+        topic: lastResult.topic,
+        caption, hashtags, status,
+        scheduled_date: scheduled || null,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = `/content/${data.post_id}`;
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-circle"></i> Save Post';
+  }
+});
+
+function show(id) {
+  ['emptyState','loadingState','resultState'].forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.classList.add('d-none');
+  });
+  const target = document.getElementById(id);
+  if (target) {
+    target.classList.remove('d-none');
+    if (id === 'resultState') target.classList.add('d-flex');
+  }
+}
+</script>
+{% endblock %}

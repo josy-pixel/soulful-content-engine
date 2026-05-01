@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ client.name }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('client_edit', client_id=client.id) }}" class="btn btn-outline-secondary btn-sm me-2">
+    <i class="bi bi-pencil"></i> Edit
+  </a>
+  <a href="{{ url_for('caption_generator', client_id=client.id) }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-magic"></i> Generate Caption
+  </a>
+{% endblock %}
+
+{% block content %}
+<!-- Client header -->
+<div class="client-hero mb-4" style="border-left: 4px solid {{ client.logo_color }}">
+  <div class="d-flex align-items-center gap-4">
+    <div class="client-avatar-xl" style="background:{{ client.logo_color }}">{{ client.name[0] }}</div>
+    <div>
+      <h3 class="mb-1">{{ client.name }}</h3>
+      <p class="text-muted mb-1">{{ client.description or 'No description.' }}</p>
+      {% if client.contact_email %}
+      <small class="text-muted"><i class="bi bi-envelope me-1"></i>{{ client.contact_email }}</small>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Brand Voice -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-mic-fill me-2"></i>Brand Voice Profiles</span>
+    <small class="text-muted">Click a platform tab to edit its voice settings</small>
+  </div>
+  <div class="card-body">
+    <ul class="nav nav-tabs mb-3" id="voiceTabs">
+      {% set platform_icons = {'general':'bi-globe','instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+      {% for p in ['general'] + platforms %}
+      <li class="nav-item">
+        <button class="nav-link {% if loop.first %}active{% endif %} text-capitalize"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ p }}">
+          <i class="bi {{ platform_icons.get(p,'bi-globe') }} me-1"></i>{{ p }}
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="tab-content">
+      {% for p in ['general'] + platforms %}
+      {% set v = voices.get(p, {}) %}
+      <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ p }}">
+        <form class="brand-voice-form" data-client="{{ client.id }}" data-platform="{{ p }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Tone</label>
+              <input type="text" name="tone" class="form-control form-control-sm"
+                     value="{{ v.get('tone','') }}" placeholder="e.g. Warm, authentic, empowering">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Style</label>
+              <input type="text" name="style" class="form-control form-control-sm"
+                     value="{{ v.get('style','') }}" placeholder="e.g. Conversational storytelling">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Target Audience</label>
+              <input type="text" name="target_audience" class="form-control form-control-sm"
+                     value="{{ v.get('target_audience','') }}" placeholder="e.g. Women 25–45 into wellness">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Emoji Usage</label>
+              <select name="emoji_usage" class="form-select form-select-sm">
+                {% for opt in ['none','minimal','moderate','heavy'] %}
+                <option value="{{ opt }}" {% if v.get('emoji_usage','moderate')==opt %}selected{% endif %}>{{ opt|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Caption Length</label>
+              <select name="caption_length" class="form-select form-select-sm">
+                {% for opt in ['short','medium','long'] %}
+                <option value="{{ opt }}" {% if v.get('caption_length','medium')==opt %}selected{% endif %}>{{ opt|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Keywords <small class="text-muted">(comma-separated)</small></label>
+              {% set kw = v.get('keywords','[]') %}
+              {% if kw and kw != '[]' %}
+                {% set kw_list = kw | replace('[','') | replace(']','') | replace('"','') %}
+              {% else %}
+                {% set kw_list = '' %}
+              {% endif %}
+              <input type="text" name="keywords_raw" class="form-control form-control-sm"
+                     value="{{ kw_list }}" placeholder="authentic, mindful, growth">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Words to Avoid <small class="text-muted">(comma-separated)</small></label>
+              {% set av = v.get('avoid_words','[]') %}
+              {% if av and av != '[]' %}
+                {% set av_list = av | replace('[','') | replace(']','') | replace('"','') %}
+              {% else %}
+                {% set av_list = '' %}
+              {% endif %}
+              <input type="text" name="avoid_raw" class="form-control form-control-sm"
+                     value="{{ av_list }}" placeholder="hustle, grind, toxic">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Sample Caption</label>
+              <textarea name="sample_caption" class="form-control form-control-sm" rows="2"
+                        placeholder="Paste an example caption that represents this brand voice perfectly…">{{ v.get('sample_caption','') }}</textarea>
+            </div>
+            <div class="col-12">
+              <button type="button" class="btn btn-primary btn-sm save-voice-btn">
+                <i class="bi bi-floppy-fill"></i> Save {{ p|capitalize }} Voice
+              </button>
+              <span class="voice-saved-msg ms-2 text-success d-none"><i class="bi bi-check-circle-fill"></i> Saved</span>
+            </div>
+          </div>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Recent posts -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-collection-fill me-2"></i>Recent Posts</span>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('content_new', client_id=client.id) }}" class="btn btn-sm btn-outline-primary">+ New Post</a>
+      <a href="{{ url_for('content_list', client_id=client.id) }}" class="btn btn-sm btn-outline-secondary">View All</a>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+    {% if posts %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Topic</th><th>Platform</th><th>Status</th><th>Date</th><th></th></tr></thead>
+        <tbody>
+          {% for p in posts %}
+          <tr>
+            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">{{ p.topic }}</a></td>
+            <td><span class="text-capitalize">{{ p.platform }}</span></td>
+            <td><span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span></td>
+            <td><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
+            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted">No posts yet for this client.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.save-voice-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const form = btn.closest('.brand-voice-form');
+    const clientId = form.dataset.client;
+    const platform = form.dataset.platform;
+    const fd = new FormData(form);
+
+    const kw = fd.get('keywords_raw') || '';
+    const av = fd.get('avoid_raw') || '';
+    const toArray = s => JSON.stringify(s.split(',').map(x => x.trim()).filter(Boolean));
+
+    const payload = {
+      tone: fd.get('tone'),
+      style: fd.get('style'),
+      target_audience: fd.get('target_audience'),
+      emoji_usage: fd.get('emoji_usage'),
+      caption_length: fd.get('caption_length'),
+      keywords: toArray(kw),
+      avoid_words: toArray(av),
+      sample_caption: fd.get('sample_caption'),
+    };
+
+    btn.disabled = true;
+    const msg = form.querySelector('.voice-saved-msg');
+    try {
+      const res = await fetch(`/api/brand-voice/${clientId}/${platform}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        msg.classList.remove('d-none');
+        setTimeout(() => msg.classList.add('d-none'), 3000);
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}
