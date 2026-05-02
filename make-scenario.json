@@ -1,0 +1,360 @@
+{
+  "name": "Soulful Content Engine — Auto Publisher",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 0,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": -100, "y": 0 },
+        "restore": {
+          "parameters": {
+            "hook": { "label": "Soulful Content Engine" }
+          }
+        },
+        "notes": "SETUP: Click this module and create a new webhook. Copy the webhook URL and set it as MAKE_WEBHOOK_URL in your .env file and in Render environment variables. The webhook receives: post_id, client, platform, topic, caption, hashtags, image_url, scheduled_date, approved_at, callback_url."
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": {
+        "designer": { "x": 200, "y": 0 },
+        "notes": "Routes on {{1.platform}}. Each branch posts to its platform then calls back to Soulful Content Engine to mark the post as Posted."
+      },
+      "routes": [
+
+        {
+          "label": "Instagram",
+          "filter": {
+            "name": "Instagram",
+            "conditions": [
+              [{ "a": "{{1.platform}}", "b": "instagram", "o": "text:equal" }]
+            ]
+          },
+          "flow": [
+            {
+              "id": 3,
+              "module": "instagram-business:CreatePhotoPost",
+              "version": 1,
+              "parameters": {
+                "account": 0
+              },
+              "mapper": {
+                "pageId": "YOUR_INSTAGRAM_BUSINESS_ACCOUNT_ID",
+                "imageUrl": "{{1.image_url}}",
+                "caption": "{{1.caption}}\n\n{{1.hashtags}}"
+              },
+              "metadata": {
+                "designer": { "x": 500, "y": -350 },
+                "restore": {
+                  "parameters": {
+                    "account": { "label": "Instagram Business — connect your account" }
+                  }
+                },
+                "notes": "SETUP: (1) Connect your Instagram Business account. (2) Replace YOUR_INSTAGRAM_BUSINESS_ACCOUNT_ID with your numeric IG account ID (find it in Meta Business Suite). (3) A valid image URL must be set in the post's Image URL field in Soulful Content Engine — Instagram requires an image."
+              }
+            },
+            {
+              "id": 4,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  { "name": "Content-Type", "value": "application/json" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "timeout": 30,
+                "followRedirect": true,
+                "gzip": true,
+                "rejectUnauthorized": true,
+                "contentType": "application/json",
+                "data": "{\"post_id\": {{1.post_id}}, \"secret\": \"YOUR_MAKE_WEBHOOK_SECRET\", \"posted_url\": \"https://www.instagram.com/\"}"
+              },
+              "metadata": {
+                "designer": { "x": 800, "y": -350 },
+                "notes": "SETUP: Replace YOUR_MAKE_WEBHOOK_SECRET with the value of MAKE_WEBHOOK_SECRET in your .env / Render env vars. This call marks the post as Posted in Soulful Content Engine."
+              }
+            }
+          ]
+        },
+
+        {
+          "label": "Facebook",
+          "filter": {
+            "name": "Facebook",
+            "conditions": [
+              [{ "a": "{{1.platform}}", "b": "facebook", "o": "text:equal" }]
+            ]
+          },
+          "flow": [
+            {
+              "id": 5,
+              "module": "facebookpages:CreatePost",
+              "version": 4,
+              "parameters": {
+                "account": 0
+              },
+              "mapper": {
+                "pageId": "YOUR_FACEBOOK_PAGE_ID",
+                "message": "{{1.caption}}\n\n{{1.hashtags}}",
+                "published": true
+              },
+              "metadata": {
+                "designer": { "x": 500, "y": -150 },
+                "restore": {
+                  "parameters": {
+                    "account": { "label": "Facebook Pages — connect your account" },
+                    "pageId": { "label": "Select your Page", "mode": "chose" }
+                  }
+                },
+                "notes": "SETUP: (1) Connect your Facebook account. (2) Replace YOUR_FACEBOOK_PAGE_ID or select your page from the dropdown. To include an image, add a 'link' or 'attachments' field using {{1.image_url}}."
+              }
+            },
+            {
+              "id": 6,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  { "name": "Content-Type", "value": "application/json" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "timeout": 30,
+                "followRedirect": true,
+                "gzip": true,
+                "rejectUnauthorized": true,
+                "contentType": "application/json",
+                "data": "{\"post_id\": {{1.post_id}}, \"secret\": \"YOUR_MAKE_WEBHOOK_SECRET\", \"posted_url\": \"https://www.facebook.com/{{5.id}}\"}"
+              },
+              "metadata": {
+                "designer": { "x": 800, "y": -150 },
+                "notes": "SETUP: Replace YOUR_MAKE_WEBHOOK_SECRET. {{5.id}} is the Facebook post ID returned by module 5 — it is used to build the live post URL."
+              }
+            }
+          ]
+        },
+
+        {
+          "label": "LinkedIn",
+          "filter": {
+            "name": "LinkedIn",
+            "conditions": [
+              [{ "a": "{{1.platform}}", "b": "linkedin", "o": "text:equal" }]
+            ]
+          },
+          "flow": [
+            {
+              "id": 7,
+              "module": "linkedin:CreateShare",
+              "version": 2,
+              "parameters": {
+                "account": 0
+              },
+              "mapper": {
+                "text": "{{1.caption}}\n\n{{1.hashtags}}",
+                "visibility": "PUBLIC",
+                "mediaCategory": "NONE"
+              },
+              "metadata": {
+                "designer": { "x": 500, "y": 50 },
+                "restore": {
+                  "parameters": {
+                    "account": { "label": "LinkedIn — connect your account" }
+                  }
+                },
+                "notes": "SETUP: (1) Connect your LinkedIn account. (2) To post on behalf of a Company Page instead of a personal profile, switch to the LinkedIn Pages module and set the organisation ID. (3) To attach an image, change mediaCategory to IMAGE and add a media array with {{1.image_url}}."
+              }
+            },
+            {
+              "id": 8,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  { "name": "Content-Type", "value": "application/json" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "timeout": 30,
+                "followRedirect": true,
+                "gzip": true,
+                "rejectUnauthorized": true,
+                "contentType": "application/json",
+                "data": "{\"post_id\": {{1.post_id}}, \"secret\": \"YOUR_MAKE_WEBHOOK_SECRET\", \"posted_url\": \"https://www.linkedin.com/feed/update/{{7.id}}\"}"
+              },
+              "metadata": {
+                "designer": { "x": 800, "y": 50 },
+                "notes": "SETUP: Replace YOUR_MAKE_WEBHOOK_SECRET. {{7.id}} is the LinkedIn URN returned by module 7."
+              }
+            }
+          ]
+        },
+
+        {
+          "label": "TikTok",
+          "filter": {
+            "name": "TikTok",
+            "conditions": [
+              [{ "a": "{{1.platform}}", "b": "tiktok", "o": "text:equal" }]
+            ]
+          },
+          "flow": [
+            {
+              "id": 9,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "https://open.tiktokapis.com/v2/post/publish/video/init/",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  { "name": "Authorization", "value": "Bearer YOUR_TIKTOK_ACCESS_TOKEN" },
+                  { "name": "Content-Type",  "value": "application/json; charset=UTF-8" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "timeout": 30,
+                "followRedirect": true,
+                "gzip": true,
+                "rejectUnauthorized": true,
+                "contentType": "application/json",
+                "data": "{\"post_info\": {\"title\": \"{{1.topic}}\", \"description\": \"{{1.caption}} {{1.hashtags}}\", \"privacy_level\": \"PUBLIC_TO_EVERYONE\", \"disable_duet\": false, \"disable_comment\": false, \"disable_stitch\": false, \"video_cover_timestamp_ms\": 1000}, \"source_info\": {\"source\": \"PULL_FROM_URL\", \"video_url\": \"{{1.image_url}}\"}}"
+              },
+              "metadata": {
+                "designer": { "x": 500, "y": 250 },
+                "notes": "SETUP: TikTok's Content Posting API accepts video files only (mp4). Replace YOUR_TIKTOK_ACCESS_TOKEN with a valid token from TikTok for Developers (developers.tiktok.com). Set image_url on the post to an mp4 URL. Alternatively, if Make.com's native TikTok app is available in your region/plan, replace this HTTP module with it for easier OAuth handling."
+              }
+            },
+            {
+              "id": 10,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  { "name": "Content-Type", "value": "application/json" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "timeout": 30,
+                "followRedirect": true,
+                "gzip": true,
+                "rejectUnauthorized": true,
+                "contentType": "application/json",
+                "data": "{\"post_id\": {{1.post_id}}, \"secret\": \"YOUR_MAKE_WEBHOOK_SECRET\", \"posted_url\": \"https://www.tiktok.com/@{{1.client}}\"}"
+              },
+              "metadata": {
+                "designer": { "x": 800, "y": 250 },
+                "notes": "SETUP: Replace YOUR_MAKE_WEBHOOK_SECRET."
+              }
+            }
+          ]
+        },
+
+        {
+          "label": "Fallback",
+          "flow": [
+            {
+              "id": 11,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  { "name": "Content-Type", "value": "application/json" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "timeout": 30,
+                "followRedirect": true,
+                "gzip": true,
+                "rejectUnauthorized": true,
+                "contentType": "application/json",
+                "data": "{\"post_id\": {{1.post_id}}, \"secret\": \"YOUR_MAKE_WEBHOOK_SECRET\", \"posted_url\": \"\"}"
+              },
+              "metadata": {
+                "designer": { "x": 500, "y": 450 },
+                "notes": "Fallback — catches any platform not matched above (e.g. YouTube) and still marks the post as Posted. Add platform modules before this callback to handle YouTube or any other platform."
+              }
+            }
+          ]
+        }
+
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "slots": null,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "eu2.make.com"
+  }
+}
