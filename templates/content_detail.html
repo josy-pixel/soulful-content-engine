@@ -2,6 +2,9 @@
 {% block title %}{{ post.topic }} — Soulful Content Engine{% endblock %}
 {% block page_title %}Post Detail{% endblock %}
 {% block topbar_actions %}
+  <button class="btn btn-outline-primary btn-sm me-2" id="previewPostBtn">
+    <i class="bi bi-eye me-1"></i> Preview Post
+  </button>
   <a href="{{ url_for('content_edit', post_id=post.id) }}" class="btn btn-outline-secondary btn-sm me-2">
     <i class="bi bi-pencil"></i> Edit
   </a>
@@ -96,6 +99,53 @@
           <span id="webhookTestResult" class="small ms-1"></span>
         </div>
         {% endif %}
+      </div>
+    </div>
+
+    <!-- Attached media -->
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-images me-2"></i>Attached Media</span>
+        <button class="btn btn-sm btn-outline-primary" id="openGalleryPickerBtn">
+          <i class="bi bi-plus-lg me-1"></i>Attach from Gallery
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2" id="attachedMediaContainer">
+          {% if post_media %}
+            {% for m in post_media %}
+            <div class="position-relative media-attached-item" data-id="{{ m.id }}" style="width:100px">
+              {% if m.media_type == 'video' %}
+                <video src="{{ m.url }}" style="width:100px;height:100px;object-fit:cover;border-radius:8px" muted preload="metadata"
+                       onclick="openMediaPreview('{{ m.url }}','{{ m.media_type }}','{{ m.original_name }}')"></video>
+                <span class="position-absolute top-50 start-50 translate-middle bg-dark bg-opacity-50 rounded-circle d-flex align-items-center justify-content-center" style="width:30px;height:30px;pointer-events:none">
+                  <i class="bi bi-play-fill text-white small"></i>
+                </span>
+              {% else %}
+                <img src="{{ m.url }}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer"
+                     alt="{{ m.original_name }}"
+                     onclick="openMediaPreview('{{ m.url }}','{{ m.media_type }}','{{ m.original_name }}')">
+              {% endif %}
+              <button class="btn btn-danger btn-sm position-absolute top-0 end-0 detach-media-btn"
+                      style="width:22px;height:22px;padding:0;font-size:.65rem;border-radius:50%"
+                      data-id="{{ m.id }}" title="Remove">
+                <i class="bi bi-x"></i>
+              </button>
+              <p class="small text-truncate mt-1 mb-0 text-muted" style="font-size:.65rem" title="{{ m.original_name }}">{{ m.original_name }}</p>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted small mb-0" id="noMediaMsg">No media attached yet.</p>
+          {% endif %}
+        </div>
+
+        <!-- Gallery picker (hidden by default) -->
+        <div id="galleryPickerPane" class="d-none mt-3 pt-3 border-top">
+          <p class="small fw-semibold mb-2">Click to attach:</p>
+          <div class="d-flex flex-wrap gap-2" id="galleryPickerItems">
+            <span class="text-muted small">Loading…</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -219,6 +269,226 @@
   </div>
 </div>
 
+<!-- Post Preview Modal -->
+<div class="modal fade" id="postPreviewModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-eye me-2"></i>Post Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+
+        <!-- Platform tabs -->
+        <ul class="nav nav-pills mb-3 justify-content-center gap-1" id="previewPlatformTabs">
+          {% set picons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+          {% set pcolors = {'instagram':'#e1306c','facebook':'#1877f2','tiktok':'#000','linkedin':'#0a66c2','youtube':'#ff0000'} %}
+          {% for p in ['instagram','facebook','tiktok','linkedin','youtube'] %}
+          <li class="nav-item">
+            <button class="nav-link {% if post.platform == p %}active{% endif %} preview-platform-btn" data-platform="{{ p }}"
+                    style="{% if post.platform == p %}background:{{ pcolors[p] }}{% endif %}">
+              <i class="bi {{ picons[p] }} me-1"></i>{{ p|capitalize }}
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <!-- Preview frame -->
+        <div class="d-flex justify-content-center">
+          <div id="previewFrame" style="max-width:420px;width:100%">
+
+            <!-- INSTAGRAM preview -->
+            <div class="preview-pane d-none" id="prev-instagram">
+              <div class="border rounded-4 overflow-hidden bg-white shadow-sm" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+                <!-- Header -->
+                <div class="d-flex align-items-center gap-2 p-3">
+                  <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                       style="width:36px;height:36px;background:{{ post.logo_color }};font-size:.85rem">{{ post.client_name[0] }}</div>
+                  <div>
+                    <div class="fw-bold" style="font-size:.85rem">{{ post.client_name|lower|replace(' ','_') }}</div>
+                    <div class="text-muted" style="font-size:.7rem">Sponsored</div>
+                  </div>
+                  <i class="bi bi-three-dots ms-auto text-dark"></i>
+                </div>
+                <!-- Image -->
+                <div id="ig-media-zone" style="aspect-ratio:1;background:#f0f0f0;display:flex;align-items:center;justify-content:center">
+                  {% if post_media %}
+                    {% set m = post_media[0] %}
+                    {% if m.media_type == 'video' %}
+                    <video src="{{ m.url }}" style="width:100%;height:100%;object-fit:cover" muted controls></video>
+                    {% else %}
+                    <img src="{{ m.url }}" style="width:100%;height:100%;object-fit:cover" alt="post">
+                    {% endif %}
+                  {% elif post.image_url %}
+                    <img src="{{ post.image_url }}" style="width:100%;height:100%;object-fit:cover" alt="post">
+                  {% else %}
+                    <div class="text-center text-muted p-4">
+                      <i class="bi bi-image display-4 opacity-25 d-block mb-2"></i>
+                      <small>No media attached</small>
+                    </div>
+                  {% endif %}
+                </div>
+                <!-- Actions -->
+                <div class="d-flex gap-3 p-3 pb-1" style="font-size:1.3rem">
+                  <i class="bi bi-heart"></i><i class="bi bi-chat"></i><i class="bi bi-send"></i>
+                  <i class="bi bi-bookmark ms-auto"></i>
+                </div>
+                <!-- Caption -->
+                <div class="px-3 pb-3" style="font-size:.82rem">
+                  <span class="fw-bold">{{ post.client_name|lower|replace(' ','_') }}</span>
+                  <span class="ms-1" id="ig-caption-text">{{ post.caption[:200] }}{% if post.caption|length > 200 %}… <span class="text-primary" style="cursor:pointer">more</span>{% endif %}</span>
+                  <div class="text-primary mt-1" style="font-size:.78rem">{{ post.hashtags[:100] if post.hashtags else '' }}</div>
+                  <div class="text-muted mt-1" style="font-size:.72rem">View all comments</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- FACEBOOK preview -->
+            <div class="preview-pane d-none" id="prev-facebook">
+              <div class="border rounded-3 overflow-hidden bg-white shadow-sm" style="font-family:'Segoe UI',sans-serif">
+                <div class="d-flex align-items-center gap-2 p-3 pb-2">
+                  <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                       style="width:40px;height:40px;background:{{ post.logo_color }};font-size:.9rem">{{ post.client_name[0] }}</div>
+                  <div>
+                    <div class="fw-bold" style="font-size:.88rem">{{ post.client_name }}</div>
+                    <div class="text-muted d-flex align-items-center gap-1" style="font-size:.72rem">
+                      <span>Sponsored</span> · <i class="bi bi-globe2"></i>
+                    </div>
+                  </div>
+                  <i class="bi bi-three-dots ms-auto text-muted"></i>
+                </div>
+                <div class="px-3 pb-2" style="font-size:.85rem">{{ post.caption[:300] }}{% if post.caption|length > 300 %}… <span class="text-primary" style="cursor:pointer">See more</span>{% endif %}</div>
+                {% if post_media or post.image_url %}
+                <div style="background:#f0f0f0;{% if not post_media and not post.image_url %}display:none{% endif %}">
+                  {% if post_media %}
+                    {% set m = post_media[0] %}
+                    {% if m.media_type == 'video' %}
+                    <video src="{{ m.url }}" style="width:100%;max-height:280px;object-fit:cover" muted controls></video>
+                    {% else %}
+                    <img src="{{ m.url }}" style="width:100%;max-height:280px;object-fit:cover" alt="post">
+                    {% endif %}
+                  {% elif post.image_url %}
+                    <img src="{{ post.image_url }}" style="width:100%;max-height:280px;object-fit:cover" alt="post">
+                  {% endif %}
+                </div>
+                {% endif %}
+                <div class="d-flex justify-content-around p-2 border-top" style="font-size:.8rem;color:#65676b">
+                  <span><i class="bi bi-hand-thumbs-up me-1"></i>Like</span>
+                  <span><i class="bi bi-chat me-1"></i>Comment</span>
+                  <span><i class="bi bi-share me-1"></i>Share</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- LINKEDIN preview -->
+            <div class="preview-pane d-none" id="prev-linkedin">
+              <div class="border rounded-3 overflow-hidden bg-white shadow-sm" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+                <div class="d-flex align-items-center gap-2 p-3 pb-2">
+                  <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                       style="width:44px;height:44px;background:{{ post.logo_color }};font-size:1rem">{{ post.client_name[0] }}</div>
+                  <div>
+                    <div class="fw-bold" style="font-size:.88rem">{{ post.client_name }}</div>
+                    <div class="text-muted" style="font-size:.72rem">Promoted</div>
+                  </div>
+                  <button class="btn btn-sm btn-outline-primary ms-auto" style="font-size:.75rem;border-radius:999px">+ Follow</button>
+                </div>
+                <div class="px-3 pb-2" style="font-size:.84rem;white-space:pre-line">{{ post.caption[:500] }}{% if post.caption|length > 500 %}…<span class="text-primary"> see more</span>{% endif %}</div>
+                {% if post_media %}
+                  {% set m = post_media[0] %}
+                  <div>{% if m.media_type == 'video' %}<video src="{{ m.url }}" style="width:100%;max-height:260px;object-fit:cover" muted controls></video>{% else %}<img src="{{ m.url }}" style="width:100%;max-height:260px;object-fit:cover" alt="post">{% endif %}</div>
+                {% elif post.image_url %}
+                  <img src="{{ post.image_url }}" style="width:100%;max-height:260px;object-fit:cover" alt="post">
+                {% endif %}
+                <div class="d-flex justify-content-around p-2 border-top" style="font-size:.78rem;color:#666">
+                  <span>👍 Like</span><span>💬 Comment</span><span>🔁 Repost</span><span>📤 Send</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- TIKTOK preview -->
+            <div class="preview-pane d-none" id="prev-tiktok">
+              <div class="rounded-4 overflow-hidden position-relative shadow-sm" style="aspect-ratio:9/16;background:#000;max-height:520px">
+                {% if post_media %}
+                  {% set m = post_media[0] %}
+                  {% if m.media_type == 'video' %}
+                  <video src="{{ m.url }}" style="width:100%;height:100%;object-fit:cover" muted controls loop></video>
+                  {% else %}
+                  <img src="{{ m.url }}" style="width:100%;height:100%;object-fit:cover" alt="post">
+                  {% endif %}
+                {% elif post.image_url %}
+                  <img src="{{ post.image_url }}" style="width:100%;height:100%;object-fit:cover" alt="post">
+                {% else %}
+                  <div class="text-center text-white p-5 d-flex align-items-center justify-content-center h-100">
+                    <div><i class="bi bi-play-circle display-2 opacity-25 d-block mb-2"></i><small>No video attached</small></div>
+                  </div>
+                {% endif %}
+                <!-- Overlay -->
+                <div class="position-absolute bottom-0 start-0 end-0 p-3 text-white" style="background:linear-gradient(transparent,rgba(0,0,0,.7))">
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    <div class="rounded-circle bg-white text-dark d-flex align-items-center justify-content-center fw-bold"
+                         style="width:28px;height:28px;font-size:.7rem">{{ post.client_name[0] }}</div>
+                    <span class="fw-bold" style="font-size:.8rem">@{{ post.client_name|lower|replace(' ','_') }}</span>
+                  </div>
+                  {% if post.hook %}
+                  <p class="fw-semibold mb-1" style="font-size:.85rem">{{ post.hook }}</p>
+                  {% endif %}
+                  <p style="font-size:.75rem;opacity:.9">{{ post.caption[:120] }}{% if post.caption|length > 120 %}…{% endif %}</p>
+                  <p class="text-warning" style="font-size:.72rem">{{ post.hashtags[:80] if post.hashtags else '' }}</p>
+                </div>
+                <!-- Side actions -->
+                <div class="position-absolute end-0 top-50 translate-middle-y d-flex flex-column align-items-center gap-3 pe-2 text-white" style="font-size:1.4rem">
+                  <div class="text-center"><i class="bi bi-heart-fill"></i><div style="font-size:.65rem">42.1K</div></div>
+                  <div class="text-center"><i class="bi bi-chat-fill"></i><div style="font-size:.65rem">1.2K</div></div>
+                  <div class="text-center"><i class="bi bi-arrow-right-circle-fill"></i><div style="font-size:.65rem">Share</div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- YOUTUBE preview -->
+            <div class="preview-pane d-none" id="prev-youtube">
+              <div class="rounded-3 overflow-hidden bg-white border shadow-sm">
+                <div style="aspect-ratio:16/9;background:#000;display:flex;align-items:center;justify-content:center;position:relative">
+                  {% if post_media %}
+                    {% set m = post_media[0] %}
+                    {% if m.media_type == 'video' %}<video src="{{ m.url }}" style="width:100%;height:100%;object-fit:cover" muted controls></video>
+                    {% else %}<img src="{{ m.url }}" style="width:100%;height:100%;object-fit:cover" alt="post">{% endif %}
+                  {% elif post.image_url %}
+                    <img src="{{ post.image_url }}" style="width:100%;height:100%;object-fit:cover" alt="post">
+                  {% else %}
+                    <i class="bi bi-youtube text-danger display-3 opacity-50"></i>
+                  {% endif %}
+                </div>
+                <div class="p-3">
+                  <div class="fw-bold mb-1" style="font-size:.9rem">{{ post.topic }}</div>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center text-white" style="width:28px;height:28px;background:{{ post.logo_color }};font-size:.7rem">{{ post.client_name[0] }}</div>
+                    <div>
+                      <div style="font-size:.78rem;font-weight:600">{{ post.client_name }}</div>
+                      <div class="text-muted" style="font-size:.7rem">Sponsored · 1.2M views</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Media preview modal -->
+<div class="modal fade" id="mediaViewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0"><h6 class="modal-title" id="mediaViewLabel"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body text-center p-2" id="mediaViewBody"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Performance modal -->
 {% if post.status == 'posted' %}
 <div class="modal fade" id="perfModal" tabindex="-1">
@@ -254,6 +524,86 @@
 
 {% block scripts %}
 <script>
+const POST_ID    = {{ post.id }};
+const CLIENT_ID  = {{ post.client_id }};
+
+// ── Preview modal ────────────────────────────────────────────────────────────
+document.getElementById('previewPostBtn').addEventListener('click', () => {
+  showPreview('{{ post.platform }}');
+  new bootstrap.Modal(document.getElementById('postPreviewModal')).show();
+});
+
+function showPreview(platform) {
+  document.querySelectorAll('.preview-pane').forEach(p => p.classList.add('d-none'));
+  const pane = document.getElementById('prev-' + platform);
+  if (pane) pane.classList.remove('d-none');
+  document.querySelectorAll('.preview-platform-btn').forEach(b => {
+    const colors = {instagram:'#e1306c',facebook:'#1877f2',tiktok:'#000',linkedin:'#0a66c2',youtube:'#ff0000'};
+    b.classList.toggle('active', b.dataset.platform === platform);
+    b.style.background = b.dataset.platform === platform ? (colors[platform] || '') : '';
+    b.style.color = b.dataset.platform === platform ? '#fff' : '';
+  });
+}
+
+document.querySelectorAll('.preview-platform-btn').forEach(btn => {
+  btn.addEventListener('click', () => showPreview(btn.dataset.platform));
+});
+
+// ── Media view ───────────────────────────────────────────────────────────────
+function openMediaPreview(url, type, name) {
+  document.getElementById('mediaViewLabel').textContent = name;
+  document.getElementById('mediaViewBody').innerHTML = type === 'video'
+    ? `<video src="${url}" controls class="img-fluid rounded" style="max-height:65vh"></video>`
+    : `<img src="${url}" class="img-fluid rounded" style="max-height:65vh" alt="${name}">`;
+  new bootstrap.Modal(document.getElementById('mediaViewModal')).show();
+}
+
+// ── Detach media ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.detach-media-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const mediaId = btn.dataset.id;
+    const res = await fetch(`/api/content/${POST_ID}/media/${mediaId}`, { method: 'DELETE' });
+    if ((await res.json()).ok) btn.closest('.media-attached-item').remove();
+  });
+});
+
+// ── Gallery picker (attach) ──────────────────────────────────────────────────
+const galleryPane = document.getElementById('galleryPickerPane');
+const galleryItems = document.getElementById('galleryPickerItems');
+let galleryLoaded = false;
+
+document.getElementById('openGalleryPickerBtn').addEventListener('click', async () => {
+  galleryPane.classList.toggle('d-none');
+  if (!galleryLoaded) {
+    galleryLoaded = true;
+    const media = await fetch(`/api/media/client/${CLIENT_ID}`).then(r => r.json());
+    if (!media.length) {
+      galleryItems.innerHTML = '<span class="text-muted small">No media in gallery. <a href="/clients/' + CLIENT_ID + '/gallery" target="_blank">Upload media →</a></span>';
+      return;
+    }
+    galleryItems.innerHTML = '';
+    media.forEach(m => {
+      const div = document.createElement('div');
+      div.style.cssText = 'width:72px;height:72px;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s;position:relative';
+      div.title = m.original_name;
+      div.innerHTML = m.media_type === 'video'
+        ? `<video src="${m.url}" style="width:100%;height:100%;object-fit:cover" muted preload="metadata"></video><span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.5);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center"><i class="bi bi-play-fill text-white" style="font-size:.6rem"></i></span>`
+        : `<img src="${m.url}" style="width:100%;height:100%;object-fit:cover" loading="lazy">`;
+      div.addEventListener('mouseenter', () => div.style.borderColor = '#0d6efd');
+      div.addEventListener('mouseleave', () => div.style.borderColor = 'transparent');
+      div.addEventListener('click', async () => {
+        const res = await fetch(`/api/content/${POST_ID}/media`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ media_id: m.id }),
+        });
+        if ((await res.json()).ok) location.reload();
+      });
+      galleryItems.appendChild(div);
+    });
+  }
+});
+
 {% if post.status == 'posted' %}
 document.getElementById('savePerfBtn').addEventListener('click', async () => {
   const fields = ['likes','comments','shares','saves','reach','impressions','clicks'];

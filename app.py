@@ -1,7 +1,9 @@
 import os
 import json
+import uuid
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import database as db
 import claude_api as ai
@@ -11,6 +13,33 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+
+# Media upload config
+UPLOAD_PATH = os.environ.get('UPLOAD_PATH', os.path.join('static', 'uploads'))
+ALLOWED_IMAGES = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
+ALLOWED_VIDEOS = {'mp4', 'mov', 'avi', 'webm'}
+ALLOWED_EXTENSIONS = ALLOWED_IMAGES | ALLOWED_VIDEOS
+MAX_UPLOAD_MB = int(os.environ.get('MAX_UPLOAD_MB', '200'))
+app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
+
+
+def _allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _media_type(filename):
+    ext = filename.rsplit('.', 1)[1].lower()
+    return 'video' if ext in ALLOWED_VIDEOS else 'image'
+
+
+def _upload_dir(client_id):
+    path = os.path.join(UPLOAD_PATH, str(client_id))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _media_url(client_id, filename):
+    return url_for('serve_media', client_id=client_id, filename=filename)
 
 PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube']
 STATUSES = ['raw', 'branded', 'draft', 'needs_review', 'approved', 'scheduled', 'posted', 'error']
@@ -117,6 +146,124 @@ def client_edit(client_id):
         flash('Client updated.', 'success')
         return redirect(url_for('client_detail', client_id=client_id))
     return render_template('client_form.html', client=client)
+
+
+# ── Media Gallery ─────────────────────────────────────────────────────────────
+
+@app.route('/uploads/<int:client_id>/<path:filename>')
+def serve_media(client_id, filename):
+    directory = os.path.join(UPLOAD_PATH, str(client_id))
+    return send_from_directory(directory, filename)
+
+
+@app.route('/clients/<int:client_id>/gallery')
+def client_gallery(client_id):
+    client = db.get_client(client_id)
+    if not client:
+        flash('Client not found.', 'error')
+        return redirect(url_for('clients'))
+    media = db.get_client_media(client_id)
+    for m in media:
+        m['url'] = _media_url(client_id, m['filename'])
+    return render_template('client_gallery.html', client=client, media=media)
+
+
+@app.route('/clients/<int:client_id>/media/upload', methods=['POST'])
+def media_upload(client_id):
+    client = db.get_client(client_id)
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files provided'}), 400
+
+    uploaded = []
+    errors = []
+    for f in files:
+        if not f or not f.filename:
+            continue
+        if not _allowed_file(f.filename):
+            errors.append(f'{f.filename}: file type not allowed')
+            continue
+        ext = f.filename.rsplit('.', 1)[1].lower()
+        unique_name = f'{uuid.uuid4().hex}.{ext}'
+        save_dir = _upload_dir(client_id)
+        f.save(os.path.join(save_dir, unique_name))
+        size = os.path.getsize(os.path.join(save_dir, unique_name))
+        mtype = _media_type(f.filename)
+        caption_hint = request.form.get('caption_hint', '')
+        tags = request.form.get('tags', '[]')
+        media_id = db.add_media(client_id, unique_name, secure_filename(f.filename),
+                                mtype, size, caption_hint, tags)
+        uploaded.append({
+            'id': media_id,
+            'filename': unique_name,
+            'original_name': secure_filename(f.filename),
+            'media_type': mtype,
+            'url': _media_url(client_id, unique_name),
+        })
+
+    return jsonify({'ok': True, 'uploaded': uploaded, 'errors': errors})
+
+
+@app.route('/api/media/<int:media_id>', methods=['PATCH'])
+def api_media_update(media_id):
+    media = db.get_media(media_id)
+    if not media:
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(silent=True) or {}
+    db.update_media(media_id,
+                    caption_hint=data.get('caption_hint', media.get('caption_hint', '')),
+                    tags=data.get('tags', media.get('tags', '[]')))
+    return jsonify({'ok': True})
+
+
+@app.route('/api/media/<int:media_id>', methods=['DELETE'])
+def api_media_delete(media_id):
+    media = db.get_media(media_id)
+    if not media:
+        return jsonify({'error': 'Not found'}), 404
+    file_path = os.path.join(UPLOAD_PATH, str(media['client_id']), media['filename'])
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    db.delete_media(media_id)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/media/client/<int:client_id>')
+def api_client_media(client_id):
+    media_type = request.args.get('type')
+    media = db.get_client_media(client_id, media_type or None)
+    for m in media:
+        m['url'] = _media_url(client_id, m['filename'])
+    return jsonify(media)
+
+
+@app.route('/api/content/<int:post_id>/media', methods=['POST'])
+def api_attach_media(post_id):
+    data = request.get_json(silent=True) or {}
+    media_id = data.get('media_id')
+    if not media_id:
+        return jsonify({'error': 'media_id required'}), 400
+    db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0))
+    media = db.get_media(media_id)
+    if media:
+        merged = db.get_post(post_id)
+        if merged and not merged.get('image_url'):
+            db.update_post(post_id, {
+                'topic': merged['topic'], 'caption': merged['caption'],
+                'hashtags': merged.get('hashtags', ''), 'image_url': _media_url(media['client_id'], media['filename']),
+                'hook': merged.get('hook', ''), 'content_type': merged.get('content_type', 'photo'),
+                'scheduled_date': merged.get('scheduled_date'), 'notes': merged.get('notes', ''),
+            })
+    return jsonify({'ok': True})
+
+
+@app.route('/api/content/<int:post_id>/media/<int:media_id>', methods=['DELETE'])
+def api_detach_media(post_id, media_id):
+    db.detach_media_from_post(post_id, media_id)
+    return jsonify({'ok': True})
 
 
 # ── Brand Voice ────────────────────────────────────────────────────────────────
@@ -240,9 +387,16 @@ def content_detail(post_id):
     history = db.get_approval_history(post_id)
     metrics = db.get_performance(post_id)
     allowed_transitions = STATUS_TRANSITIONS.get(post['status'], [])
+    post_media = db.get_post_media(post_id)
+    for m in post_media:
+        m['url'] = _media_url(m['client_id'], m['filename'])
+    client_media = db.get_client_media(post['client_id'])
+    for m in client_media:
+        m['url'] = _media_url(m['client_id'], m['filename'])
     return render_template('content_detail.html', post=post, history=history,
                            metrics=metrics, allowed_transitions=allowed_transitions,
-                           statuses=STATUSES)
+                           statuses=STATUSES, post_media=post_media,
+                           client_media=client_media)
 
 
 @app.route('/content/<int:post_id>/edit', methods=['GET', 'POST'])
@@ -540,6 +694,34 @@ def api_generate_hook(post_id):
     }
     db.update_post(post_id, merged)
     return jsonify({'ok': True, 'hook': hook})
+
+
+@app.route('/api/content', methods=['POST'])
+def api_content_create():
+    """Create a post from Make.com (Scenario A ingestion)."""
+    if not _check_secret(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    required = ['client_id', 'platform', 'topic']
+    if not all(data.get(k) for k in required):
+        return jsonify({'error': 'client_id, platform, topic are required'}), 400
+    if not db.get_client(int(data['client_id'])):
+        return jsonify({'error': 'Client not found'}), 404
+    post_data = {
+        'client_id': int(data['client_id']),
+        'platform': data['platform'],
+        'content_type': data.get('content_type', 'photo'),
+        'topic': data['topic'],
+        'caption': data.get('caption', ''),
+        'hashtags': data.get('hashtags', ''),
+        'image_url': data.get('image_url', ''),
+        'hook': data.get('hook', ''),
+        'status': data.get('status', 'raw'),
+        'scheduled_date': data.get('scheduled_date') or None,
+        'notes': data.get('notes', ''),
+    }
+    post_id = db.create_post(post_data)
+    return jsonify({'ok': True, 'post_id': post_id}), 201
 
 
 @app.route('/api/clients', methods=['GET'])

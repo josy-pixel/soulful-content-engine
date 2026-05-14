@@ -97,6 +97,28 @@ def init_db():
             source TEXT DEFAULT 'ai',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS client_media (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_name TEXT,
+            media_type TEXT NOT NULL DEFAULT 'image',
+            file_size INTEGER DEFAULT 0,
+            caption_hint TEXT DEFAULT '',
+            tags TEXT DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (client_id) REFERENCES clients(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS post_media (
+            post_id INTEGER NOT NULL,
+            media_id INTEGER NOT NULL,
+            sort_order INTEGER DEFAULT 0,
+            PRIMARY KEY (post_id, media_id),
+            FOREIGN KEY (post_id) REFERENCES content_posts(id),
+            FOREIGN KEY (media_id) REFERENCES client_media(id)
+        );
     ''')
     conn.commit()
 
@@ -585,3 +607,85 @@ def add_trends(rows):
         )
     conn.commit()
     conn.close()
+
+
+# ── Media Gallery ──────────────────────────────────────────────────────────────
+
+def add_media(client_id, filename, original_name, media_type, file_size=0, caption_hint='', tags='[]'):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        'INSERT INTO client_media (client_id,filename,original_name,media_type,file_size,caption_hint,tags) VALUES (?,?,?,?,?,?,?)',
+        (client_id, filename, original_name, media_type, file_size, caption_hint, tags)
+    )
+    media_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return media_id
+
+
+def get_client_media(client_id, media_type=None):
+    conn = get_db()
+    query = 'SELECT * FROM client_media WHERE client_id=?'
+    params = [client_id]
+    if media_type:
+        query += ' AND media_type=?'
+        params.append(media_type)
+    query += ' ORDER BY created_at DESC'
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_media(media_id):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM client_media WHERE id=?', (media_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_media(media_id, caption_hint='', tags='[]'):
+    conn = get_db()
+    conn.execute(
+        'UPDATE client_media SET caption_hint=?, tags=? WHERE id=?',
+        (caption_hint, tags, media_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_media(media_id):
+    conn = get_db()
+    conn.execute('DELETE FROM post_media WHERE media_id=?', (media_id,))
+    conn.execute('DELETE FROM client_media WHERE id=?', (media_id,))
+    conn.commit()
+    conn.close()
+
+
+def attach_media_to_post(post_id, media_id, sort_order=0):
+    conn = get_db()
+    conn.execute(
+        'INSERT OR IGNORE INTO post_media (post_id,media_id,sort_order) VALUES (?,?,?)',
+        (post_id, media_id, sort_order)
+    )
+    conn.commit()
+    conn.close()
+
+
+def detach_media_from_post(post_id, media_id):
+    conn = get_db()
+    conn.execute('DELETE FROM post_media WHERE post_id=? AND media_id=?', (post_id, media_id))
+    conn.commit()
+    conn.close()
+
+
+def get_post_media(post_id):
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT m.* FROM client_media m
+        JOIN post_media pm ON pm.media_id = m.id
+        WHERE pm.post_id=?
+        ORDER BY pm.sort_order ASC, m.created_at ASC
+    ''', (post_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

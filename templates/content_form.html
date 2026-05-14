@@ -72,11 +72,28 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Media URL <small class="text-muted">(image / video / mp4 — sent to Make.com on approval)</small></label>
-            <input type="url" name="image_url" class="form-control"
+            <label class="form-label fw-semibold">Media URL <small class="text-muted">(image / video — or pick from gallery below)</small></label>
+            <input type="url" name="image_url" id="imageUrlInput" class="form-control"
                    value="{{ post.image_url if post else '' }}"
                    placeholder="https://example.com/image.jpg or video.mp4">
           </div>
+
+          <!-- Media picker from client gallery -->
+          {% set client_id_val = post.client_id if post else (preselect.get('client_id','') or '') %}
+          {% if client_id_val %}
+          <div class="mb-3" id="galleryPickerSection">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-images me-1 text-primary"></i>Pick from Gallery
+            </label>
+            <div id="galleryPickerGrid" class="d-flex flex-wrap gap-2" data-client="{{ client_id_val }}">
+              <div class="text-muted small p-2">Loading gallery…</div>
+            </div>
+            <div id="selectedMediaPreview" class="mt-2 d-none">
+              <span class="badge bg-success me-2"><i class="bi bi-check-lg"></i> Media selected</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="clearMediaBtn">Clear</button>
+            </div>
+          </div>
+          {% endif %}
 
           <div class="row g-3 mb-3">
             {% if not post %}
@@ -144,5 +161,62 @@ if (platformSelect) {
   if (platformSelect.value) updateContentTypes(platformSelect.value, initCurrent);
   platformSelect.addEventListener('change', () => updateContentTypes(platformSelect.value, null));
 }
+
+// ── Gallery picker ───────────────────────────────────────────────────────────
+const picker = document.getElementById('galleryPickerGrid');
+const imageUrlInput = document.getElementById('imageUrlInput');
+const selectedPreview = document.getElementById('selectedMediaPreview');
+
+if (picker) {
+  const clientId = picker.dataset.client;
+  fetch(`/api/media/client/${clientId}`)
+    .then(r => r.json())
+    .then(media => {
+      if (!media.length) {
+        picker.innerHTML = '<span class="text-muted small">No media in gallery yet. <a href="/clients/' + clientId + '/gallery" target="_blank">Upload media →</a></span>';
+        return;
+      }
+      picker.innerHTML = '';
+      media.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'gallery-thumb-pick';
+        div.style.cssText = 'width:80px;height:80px;cursor:pointer;position:relative;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s';
+        div.dataset.url = m.url;
+        div.dataset.id = m.id;
+        div.title = m.original_name + (m.caption_hint ? ' — ' + m.caption_hint : '');
+
+        if (m.media_type === 'video') {
+          div.innerHTML = `<video src="${m.url}" style="width:100%;height:100%;object-fit:cover" muted preload="metadata"></video>
+            <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.5);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center">
+              <i class="bi bi-play-fill text-white" style="font-size:.75rem"></i></span>`;
+        } else {
+          div.innerHTML = `<img src="${m.url}" style="width:100%;height:100%;object-fit:cover" loading="lazy">`;
+        }
+
+        // Highlight if already selected
+        if (imageUrlInput && imageUrlInput.value && imageUrlInput.value.includes(m.filename)) {
+          div.style.borderColor = 'var(--bs-primary)';
+        }
+
+        div.addEventListener('click', () => {
+          document.querySelectorAll('.gallery-thumb-pick').forEach(d => d.style.borderColor = 'transparent');
+          div.style.borderColor = 'var(--bs-primary)';
+          if (imageUrlInput) imageUrlInput.value = m.url;
+          if (selectedPreview) selectedPreview.classList.remove('d-none');
+        });
+        picker.appendChild(div);
+      });
+    })
+    .catch(() => { picker.innerHTML = '<span class="text-muted small">Could not load gallery.</span>'; });
+}
+
+document.getElementById('clearMediaBtn')?.addEventListener('click', () => {
+  if (imageUrlInput) imageUrlInput.value = '';
+  document.querySelectorAll('.gallery-thumb-pick').forEach(d => d.style.borderColor = 'transparent');
+  selectedPreview?.classList.add('d-none');
+});
 </script>
+<style>
+.gallery-thumb-pick:hover { border-color: var(--bs-primary) !important; opacity: .85; }
+</style>
 {% endblock %}

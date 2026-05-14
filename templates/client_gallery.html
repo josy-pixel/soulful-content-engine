@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — Gallery{% endblock %}
+{% block page_title %}{{ client.name }} — Media Gallery{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('client_detail', client_id=client.id) }}" class="btn btn-outline-secondary btn-sm me-2">
+    <i class="bi bi-arrow-left"></i> Back to Client
+  </a>
+  <button class="btn btn-primary btn-sm" id="uploadBtn">
+    <i class="bi bi-cloud-upload me-1"></i> Upload Media
+  </button>
+{% endblock %}
+
+{% block content %}
+<input type="file" id="fileInput" multiple accept="image/*,video/*" class="d-none">
+
+<!-- Upload drop zone -->
+<div id="dropZone" class="border-2 border-dashed rounded-3 p-5 text-center mb-4 text-muted" style="border-color:#dee2e6;cursor:pointer;transition:all .2s">
+  <i class="bi bi-cloud-upload display-4 d-block mb-2 opacity-50"></i>
+  <p class="mb-1 fw-semibold">Drag & drop images or videos here</p>
+  <p class="small mb-0">or click <strong>Upload Media</strong> — JPG, PNG, GIF, WEBP, MP4, MOV (max 200 MB each)</p>
+</div>
+
+<!-- Upload progress -->
+<div id="uploadProgress" class="d-none mb-4">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <div class="spinner-border spinner-border-sm text-primary"></div>
+    <span id="uploadStatusText">Uploading…</span>
+  </div>
+  <div class="progress" style="height:6px">
+    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:0%"></div>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
+  <span class="fw-semibold me-1">Filter:</span>
+  <button class="btn btn-sm btn-dark filter-btn active" data-type="all">All ({{ media|length }})</button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-type="image">
+    <i class="bi bi-image me-1"></i>Images
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-type="video">
+    <i class="bi bi-camera-video me-1"></i>Videos
+  </button>
+  <div class="ms-auto">
+    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search by name or hint…" style="width:220px">
+  </div>
+</div>
+
+<!-- Gallery grid -->
+{% if media %}
+<div class="row g-3" id="galleryGrid">
+  {% for m in media %}
+  <div class="col-6 col-md-4 col-xl-3 gallery-item" data-type="{{ m.media_type }}"
+       data-name="{{ m.original_name|lower }}" data-hint="{{ m.caption_hint|lower }}">
+    <div class="card h-100 shadow-sm gallery-card" data-id="{{ m.id }}" data-type="{{ m.media_type }}"
+         data-url="{{ m.url }}" data-name="{{ m.original_name }}">
+      <!-- Thumbnail -->
+      <div class="gallery-thumb position-relative" style="aspect-ratio:1;overflow:hidden;background:#f8f9fa;border-radius:.375rem .375rem 0 0">
+        {% if m.media_type == 'video' %}
+          <video src="{{ m.url }}" class="w-100 h-100" style="object-fit:cover" preload="metadata" muted></video>
+          <span class="position-absolute top-50 start-50 translate-middle bg-dark bg-opacity-50 rounded-circle d-flex align-items-center justify-content-center" style="width:40px;height:40px">
+            <i class="bi bi-play-fill text-white fs-5"></i>
+          </span>
+        {% else %}
+          <img src="{{ m.url }}" class="w-100 h-100" style="object-fit:cover" loading="lazy" alt="{{ m.original_name }}">
+        {% endif %}
+        <!-- Actions overlay -->
+        <div class="gallery-overlay position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center gap-2 opacity-0" style="background:rgba(0,0,0,.5);transition:opacity .2s">
+          <button class="btn btn-sm btn-light preview-btn" title="Preview" data-id="{{ m.id }}" data-url="{{ m.url }}" data-type="{{ m.media_type }}" data-name="{{ m.original_name }}">
+            <i class="bi bi-eye"></i>
+          </button>
+          <button class="btn btn-sm btn-danger delete-btn" title="Delete" data-id="{{ m.id }}">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </div>
+      <!-- Card body -->
+      <div class="card-body p-2">
+        <p class="small text-truncate mb-1 fw-semibold" title="{{ m.original_name }}">{{ m.original_name }}</p>
+        <input type="text" class="form-control form-control-sm caption-hint-input mb-1"
+               placeholder="Caption hint / description…"
+               value="{{ m.caption_hint }}" data-id="{{ m.id }}">
+        <div class="d-flex justify-content-between align-items-center mt-1">
+          <span class="badge {% if m.media_type == 'video' %}bg-primary{% else %}bg-success{% endif %} bg-opacity-75">
+            {{ m.media_type }}
+          </span>
+          <small class="text-muted">{{ (m.file_size / 1024 / 1024)|round(1) }} MB</small>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted" id="emptyState">
+  <i class="bi bi-images display-3 d-block mb-3 opacity-25"></i>
+  <h5>No media yet</h5>
+  <p>Upload images and videos to build {{ client.name }}'s private gallery.</p>
+</div>
+{% endif %}
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title" id="previewModalLabel">Media Preview</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center p-3" id="previewModalBody">
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CLIENT_ID = {{ client.id }};
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+// ── Upload triggers ──────────────────────────────────────────────────────────
+document.getElementById('uploadBtn').addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => uploadFiles(e.target.files));
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-primary','text-primary'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary','text-primary'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('border-primary','text-primary');
+  uploadFiles(e.dataTransfer.files);
+});
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const progress = document.getElementById('uploadProgress');
+  const bar = document.getElementById('progressBar');
+  const statusText = document.getElementById('uploadStatusText');
+  progress.classList.remove('d-none');
+  bar.style.width = '30%';
+  statusText.textContent = `Uploading ${files.length} file(s)…`;
+
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+
+  try {
+    bar.style.width = '60%';
+    const res = await fetch(`/clients/${CLIENT_ID}/media/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    bar.style.width = '100%';
+    if (data.ok && data.uploaded.length) {
+      statusText.textContent = `Uploaded ${data.uploaded.length} file(s). Refreshing…`;
+      setTimeout(() => window.location.reload(), 800);
+    } else {
+      statusText.textContent = 'Upload failed: ' + (data.errors?.join(', ') || 'Unknown error');
+      bar.classList.add('bg-danger');
+    }
+  } catch (e) {
+    statusText.textContent = 'Network error during upload.';
+    bar.classList.add('bg-danger');
+  }
+}
+
+// ── Hover overlay ────────────────────────────────────────────────────────────
+document.querySelectorAll('.gallery-card').forEach(card => {
+  card.addEventListener('mouseenter', () => card.querySelector('.gallery-overlay').style.opacity = '1');
+  card.addEventListener('mouseleave', () => card.querySelector('.gallery-overlay').style.opacity = '0');
+});
+
+// ── Preview ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.preview-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const { url, type, name } = btn.dataset;
+    const body = document.getElementById('previewModalBody');
+    document.getElementById('previewModalLabel').textContent = name;
+    body.innerHTML = type === 'video'
+      ? `<video src="${url}" controls class="img-fluid rounded" style="max-height:70vh"></video>`
+      : `<img src="${url}" class="img-fluid rounded" style="max-height:70vh" alt="${name}">`;
+    new bootstrap.Modal(document.getElementById('previewModal')).show();
+  });
+});
+
+// ── Delete ───────────────────────────────────────────────────────────────────
+document.querySelectorAll('.delete-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Delete this media? This cannot be undone.')) return;
+    const id = btn.dataset.id;
+    const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) btn.closest('.gallery-item').remove();
+  });
+});
+
+// ── Caption hint autosave ────────────────────────────────────────────────────
+let hintTimer;
+document.querySelectorAll('.caption-hint-input').forEach(inp => {
+  inp.addEventListener('input', () => {
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(async () => {
+      await fetch(`/api/media/${inp.dataset.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption_hint: inp.value }),
+      });
+    }, 800);
+  });
+});
+
+// ── Filter & search ──────────────────────────────────────────────────────────
+function applyFilter() {
+  const active = document.querySelector('.filter-btn.active').dataset.type;
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('.gallery-item').forEach(item => {
+    const typeMatch = active === 'all' || item.dataset.type === active;
+    const textMatch = !q || item.dataset.name.includes(q) || item.dataset.hint.includes(q);
+    item.style.display = (typeMatch && textMatch) ? '' : 'none';
+  });
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','btn-dark'));
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.add('btn-outline-secondary'));
+    btn.classList.add('active','btn-dark');
+    btn.classList.remove('btn-outline-secondary');
+    applyFilter();
+  });
+});
+document.getElementById('searchInput').addEventListener('input', applyFilter);
+</script>
+<style>
+.border-2 { border-width: 2px !important; }
+.border-dashed { border-style: dashed !important; }
+.gallery-card { cursor: default; transition: box-shadow .15s; }
+.gallery-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.15) !important; }
+</style>
+{% endblock %}

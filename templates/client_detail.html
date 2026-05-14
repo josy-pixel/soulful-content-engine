@@ -5,6 +5,9 @@
   <a href="{{ url_for('client_edit', client_id=client.id) }}" class="btn btn-outline-secondary btn-sm me-2">
     <i class="bi bi-pencil"></i> Edit
   </a>
+  <a href="{{ url_for('client_gallery', client_id=client.id) }}" class="btn btn-outline-secondary btn-sm me-2">
+    <i class="bi bi-images"></i> Gallery
+  </a>
   <a href="{{ url_for('caption_generator', client_id=client.id) }}" class="btn btn-primary btn-sm">
     <i class="bi bi-magic"></i> Generate Caption
   </a>
