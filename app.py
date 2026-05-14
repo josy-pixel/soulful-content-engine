@@ -13,7 +13,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 
 PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube']
-STATUSES = ['draft', 'needs_review', 'approved', 'scheduled', 'posted']
+STATUSES = ['raw', 'branded', 'draft', 'needs_review', 'approved', 'scheduled', 'posted', 'error']
 CONTENT_TYPES = {
     'instagram': ['photo', 'video', 'reel', 'story'],
     'facebook':  ['photo', 'video', 'post'],
@@ -22,11 +22,24 @@ CONTENT_TYPES = {
     'youtube':   ['video'],
 }
 STATUS_TRANSITIONS = {
+    'raw':          ['branded'],
+    'branded':      ['needs_review', 'approved'],
     'draft':        ['needs_review', 'approved'],
     'needs_review': ['draft', 'approved'],
     'approved':     ['scheduled', 'posted', 'needs_review'],
     'scheduled':    ['approved', 'posted'],
     'posted':       [],
+    'error':        ['approved', 'draft'],
+}
+STATUS_COLORS = {
+    'raw':          'light',
+    'branded':      'info text-dark',
+    'draft':        'secondary',
+    'needs_review': 'warning',
+    'approved':     'info',
+    'scheduled':    'primary',
+    'posted':       'success',
+    'error':        'danger',
 }
 
 
@@ -420,6 +433,168 @@ def api_performance_inbound():
     }
     db.add_performance(int(post_id), metrics)
     return jsonify({'ok': True, 'post_id': post_id})
+
+
+# ── Pipeline REST API ──────────────────────────────────────────────────────────
+
+def _check_secret(request):
+    secret = request.headers.get('X-Secret', '') or request.args.get('secret', '')
+    return webhooks.verify_secret(secret)
+
+
+@app.route('/api/content/<int:post_id>', methods=['GET'])
+def api_content_get(post_id):
+    if not _check_secret(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    post = db.get_post(post_id)
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+    return jsonify(dict(post))
+
+
+@app.route('/api/content/<int:post_id>', methods=['PATCH'])
+def api_content_patch(post_id):
+    if not _check_secret(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    post = db.get_post(post_id)
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    updatable = ['caption', 'hashtags', 'hook', 'image_url', 'posted_url', 'error_message', 'notes']
+    patch = {k: data[k] for k in updatable if k in data}
+
+    new_status = data.get('status')
+    if new_status and new_status != post['status']:
+        posted_url = data.get('posted_url') or patch.get('posted_url')
+        db.update_post_status(post_id, new_status,
+                              notes=data.get('notes', ''),
+                              changed_by='make.com',
+                              posted_url=posted_url or None)
+
+    if patch:
+        # Merge patch onto existing post fields for update_post()
+        merged = {
+            'topic':        post['topic'],
+            'caption':      patch.get('caption', post['caption']),
+            'hashtags':     patch.get('hashtags', post.get('hashtags', '')),
+            'image_url':    patch.get('image_url', post.get('image_url', '')),
+            'hook':         patch.get('hook', post.get('hook', '')),
+            'content_type': post.get('content_type', 'photo'),
+            'scheduled_date': post.get('scheduled_date'),
+            'notes':        patch.get('notes', post.get('notes', '')),
+        }
+        db.update_post(post_id, merged)
+
+    if 'error_message' in data:
+        db.set_post_error(post_id, data['error_message'])
+
+    return jsonify({'ok': True, 'post_id': post_id})
+
+
+@app.route('/api/content/<int:post_id>/generate-caption', methods=['POST'])
+def api_generate_caption_for_post(post_id):
+    if not _check_secret(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    post = db.get_post(post_id)
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    brand_voice = (db.get_brand_voice(post['client_id'], post['platform'])
+                   or db.get_brand_voice(post['client_id'], 'general') or {})
+    caption, err = ai.generate_caption(post['client_name'], brand_voice,
+                                       post['platform'], post['topic'])
+    if err:
+        return jsonify({'error': err}), 500
+    hashtags = ai.generate_hashtags(post['client_name'], brand_voice,
+                                    post['platform'], post['topic'], caption)
+    merged = {
+        'topic': post['topic'], 'caption': caption, 'hashtags': hashtags,
+        'image_url': post.get('image_url', ''), 'hook': post.get('hook', ''),
+        'content_type': post.get('content_type', 'photo'),
+        'scheduled_date': post.get('scheduled_date'), 'notes': post.get('notes', ''),
+    }
+    db.update_post(post_id, merged)
+    return jsonify({'ok': True, 'caption': caption, 'hashtags': hashtags})
+
+
+@app.route('/api/content/<int:post_id>/generate-hook', methods=['POST'])
+def api_generate_hook(post_id):
+    if not _check_secret(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    post = db.get_post(post_id)
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    brand_voice = (db.get_brand_voice(post['client_id'], post['platform'])
+                   or db.get_brand_voice(post['client_id'], 'general') or {})
+    hook, err = ai.generate_hook(post['client_name'], brand_voice,
+                                 post['platform'], post['topic'], post.get('caption', ''))
+    if err:
+        return jsonify({'error': err}), 500
+    merged = {
+        'topic': post['topic'], 'caption': post.get('caption', ''),
+        'hashtags': post.get('hashtags', ''), 'image_url': post.get('image_url', ''),
+        'hook': hook, 'content_type': post.get('content_type', 'photo'),
+        'scheduled_date': post.get('scheduled_date'), 'notes': post.get('notes', ''),
+    }
+    db.update_post(post_id, merged)
+    return jsonify({'ok': True, 'hook': hook})
+
+
+@app.route('/api/clients', methods=['GET'])
+def api_clients_list():
+    clients = db.get_clients()
+    return jsonify([{'id': c['id'], 'name': c['name'],
+                     'description': c.get('description', ''),
+                     'logo_color': c.get('logo_color', '')} for c in clients])
+
+
+@app.route('/api/client-config/<int:client_id>', methods=['GET'])
+def api_client_config(client_id):
+    client = db.get_client(client_id)
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+    voices = db.get_all_brand_voices(client_id)
+    return jsonify({'client': dict(client), 'voices': voices})
+
+
+@app.route('/api/trends/generate', methods=['POST'])
+def api_trends_generate():
+    if not _check_secret(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    platform = data.get('platform', 'instagram')
+    client_id = data.get('client_id')
+
+    if client_id:
+        client = db.get_client(int(client_id))
+        clients_summary = client['name'] + ': ' + (client.get('description') or '') if client else platform
+    else:
+        all_clients = db.get_clients()
+        clients_summary = ', '.join(c['name'] + ' (' + (c.get('description') or '')[:60] + ')'
+                                    for c in all_clients)
+
+    trends, err = ai.generate_trends(clients_summary, platform)
+    if err:
+        return jsonify({'error': err}), 500
+
+    rows = [{**t, 'client_id': client_id or None} for t in trends]
+    db.add_trends(rows)
+    return jsonify({'ok': True, 'count': len(trends), 'trends': trends})
+
+
+# ── Trends page ────────────────────────────────────────────────────────────────
+
+@app.route('/trends')
+def trends():
+    platform = request.args.get('platform', '')
+    all_clients = db.get_clients()
+    trend_rows = db.get_trends(platform=platform or None, limit=100)
+    webhook_secret = os.environ.get('MAKE_WEBHOOK_SECRET', '')
+    return render_template('trends.html', trends=trend_rows, platforms=PLATFORMS,
+                           clients=all_clients, filter_platform=platform,
+                           webhook_secret=webhook_secret)
 
 
 # ── Report ─────────────────────────────────────────────────────────────────────

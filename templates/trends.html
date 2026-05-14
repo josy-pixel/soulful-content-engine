@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Trends Intelligence — Soulful Content Engine{% endblock %}
+{% block page_title %}Trends Intelligence{% endblock %}
+{% block topbar_actions %}
+  <button class="btn btn-primary btn-sm" id="generateBtn" data-platform="{{ filter_platform }}">
+    <i class="bi bi-stars me-1"></i> Generate This Week's Trends
+  </button>
+{% endblock %}
+
+{% block content %}
+{% set platform_colors = {'instagram':'danger','facebook':'primary','tiktok':'dark','linkedin':'info','youtube':'danger'} %}
+{% set platform_icons  = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<!-- Platform filter tabs -->
+<div class="mb-4">
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <a href="{{ url_for('trends') }}"
+       class="btn btn-sm {% if not filter_platform %}btn-dark{% else %}btn-outline-secondary{% endif %}">
+      All
+    </a>
+    {% for p in platforms %}
+    <a href="{{ url_for('trends', platform=p) }}"
+       class="btn btn-sm {% if filter_platform == p %}btn-{{ platform_colors.get(p,'secondary') }}{% else %}btn-outline-secondary{% endif %}">
+      <i class="bi {{ platform_icons.get(p,'bi-globe') }} me-1"></i>{{ p|capitalize }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Spinner overlay (hidden by default) -->
+<div id="generatingBanner" class="alert alert-info d-none">
+  <div class="d-flex align-items-center gap-2">
+    <div class="spinner-border spinner-border-sm" role="status"></div>
+    <span>Generating trends with Claude AI — this takes a few seconds…</span>
+  </div>
+</div>
+
+<!-- Trends grid -->
+{% if trends %}
+<div class="row g-3">
+  {% for t in trends %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-2 mb-2">
+          <i class="bi {{ platform_icons.get(t.platform,'bi-globe') }} fs-5 text-{{ platform_colors.get(t.platform,'secondary') }}"></i>
+          <div class="flex-grow-1">
+            {% if t.category %}
+            <span class="badge bg-light text-dark border mb-1">{{ t.category|capitalize }}</span>
+            {% endif %}
+          </div>
+          <small class="text-muted">{{ t.week_of or '' }}</small>
+        </div>
+        <p class="fw-semibold mb-0">{{ t.trend_text }}</p>
+      </div>
+      <div class="card-footer d-flex justify-content-between align-items-center py-2">
+        <span class="badge bg-{{ platform_colors.get(t.platform,'secondary') }}">{{ t.platform|capitalize }}</span>
+        <a href="{{ url_for('content_new') }}?platform={{ t.platform }}"
+           class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-plus-lg"></i> Use
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-stars display-3 d-block mb-3 opacity-25"></i>
+  <h5>No trends yet</h5>
+  <p>Click <strong>Generate This Week's Trends</strong> to pull AI-powered content ideas.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('generateBtn').addEventListener('click', async function () {
+  const platform = this.dataset.platform || '';
+  const banner   = document.getElementById('generatingBanner');
+  this.disabled  = true;
+  banner.classList.remove('d-none');
+
+  try {
+    const res = await fetch('/api/trends/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Secret': '{{ webhook_secret }}'
+      },
+      body: JSON.stringify({ platform: platform || 'instagram' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = platform
+        ? '/trends?platform=' + platform
+        : '/trends';
+    } else {
+      banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>Error: ' + (data.error || 'Unknown error');
+      banner.classList.replace('alert-info', 'alert-danger');
+      this.disabled = false;
+    }
+  } catch (e) {
+    banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>Request failed';
+    banner.classList.replace('alert-info', 'alert-danger');
+    this.disabled = false;
+  }
+});
+</script>
+{% endblock %}

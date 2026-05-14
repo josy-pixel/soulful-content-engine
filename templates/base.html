@@ -36,6 +36,9 @@
     <a href="{{ url_for('performance') }}" class="nav-link {% if request.endpoint == 'performance' %}active{% endif %}">
       <i class="bi bi-graph-up-arrow"></i> Performance
     </a>
+    <a href="{{ url_for('trends') }}" class="nav-link {% if request.endpoint == 'trends' %}active{% endif %}">
+      <i class="bi bi-stars"></i> Trends
+    </a>
     <a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint == 'report' %}active{% endif %}">
       <i class="bi bi-file-earmark-bar-graph-fill"></i> Reports
     </a>

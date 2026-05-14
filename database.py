@@ -86,12 +86,27 @@ def init_db():
             notes TEXT,
             FOREIGN KEY (post_id) REFERENCES content_posts(id)
         );
+
+        CREATE TABLE IF NOT EXISTS trends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            platform TEXT NOT NULL,
+            trend_text TEXT NOT NULL,
+            category TEXT,
+            client_id INTEGER,
+            week_of DATE,
+            source TEXT DEFAULT 'ai',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     ''')
     conn.commit()
 
     # Non-destructive migrations for existing DBs
     for migration in [
         "ALTER TABLE content_posts ADD COLUMN image_url TEXT DEFAULT ''",
+        "ALTER TABLE content_posts ADD COLUMN content_type TEXT DEFAULT 'photo'",
+        "ALTER TABLE content_posts ADD COLUMN posted_url TEXT DEFAULT ''",
+        "ALTER TABLE content_posts ADD COLUMN hook TEXT DEFAULT ''",
+        "ALTER TABLE content_posts ADD COLUMN error_message TEXT DEFAULT ''",
         "ALTER TABLE performance_metrics ADD COLUMN views INTEGER DEFAULT 0",
     ]:
         try:
@@ -334,11 +349,13 @@ def create_post(data):
     conn = get_db()
     c = conn.cursor()
     c.execute('''
-        INSERT INTO content_posts (client_id,platform,topic,caption,hashtags,image_url,status,scheduled_date,notes)
-        VALUES (?,?,?,?,?,?,?,?,?)
+        INSERT INTO content_posts (client_id,platform,content_type,topic,caption,hashtags,image_url,hook,status,scheduled_date,notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
     ''', (
-        data['client_id'], data['platform'], data['topic'], data['caption'],
-        data.get('hashtags', ''), data.get('image_url', ''), data.get('status', 'draft'),
+        data['client_id'], data['platform'], data.get('content_type', 'photo'),
+        data['topic'], data['caption'],
+        data.get('hashtags', ''), data.get('image_url', ''), data.get('hook', ''),
+        data.get('status', 'draft'),
         data.get('scheduled_date') or None, data.get('notes', '')
     ))
     post_id = c.lastrowid
@@ -352,29 +369,30 @@ def create_post(data):
 def update_post(post_id, data):
     conn = get_db()
     conn.execute('''
-        UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
+        UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,content_type=?,hook=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
         WHERE id=?
     ''', (data['topic'], data['caption'], data.get('hashtags', ''), data.get('image_url', ''),
+          data.get('content_type', 'photo'), data.get('hook', ''),
           data.get('scheduled_date') or None, data.get('notes', ''), post_id))
     conn.commit()
     conn.close()
 
 
-def update_post_status(post_id, new_status, notes='', changed_by='user'):
+def update_post_status(post_id, new_status, notes='', changed_by='user', posted_url=None):
     conn = get_db()
     post = conn.execute('SELECT status FROM content_posts WHERE id=?', (post_id,)).fetchone()
     if not post:
         conn.close()
         return False
     old_status = post['status']
-    extra = {}
-    if new_status == 'posted':
-        extra['posted_date'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     update_clause = 'status=?, updated_at=CURRENT_TIMESTAMP'
     params = [new_status]
-    if extra.get('posted_date'):
+    if new_status == 'posted':
         update_clause += ', posted_date=?'
-        params.append(extra['posted_date'])
+        params.append(datetime.now().strftime('%Y-%m-%d %H:%M'))
+    if posted_url:
+        update_clause += ', posted_url=?'
+        params.append(posted_url)
     params.append(post_id)
     conn.execute(f'UPDATE content_posts SET {update_clause} WHERE id=?', params)
     conn.execute('INSERT INTO approval_history (post_id,from_status,to_status,notes,changed_by) VALUES (?,?,?,?,?)',
@@ -382,6 +400,16 @@ def update_post_status(post_id, new_status, notes='', changed_by='user'):
     conn.commit()
     conn.close()
     return True
+
+
+def set_post_error(post_id, error_message):
+    conn = get_db()
+    conn.execute(
+        'UPDATE content_posts SET error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        (error_message, post_id)
+    )
+    conn.commit()
+    conn.close()
 
 
 def delete_post(post_id):
@@ -526,3 +554,34 @@ def get_report_data(start_date, end_date):
         'start_date': start_date,
         'end_date': end_date,
     }
+
+
+def get_trends(platform=None, limit=50):
+    conn = get_db()
+    query = 'SELECT * FROM trends'
+    params = []
+    if platform:
+        query += ' WHERE platform=?'
+        params.append(platform)
+    query += ' ORDER BY created_at DESC LIMIT ?'
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_trends(rows):
+    if not rows:
+        return
+    from datetime import date
+    week_of = date.today().strftime('%Y-%m-%d')
+    conn = get_db()
+    for row in rows:
+        conn.execute(
+            'INSERT INTO trends (platform,trend_text,category,client_id,week_of,source) VALUES (?,?,?,?,?,?)',
+            (row.get('platform', ''), row.get('trend_text', ''),
+             row.get('category', ''), row.get('client_id') or None,
+             row.get('week_of', week_of), row.get('source', 'ai'))
+        )
+    conn.commit()
+    conn.close()

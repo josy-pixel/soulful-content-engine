@@ -20,14 +20,17 @@ def send_to_make(post):
         'post_id':        post['id'],
         'client':         post['client_name'],
         'platform':       post['platform'],
+        'content_type':   post.get('content_type') or 'photo',
         'topic':          post['topic'],
         'caption':        post['caption'],
         'hashtags':       post.get('hashtags') or '',
+        'hook':           post.get('hook') or '',
         'image_url':      post.get('image_url') or '',
         'scheduled_date': post.get('scheduled_date') or '',
         'approved_at':    datetime.now().isoformat(),
-        # Make.com can call this URL to mark the post as published
+        # Make.com calls this URL after publishing to mark post as Posted
         'callback_url':   f'{app_url}/webhook/publish' if app_url else '',
+        'performance_url': f'{app_url}/api/performance' if app_url else '',
     }
 
     try:

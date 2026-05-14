@@ -12,8 +12,15 @@
 {% endblock %}
 
 {% block content %}
-{% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+{% set status_colors = {'raw':'light','branded':'info text-dark','draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success','error':'danger'} %}
 {% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+{% if post.error_message %}
+<div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div><strong>Publishing Error:</strong> {{ post.error_message }}</div>
+</div>
+{% endif %}
 
 <div class="row g-4">
 
@@ -37,6 +44,13 @@
 
         <h5 class="mb-3">{{ post.topic }}</h5>
         <div class="caption-box mb-3">{{ post.caption }}</div>
+
+        {% if post.hook %}
+        <div class="mb-3 p-3 rounded border border-warning bg-warning bg-opacity-10">
+          <small class="fw-bold text-warning d-block mb-1"><i class="bi bi-lightning-fill me-1"></i>Video Hook</small>
+          <span class="fw-semibold">{{ post.hook }}</span>
+        </div>
+        {% endif %}
 
         {% if post.hashtags %}
         <div class="hashtag-box">{{ post.hashtags }}</div>

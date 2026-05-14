@@ -1,6 +1,7 @@
 import anthropic
 import json
 import os
+from datetime import date
 
 PLATFORM_GUIDES = {
     'instagram': 'Instagram: up to 2200 chars but ideal is 150–300. Use line breaks for readability. Hashtags at end. Strong hook first line.',
@@ -121,6 +122,68 @@ def generate_hashtags(client_name, brand_voice, platform, topic, caption):
         return response.content[0].text.strip()
     except Exception:
         return ''
+
+
+def generate_hook(client_name, brand_voice, platform, topic, caption):
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        return None, 'ANTHROPIC_API_KEY not set.'
+
+    client = anthropic.Anthropic(api_key=api_key)
+    prompt = (
+        f"Write ONE punchy opening line (hook) for a {platform} video/reel for {client_name}.\n"
+        f"Topic: {topic}\n"
+        f"Caption excerpt: {caption[:200] if caption else ''}\n\n"
+        f"Max 12 words. No hashtags. Return ONLY the hook line, nothing else."
+    )
+    try:
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=100,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        return response.content[0].text.strip(), None
+    except anthropic.APIError as e:
+        return None, f'Claude API error: {str(e)}'
+
+
+def generate_trends(clients_summary, platform):
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        return None, 'ANTHROPIC_API_KEY not set.'
+
+    client = anthropic.Anthropic(api_key=api_key)
+    current_date = date.today().isoformat()
+    prompt = (
+        f"Today is {current_date}. Generate 8 trending content ideas for {platform} "
+        f"relevant to: {clients_summary}.\n\n"
+        f"Return a JSON array ONLY, no other text, with objects having these fields: "
+        f"trend_text, category, platform.\n"
+        f"Example: [{{\"trend_text\": \"...\", \"category\": \"wellness\", \"platform\": \"{platform}\"}}]"
+    )
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1024,
+            system=[{
+                'type': 'text',
+                'text': 'You are a social media trend analyst. Return only valid JSON arrays, no markdown, no explanation.',
+                'cache_control': {'type': 'ephemeral'},
+            }],
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = response.content[0].text.strip()
+        # Strip markdown code fences if present
+        if raw.startswith('```'):
+            raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+        trends = json.loads(raw)
+        if not isinstance(trends, list):
+            return None, 'Claude did not return a JSON array'
+        return trends, None
+    except (json.JSONDecodeError, ValueError) as e:
+        return None, f'JSON parse error: {str(e)}'
+    except anthropic.APIError as e:
+        return None, f'Claude API error: {str(e)}'
 
 
 def generate_report(report_data):
