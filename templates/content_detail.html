@@ -29,6 +29,7 @@
               <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} platform-icon platform-{{ post.platform }}"></i>
               <span class="text-capitalize text-muted small">{{ post.platform }}</span>
               <span class="badge bg-{{ status_colors.get(post.status,'secondary') }}">{{ post.status.replace('_',' ') }}</span>
+              {% if post.content_type %}<span class="badge bg-light text-dark border">{{ post.content_type|capitalize }}</span>{% endif %}
             </div>
           </div>
           <small class="text-muted">{{ post.updated_at[:16] }}</small>
@@ -47,8 +48,13 @@
         </div>
         {% endif %}
         {% if post.posted_date %}
-        <div class="mt-3">
+        <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
           <small class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Posted: <strong>{{ post.posted_date }}</strong></small>
+          {% if post.posted_url %}
+          <a href="{{ post.posted_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">
+            <i class="bi bi-box-arrow-up-right me-1"></i>View Live Post
+          </a>
+          {% endif %}
         </div>
         {% endif %}
         {% if post.image_url %}
@@ -93,7 +99,7 @@
         {% if metrics %}
         {% set m = metrics[0] %}
         <div class="row g-3 mb-3">
-          {% set metric_items = [('Likes','heart-fill','danger',m.likes),('Comments','chat-fill','primary',m.comments),('Shares','share-fill','info',m.shares),('Saves','bookmark-fill','warning',m.saves),('Reach','eye-fill','success',m.reach),('Impressions','bar-chart-fill','secondary',m.impressions),('Clicks','cursor-fill','dark',m.clicks)] %}
+          {% set metric_items = [('Likes','heart-fill','danger',m.likes),('Comments','chat-fill','primary',m.comments),('Shares','share-fill','info',m.shares),('Saves','bookmark-fill','warning',m.saves),('Views','play-fill','dark',m.views),('Reach','eye-fill','success',m.reach),('Impressions','bar-chart-fill','secondary',m.impressions),('Clicks','cursor-fill','dark',m.clicks)] %}
           {% for label,icon,color,val in metric_items %}
           <div class="col-6 col-sm-4 col-md-3">
             <div class="metric-mini">
@@ -210,7 +216,7 @@
       </div>
       <div class="modal-body">
         <div class="row g-2">
-          {% for field in ['likes','comments','shares','saves','reach','impressions','clicks'] %}
+          {% for field in ['likes','comments','shares','saves','views','reach','impressions','clicks'] %}
           <div class="col-6">
             <label class="form-label fw-semibold small text-capitalize">{{ field }}</label>
             <input type="number" id="pm_{{ field }}" class="form-control form-control-sm" value="0" min="0">

@@ -14,6 +14,13 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 
 PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube']
 STATUSES = ['draft', 'needs_review', 'approved', 'scheduled', 'posted']
+CONTENT_TYPES = {
+    'instagram': ['photo', 'video', 'reel', 'story'],
+    'facebook':  ['photo', 'video', 'post'],
+    'tiktok':    ['video'],
+    'linkedin':  ['post'],
+    'youtube':   ['video'],
+}
 STATUS_TRANSITIONS = {
     'draft':        ['needs_review', 'approved'],
     'needs_review': ['draft', 'approved'],
@@ -38,7 +45,8 @@ def setup():
 @app.route('/')
 def dashboard():
     stats = db.get_dashboard_stats()
-    return render_template('dashboard.html', stats=stats, platforms=PLATFORMS, statuses=STATUSES)
+    return render_template('dashboard.html', stats=stats, platforms=PLATFORMS, statuses=STATUSES,
+                           content_types=CONTENT_TYPES)
 
 
 # ── Clients ────────────────────────────────────────────────────────────────────
@@ -184,9 +192,11 @@ def content_new():
         data = {
             'client_id': int(request.form['client_id']),
             'platform': request.form['platform'],
+            'content_type': request.form.get('content_type', 'photo'),
             'topic': request.form['topic'].strip(),
             'caption': request.form['caption'].strip(),
             'hashtags': request.form.get('hashtags', '').strip(),
+            'image_url': request.form.get('image_url', '').strip(),
             'status': request.form.get('status', 'draft'),
             'scheduled_date': request.form.get('scheduled_date') or None,
             'notes': request.form.get('notes', '').strip(),
@@ -194,7 +204,8 @@ def content_new():
         if not data['topic'] or not data['caption']:
             flash('Topic and caption are required.', 'error')
             return render_template('content_form.html', post=None, clients=all_clients,
-                                   platforms=PLATFORMS, statuses=STATUSES)
+                                   platforms=PLATFORMS, statuses=STATUSES,
+                                   content_types=CONTENT_TYPES, preselect={})
         post_id = db.create_post(data)
         flash('Post created successfully.', 'success')
         return redirect(url_for('content_detail', post_id=post_id))
@@ -203,7 +214,8 @@ def content_new():
         'platform': request.args.get('platform', ''),
     }
     return render_template('content_form.html', post=None, clients=all_clients,
-                           platforms=PLATFORMS, statuses=STATUSES, preselect=preselect)
+                           platforms=PLATFORMS, statuses=STATUSES,
+                           content_types=CONTENT_TYPES, preselect=preselect)
 
 
 @app.route('/content/<int:post_id>')
@@ -232,6 +244,8 @@ def content_edit(post_id):
             'topic': request.form['topic'].strip(),
             'caption': request.form['caption'].strip(),
             'hashtags': request.form.get('hashtags', '').strip(),
+            'image_url': request.form.get('image_url', '').strip(),
+            'content_type': request.form.get('content_type', post.get('content_type', 'photo')),
             'scheduled_date': request.form.get('scheduled_date') or None,
             'notes': request.form.get('notes', '').strip(),
         }
@@ -239,7 +253,8 @@ def content_edit(post_id):
         flash('Post updated.', 'success')
         return redirect(url_for('content_detail', post_id=post_id))
     return render_template('content_form.html', post=post, clients=all_clients,
-                           platforms=PLATFORMS, statuses=STATUSES, preselect={})
+                           platforms=PLATFORMS, statuses=STATUSES,
+                           content_types=CONTENT_TYPES, preselect={})
 
 
 @app.route('/content/<int:post_id>/status', methods=['POST'])
@@ -286,8 +301,10 @@ def webhook_publish():
     if not post:
         return jsonify({'error': 'Post not found'}), 404
 
-    notes = data.get('posted_url', '') or 'Marked posted by Make.com'
-    db.update_post_status(int(post_id), 'posted', notes, changed_by='make.com')
+    posted_url = data.get('posted_url', '') or ''
+    notes = posted_url or 'Marked posted by Make.com'
+    db.update_post_status(int(post_id), 'posted', notes, changed_by='make.com',
+                          posted_url=posted_url or None)
     return jsonify({'ok': True, 'post_id': post_id, 'status': 'posted'})
 
 

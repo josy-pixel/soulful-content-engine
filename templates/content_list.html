@@ -57,8 +57,9 @@
         <div class="d-flex align-items-center gap-2 mb-2">
           <div class="client-avatar sm" style="background:{{ post.logo_color }}">{{ post.client_name[0] }}</div>
           <span class="fw-semibold small">{{ post.client_name }}</span>
-          <span class="ms-auto">
+          <span class="ms-auto d-flex flex-column align-items-end gap-1">
             <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} platform-icon platform-{{ post.platform }}"></i>
+            {% if post.content_type %}<span class="badge bg-light text-dark border" style="font-size:.65rem">{{ post.content_type|capitalize }}</span>{% endif %}
           </span>
         </div>
         <span class="badge bg-{{ status_colors.get(post.status,'secondary') }} mb-2">{{ post.status.replace('_',' ') }}</span>

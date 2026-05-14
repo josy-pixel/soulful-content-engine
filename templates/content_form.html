@@ -21,7 +21,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Platform *</label>
-              <select name="platform" class="form-select" required>
+              <select name="platform" id="platformSelect" class="form-select" required>
                 <option value="">Select platform…</option>
                 {% for p in platforms %}
                 <option value="{{ p }}" {% if preselect.get('platform')==p %}selected{% endif %}>{{ p|capitalize }}</option>
@@ -29,7 +29,24 @@
               </select>
             </div>
           </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Content Type</label>
+            <select name="content_type" id="contentTypeSelect" class="form-select">
+              <option value="photo">Photo</option>
+            </select>
+          </div>
           {% endif %}
+          {% if post %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Content Type</label>
+            <select name="content_type" id="contentTypeSelect" class="form-select">
+              {% set ct_map = content_types if content_types else {} %}
+              {% set types = ct_map.get(post.platform, ['photo','video','post']) %}
+              {% for t in types %}
+              <option value="{{ t }}" {% if post.content_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
 
           <div class="mb-3">
             <label class="form-label fw-semibold">Topic / Title *</label>
@@ -50,10 +67,10 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Image URL <small class="text-muted">(sent to Make.com on approval)</small></label>
+            <label class="form-label fw-semibold">Media URL <small class="text-muted">(image / video / mp4 — sent to Make.com on approval)</small></label>
             <input type="url" name="image_url" class="form-control"
                    value="{{ post.image_url if post else '' }}"
-                   placeholder="https://example.com/image.jpg">
+                   placeholder="https://example.com/image.jpg or video.mp4">
           </div>
 
           <div class="row g-3 mb-3">
@@ -95,4 +112,31 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CONTENT_TYPES = {{ content_types | tojson }};
+const platformSelect = document.getElementById('platformSelect');
+const ctSelect = document.getElementById('contentTypeSelect');
+
+function updateContentTypes(platform, current) {
+  if (!ctSelect) return;
+  const types = CONTENT_TYPES[platform] || ['photo', 'video', 'post'];
+  ctSelect.innerHTML = '';
+  types.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    if (t === current) opt.selected = true;
+    ctSelect.appendChild(opt);
+  });
+}
+
+if (platformSelect) {
+  const initCurrent = ctSelect ? ctSelect.value : 'photo';
+  if (platformSelect.value) updateContentTypes(platformSelect.value, initCurrent);
+  platformSelect.addEventListener('change', () => updateContentTypes(platformSelect.value, null));
+}
+</script>
 {% endblock %}
