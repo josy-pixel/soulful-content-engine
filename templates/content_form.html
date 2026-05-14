@@ -8,6 +8,7 @@
     <div class="card">
       <div class="card-body">
         <form method="POST">
+
           {% if not post %}
           <div class="row g-3 mb-3">
             <div class="col-md-6">
@@ -15,7 +16,10 @@
               <select name="client_id" class="form-select" required>
                 <option value="">Select client…</option>
                 {% for c in clients %}
-                <option value="{{ c.id }}" {% if preselect.get('client_id')|string==c.id|string %}selected{% endif %}>{{ c.name }}</option>
+                <option value="{{ c.id }}"
+                  {% if preselect.get('client_id')|string == c.id|string %}selected{% endif %}>
+                  {{ c.name }}
+                </option>
                 {% endfor %}
               </select>
             </div>
@@ -24,33 +28,34 @@
               <select name="platform" id="platformSelect" class="form-select" required>
                 <option value="">Select platform…</option>
                 {% for p in platforms %}
-                <option value="{{ p }}" {% if preselect.get('platform')==p %}selected{% endif %}>{{ p|capitalize }}</option>
+                <option value="{{ p }}"
+                  {% if preselect.get('platform') == p %}selected{% endif %}>
+                  {{ p|capitalize }}
+                </option>
                 {% endfor %}
               </select>
             </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Content Type</label>
-            <select name="content_type" id="contentTypeSelect" class="form-select">
-              <option value="photo">Photo</option>
-            </select>
-          </div>
           {% endif %}
-          {% if post %}
+
           <div class="mb-3">
             <label class="form-label fw-semibold">Content Type</label>
             <select name="content_type" id="contentTypeSelect" class="form-select">
-              {% set ct_map = content_types if content_types else {} %}
-              {% set types = ct_map.get(post.platform, ['photo','video','post']) %}
-              {% for t in types %}
-              <option value="{{ t }}" {% if post.content_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
-              {% endfor %}
+              {% if post %}
+                {% set types = (content_types or {}).get(post.platform, ['photo','video','post']) %}
+                {% for t in types %}
+                <option value="{{ t }}" {% if post.content_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
+                {% endfor %}
+              {% else %}
+                <option value="photo">Photo</option>
+              {% endif %}
             </select>
           </div>
 
           <div class="mb-3">
             <label class="form-label fw-semibold">Topic / Title *</label>
-            <input type="text" name="topic" class="form-control" value="{{ post.topic if post else '' }}" required
+            <input type="text" name="topic" class="form-control" required
+                   value="{{ post.topic if post else '' }}"
                    placeholder="e.g. Morning mindfulness routine">
           </div>
 
@@ -107,6 +112,7 @@
             <a href="{{ url_for('content_list') }}" class="btn btn-outline-secondary">Cancel</a>
             {% endif %}
           </div>
+
         </form>
       </div>
     </div>
