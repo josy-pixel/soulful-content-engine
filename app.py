@@ -367,6 +367,44 @@ def api_add_performance(post_id):
     return jsonify({'ok': True})
 
 
+@app.route('/api/performance', methods=['POST'])
+def api_performance_inbound():
+    """Called by Make.com ~24h after publishing with auto-fetched platform stats.
+
+    Expected JSON body:
+        {
+          "post_id": 123, "secret": "...",
+          "likes": 0, "comments": 0, "shares": 0, "saves": 0,
+          "reach": 0, "impressions": 0, "clicks": 0
+        }
+    """
+    data = request.get_json(silent=True) or {}
+
+    secret = data.get('secret', request.args.get('secret', ''))
+    if not webhooks.verify_secret(secret):
+        return jsonify({'error': 'Forbidden'}), 403
+
+    post_id = data.get('post_id')
+    if not post_id:
+        return jsonify({'error': 'post_id required'}), 400
+    if not db.get_post(int(post_id)):
+        return jsonify({'error': 'Post not found'}), 404
+
+    metrics = {
+        'likes':       int(data.get('likes', 0) or 0),
+        'comments':    int(data.get('comments', 0) or 0),
+        'shares':      int(data.get('shares', 0) or 0),
+        'saves':       int(data.get('saves', 0) or 0),
+        'views':       int(data.get('views', 0) or 0),
+        'reach':       int(data.get('reach', 0) or 0),
+        'impressions': int(data.get('impressions', 0) or 0),
+        'clicks':      int(data.get('clicks', 0) or 0),
+        'notes':       data.get('notes', 'Auto-fetched by Make.com 24h post-publish'),
+    }
+    db.add_performance(int(post_id), metrics)
+    return jsonify({'ok': True, 'post_id': post_id})
+
+
 # ── Report ─────────────────────────────────────────────────────────────────────
 
 @app.route('/report')

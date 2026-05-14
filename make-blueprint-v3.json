@@ -1,0 +1,1164 @@
+{
+  "name": "Soulful Content Engine - Auto Publisher v3",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 2956080,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": -700,
+          "y": 0
+        },
+        "restore": {
+          "parameters": {
+            "hook": {
+              "data": {
+                "editable": "true"
+              },
+              "label": "My gateway-webhook webhook"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway-webhook",
+            "label": "Webhook",
+            "required": true
+          },
+          {
+            "name": "maxResults",
+            "type": "number",
+            "label": "Maximum number of results"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": {
+        "designer": {
+          "x": -400,
+          "y": 0
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 3,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/17841472300266327/media",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"image_url\":\"{{1.image_url}}\",\"caption\":\"{{1.caption}} {{1.hashtags}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": -100,
+                  "y": -500
+                }
+              },
+              "filter": {
+                "name": "Instagram Photo",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.platform}}",
+                      "b": "instagram",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{1.content_type}}",
+                      "b": "photo",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 4,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/17841472300266327/media_publish",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"creation_id\":\"{{3.data.id}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 200,
+                  "y": -500
+                }
+              }
+            },
+            {
+              "id": 5,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{4.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 500,
+                  "y": -500
+                }
+              }
+            },
+            {
+              "id": 7,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{4.data.id}}/insights",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "metric",
+                    "value": "impressions,reach,saved"
+                  },
+                  {
+                    "name": "period",
+                    "value": "lifetime"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1100,
+                  "y": -500
+                }
+              }
+            },
+            {
+              "id": 8,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{4.data.id}}",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "fields",
+                    "value": "like_count,comments_count"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1400,
+                  "y": -500
+                }
+              }
+            },
+            {
+              "id": 9,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://soulful-content-engine.onrender.com/api/performance",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{8.data.like_count}}\",\"comments\":\"{{8.data.comments_count}}\",\"impressions\":\"{{7.data.data[1].values[1].value}}\",\"reach\":\"{{7.data.data[2].values[1].value}}\",\"saves\":\"{{7.data.data[3].values[1].value}}\",\"shares\":0,\"platform\":\"instagram\",\"content_type\":\"photo\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1700,
+                  "y": -500
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 10,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/17841472300266327/media",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"media_type\":\"REELS\",\"video_url\":\"{{1.image_url}}\",\"caption\":\"{{1.caption}} {{1.hashtags}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": -100,
+                  "y": -250
+                }
+              },
+              "filter": {
+                "name": "Instagram Video / Reel",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.platform}}",
+                      "b": "instagram",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{1.content_type}}",
+                      "b": "video",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 12,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{10.data.id}}",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "fields",
+                    "value": "status_code"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 500,
+                  "y": -250
+                }
+              }
+            },
+            {
+              "id": 13,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/17841472300266327/media_publish",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"creation_id\":\"{{10.data.id}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 800,
+                  "y": -250
+                }
+              }
+            },
+            {
+              "id": 14,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{13.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1100,
+                  "y": -250
+                }
+              }
+            },
+            {
+              "id": 16,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{13.data.id}}/insights",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "metric",
+                    "value": "impressions,reach,saved,plays"
+                  },
+                  {
+                    "name": "period",
+                    "value": "lifetime"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1700,
+                  "y": -250
+                }
+              }
+            },
+            {
+              "id": 17,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{13.data.id}}",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "fields",
+                    "value": "like_count,comments_count"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2000,
+                  "y": -250
+                }
+              }
+            },
+            {
+              "id": 18,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://soulful-content-engine.onrender.com/api/performance",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{17.data.like_count}}\",\"comments\":\"{{17.data.comments_count}}\",\"impressions\":\"{{16.data.data[1].values[1].value}}\",\"reach\":\"{{16.data.data[2].values[1].value}}\",\"saves\":\"{{16.data.data[3].values[1].value}}\",\"views\":\"{{16.data.data[4].values[1].value}}\",\"shares\":0,\"platform\":\"instagram\",\"content_type\":\"video\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2300,
+                  "y": -250
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 19,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/17841472300266327/media",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"media_type\":\"STORIES\",\"image_url\":\"{{1.image_url}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": -100,
+                  "y": 0
+                }
+              },
+              "filter": {
+                "name": "Instagram Story",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.platform}}",
+                      "b": "instagram",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{1.content_type}}",
+                      "b": "story",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 20,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/17841472300266327/media_publish",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"creation_id\":\"{{19.data.id}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 200,
+                  "y": 0
+                }
+              }
+            },
+            {
+              "id": 21,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{20.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 500,
+                  "y": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 22,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/587235154463076/photos",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"url\":\"{{1.image_url}}\",\"message\":\"{{1.caption}} {{1.hashtags}}\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": -100,
+                  "y": 250
+                }
+              },
+              "filter": {
+                "name": "Facebook Photo",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.platform}}",
+                      "b": "facebook",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{1.content_type}}",
+                      "b": "photo",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 23,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{22.data.post_id}}\",\"secret\":\"Soulful2026!\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 200,
+                  "y": 250
+                }
+              }
+            },
+            {
+              "id": 25,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{22.data.post_id}}",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "fields",
+                    "value": "likes.summary(true),comments.summary(true),shares"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 800,
+                  "y": 250
+                }
+              }
+            },
+            {
+              "id": 26,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{22.data.post_id}}/insights",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "metric",
+                    "value": "post_impressions,post_reach,post_impressions_unique"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1100,
+                  "y": 250
+                }
+              }
+            },
+            {
+              "id": 27,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://soulful-content-engine.onrender.com/api/performance",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{25.data.likes.summary.total_count}}\",\"comments\":\"{{25.data.comments.summary.total_count}}\",\"shares\":\"{{25.data.shares.count}}\",\"impressions\":\"{{26.data.data[1].values[1].value}}\",\"reach\":\"{{26.data.data[2].values[1].value}}\",\"saves\":0,\"platform\":\"facebook\",\"content_type\":\"photo\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1400,
+                  "y": 250
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 28,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/587235154463076/videos",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "{\"file_url\":\"{{1.image_url}}\",\"description\":\"{{1.caption}} {{1.hashtags}}\",\"published\":true}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": -100,
+                  "y": 500
+                }
+              },
+              "filter": {
+                "name": "Facebook Video",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.platform}}",
+                      "b": "facebook",
+                      "o": "text:equal"
+                    },
+                    {
+                      "a": "{{1.content_type}}",
+                      "b": "video",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 30,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "{{1.callback_url}}",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{28.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 500,
+                  "y": 500
+                }
+              }
+            },
+            {
+              "id": 32,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{28.data.id}}",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "fields",
+                    "value": "likes.summary(true),comments.summary(true),shares,views"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1100,
+                  "y": 500
+                }
+              }
+            },
+            {
+              "id": 33,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://graph.facebook.com/v19.0/{{28.data.id}}/video_insights",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "metric",
+                    "value": "total_video_impressions,total_video_reach,total_video_views"
+                  },
+                  {
+                    "name": "access_token",
+                    "value": "YOUR_META_ACCESS_TOKEN"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "contentType": "application/json",
+                "data": "",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1400,
+                  "y": 500
+                }
+              }
+            },
+            {
+              "id": 34,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false
+              },
+              "mapper": {
+                "url": "https://soulful-content-engine.onrender.com/api/performance",
+                "serializeUrl": false,
+                "method": "post",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "contentType": "application/json",
+                "data": "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{32.data.likes.summary.total_count}}\",\"comments\":\"{{32.data.comments.summary.total_count}}\",\"shares\":\"{{32.data.shares.count}}\",\"views\":\"{{33.data.data[3].values[1].value}}\",\"impressions\":\"{{33.data.data[1].values[1].value}}\",\"reach\":\"{{33.data.data[2].values[1].value}}\",\"saves\":0,\"platform\":\"facebook\",\"content_type\":\"video\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                "timeout": "",
+                "followRedirect": true,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1700,
+                  "y": 500
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "designer": {
+      "orphans": [],
+      "samples": {
+        "1": {
+          "event": "post_approved",
+          "post_id": 9,
+          "platform": "instagram",
+          "content_type": "photo",
+          "topic": "Morning wellness routine",
+          "caption": "Start your day with intention ✨",
+          "hashtags": "#wellness #mindfulness #morningroutine",
+          "image_url": "https://example.com/image.jpg",
+          "callback_url": "https://soulful-content-engine.onrender.com/webhook/publish",
+          "scheduled_date": "2026-05-14T10:00"
+        }
+      }
+    },
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    }
+  }
+}

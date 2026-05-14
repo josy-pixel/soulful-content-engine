@@ -78,6 +78,7 @@ def init_db():
             comments INTEGER DEFAULT 0,
             shares INTEGER DEFAULT 0,
             saves INTEGER DEFAULT 0,
+            views INTEGER DEFAULT 0,
             reach INTEGER DEFAULT 0,
             impressions INTEGER DEFAULT 0,
             clicks INTEGER DEFAULT 0,
@@ -88,12 +89,16 @@ def init_db():
     ''')
     conn.commit()
 
-    # Non-destructive migration: add image_url if this is an existing DB
-    try:
-        conn.execute("ALTER TABLE content_posts ADD COLUMN image_url TEXT DEFAULT ''")
-        conn.commit()
-    except Exception:
-        pass  # column already exists
+    # Non-destructive migrations for existing DBs
+    for migration in [
+        "ALTER TABLE content_posts ADD COLUMN image_url TEXT DEFAULT ''",
+        "ALTER TABLE performance_metrics ADD COLUMN views INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(migration)
+            conn.commit()
+        except Exception:
+            pass
 
     existing = c.execute('SELECT COUNT(*) FROM clients').fetchone()[0]
     if existing == 0:
@@ -405,14 +410,15 @@ def get_performance(post_id):
 def add_performance(post_id, data):
     conn = get_db()
     conn.execute('''
-        INSERT INTO performance_metrics (post_id,likes,comments,shares,saves,reach,impressions,clicks,notes)
-        VALUES (?,?,?,?,?,?,?,?,?)
+        INSERT INTO performance_metrics (post_id,likes,comments,shares,saves,views,reach,impressions,clicks,notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
     ''', (
         post_id,
-        int(data.get('likes', 0)), int(data.get('comments', 0)),
-        int(data.get('shares', 0)), int(data.get('saves', 0)),
-        int(data.get('reach', 0)), int(data.get('impressions', 0)),
-        int(data.get('clicks', 0)), data.get('notes', '')
+        int(data.get('likes', 0) or 0), int(data.get('comments', 0) or 0),
+        int(data.get('shares', 0) or 0), int(data.get('saves', 0) or 0),
+        int(data.get('views', 0) or 0),
+        int(data.get('reach', 0) or 0), int(data.get('impressions', 0) or 0),
+        int(data.get('clicks', 0) or 0), data.get('notes', '')
     ))
     conn.commit()
     conn.close()
@@ -450,7 +456,7 @@ def get_dashboard_stats():
 
     perf = conn.execute('''
         SELECT SUM(likes) AS likes, SUM(comments) AS comments, SUM(shares) AS shares,
-               SUM(reach) AS reach, SUM(impressions) AS impressions
+               SUM(views) AS views, SUM(reach) AS reach, SUM(impressions) AS impressions
         FROM performance_metrics
     ''').fetchone()
 
@@ -499,7 +505,7 @@ def get_report_data(start_date, end_date):
     perf = conn.execute('''
         SELECT SUM(m.likes) AS likes, SUM(m.comments) AS comments,
                SUM(m.shares) AS shares, SUM(m.saves) AS saves,
-               SUM(m.reach) AS reach, SUM(m.impressions) AS impressions
+               SUM(m.views) AS views, SUM(m.reach) AS reach, SUM(m.impressions) AS impressions
         FROM performance_metrics m
         JOIN content_posts p ON p.id=m.post_id
         WHERE m.recorded_at BETWEEN ? AND ?
