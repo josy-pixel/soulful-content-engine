@@ -9,6 +9,7 @@ later without a rewrite.
 import os
 import hmac
 import time
+import hashlib
 import secrets
 from functools import wraps
 
@@ -89,6 +90,28 @@ def _csrf_ok(submitted):
     return bool(expected) and bool(submitted) and hmac.compare_digest(expected, submitted)
 
 
+# ── First-run setup token ──
+# Only the SHA-256 hash of the token is committed (irreversible, safe to be
+# public). The plaintext lives outside the repo and was shared out of band.
+def _expected_setup_hash():
+    path = os.path.join(os.path.dirname(__file__), 'setup_token.hash')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def _setup_token_ok(submitted):
+    expected = _expected_setup_hash()
+    if not expected:
+        return False   # no hash file -> setup is closed, fail safe
+    if not submitted:
+        return False
+    digest = hashlib.sha256(submitted.strip().encode('utf-8')).hexdigest()
+    return hmac.compare_digest(expected, digest)
+
+
 # ── User model ──
 class User(UserMixin):
     def __init__(self, row):
@@ -161,7 +184,9 @@ def init_auth(app):
             email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '')
             confirm = request.form.get('confirm', '')
-            if not email or not password:
+            if not _setup_token_ok(request.form.get('setup_token', '')):
+                flash('Invalid setup code.', 'danger')
+            elif not email or not password:
                 flash('Email and password are required.', 'danger')
             elif len(password) < 8:
                 flash('Password must be at least 8 characters.', 'danger')

@@ -34,8 +34,12 @@
         <form method="POST" action="{{ url_for('setup_admin') }}" autocomplete="off">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-3">
+            <label class="form-label small">Setup code</label>
+            <input type="text" name="setup_token" class="form-control" required autofocus autocomplete="off">
+          </div>
+          <div class="mb-3">
             <label class="form-label small">Email</label>
-            <input type="email" name="email" class="form-control" required autofocus>
+            <input type="email" name="email" class="form-control" required>
           </div>
           <div class="mb-3">
             <label class="form-label small">Password <span class="text-muted">(min 8 characters)</span></label>
