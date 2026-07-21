@@ -14,6 +14,8 @@ services:
         generateValue: true
       - key: DB_PATH
         value: /data/soulful_content.db
+      - key: UPLOAD_PATH
+        value: /data/uploads
     disk:
       name: data
       mountPath: /data
