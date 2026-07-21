@@ -138,6 +138,12 @@ def init_db():
         "ALTER TABLE content_posts ADD COLUMN hook TEXT DEFAULT ''",
         "ALTER TABLE content_posts ADD COLUMN error_message TEXT DEFAULT ''",
         "ALTER TABLE performance_metrics ADD COLUMN views INTEGER DEFAULT 0",
+        # Voice engine — full-fidelity voice per client
+        "ALTER TABLE clients ADD COLUMN voice_document TEXT DEFAULT ''",
+        "ALTER TABLE clients ADD COLUMN sample_captions TEXT DEFAULT '[]'",
+        # Voice-audit results per post
+        "ALTER TABLE content_posts ADD COLUMN voice_score INTEGER",
+        "ALTER TABLE content_posts ADD COLUMN voice_audit TEXT DEFAULT ''",
     ]:
         try:
             conn.execute(migration)
@@ -727,6 +733,48 @@ def create_user(email, password_hash, role='admin'):
     conn.execute(
         'INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)',
         (email, password_hash, role),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ── Voice engine ─────────────────────────────────────────────────────────────
+
+def get_client_voice(client_id):
+    """Full-fidelity voice context for a client: the voice document and the
+    list of real sample captions. Returns (voice_document, [sample_captions])."""
+    conn = get_db()
+    row = conn.execute(
+        'SELECT voice_document, sample_captions FROM clients WHERE id = ?',
+        (client_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return '', []
+    doc = row['voice_document'] or ''
+    try:
+        samples = json.loads(row['sample_captions'] or '[]')
+    except (ValueError, TypeError):
+        samples = []
+    return doc, samples
+
+
+def update_client_voice(client_id, voice_document, sample_captions):
+    """sample_captions: a list of strings (10–15 real captions)."""
+    conn = get_db()
+    conn.execute(
+        'UPDATE clients SET voice_document = ?, sample_captions = ? WHERE id = ?',
+        (voice_document or '', json.dumps(sample_captions or []), client_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_post_voice_audit(post_id, score, audit_notes):
+    conn = get_db()
+    conn.execute(
+        'UPDATE content_posts SET voice_score = ?, voice_audit = ? WHERE id = ?',
+        (score, audit_notes or '', post_id),
     )
     conn.commit()
     conn.close()
