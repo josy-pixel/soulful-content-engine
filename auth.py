@@ -25,7 +25,7 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Please sign in to continue.'
 
 # Routes reachable without a browser login.
-_PUBLIC_ENDPOINTS = {'login', 'static'}
+_PUBLIC_ENDPOINTS = {'login', 'setup_admin', 'static'}
 # Machine-to-machine routes: authenticated by their own X-Secret gate
 # (see webhooks.verify_secret / _check_secret), not by a session login —
 # Make.com cannot sign in. Keep this list in sync with the X-Secret routes.
@@ -147,10 +147,42 @@ def init_auth(app):
         if not current_user.is_authenticated:
             return redirect(url_for('login', next=request.path))
 
+    @app.route('/setup', methods=['GET', 'POST'])
+    def setup_admin():
+        # First-run only: available until the first admin account exists,
+        # then closes permanently. No secret in the repo, no dashboard needed.
+        if db.any_users():
+            return redirect(url_for('login'))
+
+        if request.method == 'POST':
+            if not _csrf_ok(request.form.get('csrf_token', '')):
+                flash('Your session expired. Please try again.', 'danger')
+                return redirect(url_for('setup_admin'))
+            email = request.form.get('email', '').strip().lower()
+            password = request.form.get('password', '')
+            confirm = request.form.get('confirm', '')
+            if not email or not password:
+                flash('Email and password are required.', 'danger')
+            elif len(password) < 8:
+                flash('Password must be at least 8 characters.', 'danger')
+            elif password != confirm:
+                flash('Passwords do not match.', 'danger')
+            elif db.any_users():
+                return redirect(url_for('login'))
+            else:
+                db.create_user(email, generate_password_hash(password), role='admin')
+                session.pop('_csrf_token', None)
+                flash('Admin account created. Please sign in.', 'success')
+                return redirect(url_for('login'))
+
+        return render_template('setup.html', csrf_token=_csrf_token())
+
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if current_user.is_authenticated:
             return redirect(url_for('dashboard'))
+        if not db.any_users():
+            return redirect(url_for('setup_admin'))
 
         if request.method == 'POST':
             email = request.form.get('email', '').strip().lower()
