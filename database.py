@@ -119,6 +119,14 @@ def init_db():
             FOREIGN KEY (post_id) REFERENCES content_posts(id),
             FOREIGN KEY (media_id) REFERENCES client_media(id)
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
     ''')
     conn.commit()
 
@@ -689,3 +697,36 @@ def get_post_media(post_id):
     ''', (post_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Users / auth ─────────────────────────────────────────────────────────────
+
+def get_user_by_id(user_id):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def get_user_by_email(email):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+    conn.close()
+    return row
+
+
+def any_users():
+    conn = get_db()
+    n = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+    conn.close()
+    return n > 0
+
+
+def create_user(email, password_hash, role='admin'):
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)',
+        (email, password_hash, role),
+    )
+    conn.commit()
+    conn.close()

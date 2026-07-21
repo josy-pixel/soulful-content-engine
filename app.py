@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import secrets
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
@@ -8,11 +9,26 @@ from dotenv import load_dotenv
 import database as db
 import claude_api as ai
 import webhooks
+import auth
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+
+# No hardcoded secret. Render provides SECRET_KEY (generateValue) and sets RENDER=true.
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if os.environ.get('RENDER'):
+        raise RuntimeError('SECRET_KEY must be set in production')
+    SECRET_KEY = secrets.token_hex(32)   # ephemeral local-dev key; sessions reset on restart
+app.secret_key = SECRET_KEY
+
+# Secure session cookies. Secure requires HTTPS, so enable it in production only.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=bool(os.environ.get('RENDER')),
+)
 
 # Media upload config
 UPLOAD_PATH = os.environ.get('UPLOAD_PATH', os.path.join('static', 'uploads'))
@@ -79,6 +95,7 @@ def setup():
     global _db_ready
     if not _db_ready:
         db.init_db()
+        auth.bootstrap_admin()
         _db_ready = True
 
 
@@ -820,6 +837,12 @@ def api_generate_report():
     })
 
 
+# Register auth after all page routes are defined so the login guard's
+# before_request runs after setup() (DB init) on the first request.
+auth.init_auth(app)
+
+
 if __name__ == '__main__':
     db.init_db()
+    auth.bootstrap_admin()
     app.run(debug=True, port=5000)

@@ -45,7 +45,12 @@
   </nav>
 
   <div class="sidebar-footer">
-    <small class="text-muted">Powered by Claude AI</small>
+    {% if current_user.is_authenticated %}
+    <a href="{{ url_for('logout') }}" class="nav-link">
+      <i class="bi bi-box-arrow-right"></i> Sign out
+    </a>
+    {% endif %}
+    <small class="text-muted d-block mt-2">Powered by Claude AI</small>
   </div>
 </div>
 
