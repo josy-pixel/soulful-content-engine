@@ -11,11 +11,16 @@ cache at ~10% of input cost. The volatile per-post topic goes in the user turn.
 """
 import os
 import json
+import logging
 
 import anthropic
 
 import config
 from claude_api import PLATFORM_GUIDES, LENGTH_GUIDE, EMOJI_GUIDE
+
+log = logging.getLogger('voice')
+if not log.handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 def _client():
@@ -23,6 +28,21 @@ def _client():
     if not api_key:
         return None
     return anthropic.Anthropic(api_key=api_key)
+
+
+def _usage(resp, label):
+    """Extract + log token usage so prompt caching is verifiable in the logs.
+    cache_read > 0 on the 2nd+ call in a batch means the cached prefix was reused."""
+    u = getattr(resp, 'usage', None)
+    d = {
+        'input':       getattr(u, 'input_tokens', 0) or 0,
+        'cache_write': getattr(u, 'cache_creation_input_tokens', 0) or 0,
+        'cache_read':  getattr(u, 'cache_read_input_tokens', 0) or 0,
+        'output':      getattr(u, 'output_tokens', 0) or 0,
+    }
+    log.info('[voice] %s usage: input=%d cache_write=%d cache_read=%d output=%d',
+             label, d['input'], d['cache_write'], d['cache_read'], d['output'])
+    return d
 
 
 def _json_list(raw):
@@ -89,13 +109,14 @@ def _voice_system_text(client_name, voice_document, sample_captions, brand_voice
 
 def generate_caption(client_name, brand_voice, topic, voice_document='',
                      sample_captions=None, weekly_direction='', extra_context=''):
-    """Returns (caption, error). Injects the full voice context, cached."""
+    """Returns (caption, error, usage, system_text). Injects the full voice
+    context, cached."""
     client = _client()
-    if not client:
-        return None, 'ANTHROPIC_API_KEY not set.'
-
     system_text = _voice_system_text(client_name, voice_document, sample_captions or [],
                                      brand_voice, weekly_direction)
+    if not client:
+        return None, 'ANTHROPIC_API_KEY not set.', None, system_text
+
     user_message = f"Write a caption for this post: {topic}"
     if extra_context:
         user_message += f"\n\nAdditional context: {extra_context}"
@@ -108,9 +129,9 @@ def generate_caption(client_name, brand_voice, topic, voice_document='',
                      'cache_control': {'type': 'ephemeral'}}],
             messages=[{'role': 'user', 'content': user_message}],
         )
-        return resp.content[0].text.strip(), None
+        return resp.content[0].text.strip(), None, _usage(resp, 'caption'), system_text
     except anthropic.APIError as e:
-        return None, f'Claude API error: {str(e)}'
+        return None, f'Claude API error: {str(e)}', None, system_text
 
 
 def audit_caption(client_name, voice_document, sample_captions, caption):
@@ -119,7 +140,7 @@ def audit_caption(client_name, voice_document, sample_captions, caption):
     (final_caption, score, notes, error)."""
     client = _client()
     if not client:
-        return caption, None, '', 'ANTHROPIC_API_KEY not set.'
+        return caption, None, '', 'ANTHROPIC_API_KEY not set.', None
 
     ctx = []
     if voice_document:
@@ -152,6 +173,7 @@ def audit_caption(client_name, voice_document, sample_captions, caption):
                      'cache_control': {'type': 'ephemeral'}}],
             messages=[{'role': 'user', 'content': prompt}],
         )
+        u = _usage(resp, 'audit')
         raw = resp.content[0].text.strip()
         if raw.startswith('```'):
             raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
@@ -160,11 +182,11 @@ def audit_caption(client_name, voice_document, sample_captions, caption):
         notes = str(data.get('notes', ''))
         rewritten = data.get('rewritten')
         final = rewritten.strip() if (rewritten and score < config.VOICE_AUDIT_THRESHOLD) else caption
-        return final, score, notes, None
+        return final, score, notes, None, u
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        return caption, None, '', f'Audit parse error: {str(e)}'
+        return caption, None, '', f'Audit parse error: {str(e)}', None
     except anthropic.APIError as e:
-        return caption, None, '', f'Claude API error: {str(e)}'
+        return caption, None, '', f'Claude API error: {str(e)}', None
 
 
 def generate_hashtags(client_name, brand_voice, topic, caption):
@@ -192,23 +214,32 @@ def generate_hashtags(client_name, brand_voice, topic, caption):
 
 
 def generate_post(client_name, brand_voice, topic, voice_document='',
-                  sample_captions=None, weekly_direction='', extra_context=''):
+                  sample_captions=None, weekly_direction='', extra_context='', debug=False):
     """Full pipeline: caption -> voice audit -> hashtags.
-    Returns a dict with caption, voice_score, voice_audit, hashtags, error."""
+    Returns a dict with caption, voice_score, voice_audit, hashtags, error.
+    When debug, also returns 'usage' (per-call token counts, incl. cache hits)
+    and 'system_prompt' (the full injected prompt) for verification."""
     sample_captions = sample_captions or []
-    caption, err = generate_caption(client_name, brand_voice, topic, voice_document,
-                                    sample_captions, weekly_direction, extra_context)
+    caption, err, cap_usage, system_text = generate_caption(
+        client_name, brand_voice, topic, voice_document,
+        sample_captions, weekly_direction, extra_context)
     if err:
         return {'error': err}
 
-    final, score, notes, aerr = audit_caption(client_name, voice_document,
-                                              sample_captions, caption)
+    final, score, notes, aerr, audit_usage = audit_caption(
+        client_name, voice_document, sample_captions, caption)
     hashtags = generate_hashtags(client_name, brand_voice, topic, final)
 
-    return {
+    result = {
         'caption': final,
         'voice_score': score,
         'voice_audit': notes if not aerr else f'(audit skipped: {aerr})',
         'hashtags': hashtags,
         'error': None,
     }
+    if debug:
+        result['usage'] = {'caption': cap_usage, 'audit': audit_usage}
+        result['system_prompt'] = system_text
+        result['system_prompt_chars'] = len(system_text)
+        result['voice_document_chars'] = len(voice_document or '')
+    return result

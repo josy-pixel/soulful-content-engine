@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import database as db
 import claude_api as ai
 import voice_engine as ve
+import config
 import webhooks
 import auth
 
@@ -348,16 +349,25 @@ def api_generate_caption():
     result = ve.generate_post(client['name'], brand_voice, topic,
                               voice_document=voice_document,
                               sample_captions=sample_captions,
-                              extra_context=extra)
+                              extra_context=extra,
+                              debug=config.DEBUG_ENGINE)
     if result.get('error'):
         return jsonify({'error': result['error']}), 500
 
-    return jsonify({
+    payload = {
         'caption': result['caption'],
         'hashtags': result['hashtags'],
         'voice_score': result.get('voice_score'),
         'voice_audit': result.get('voice_audit', ''),
-    })
+    }
+    if config.DEBUG_ENGINE:   # hidden unless DEBUG_ENGINE=1 (admin-only page anyway)
+        payload['debug'] = {
+            'usage': result.get('usage'),
+            'system_prompt': result.get('system_prompt', ''),
+            'system_prompt_chars': result.get('system_prompt_chars'),
+            'voice_document_chars': result.get('voice_document_chars'),
+        }
+    return jsonify(payload)
 
 
 @app.route('/api/save-caption', methods=['POST'])

@@ -13,3 +13,8 @@ HASHTAG_MODEL = os.environ.get('HASHTAG_MODEL', 'claude-haiku-4-5')
 
 # Voice-audit: rewrite any draft scoring below this (out of 10).
 VOICE_AUDIT_THRESHOLD = int(os.environ.get('VOICE_AUDIT_THRESHOLD', '8'))
+
+# Engine debug: when '1', generation returns the full system prompt and per-call
+# token usage so we can verify full voice injection and prompt caching. Hidden
+# in normal production (env unset). Token usage is logged to stdout regardless.
+DEBUG_ENGINE = os.environ.get('DEBUG_ENGINE', '') == '1'

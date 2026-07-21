@@ -91,6 +91,15 @@
           </div>
           <div id="voiceAudit" class="small text-muted mb-2 d-none"></div>
           <textarea id="captionResult" class="form-control flex-grow-1 mb-3" rows="8" style="resize:none;font-size:0.95rem"></textarea>
+
+          <div id="debugPanel" class="border rounded p-2 mb-3 bg-dark text-light d-none" style="font-size:0.75rem">
+            <div class="fw-bold mb-1"><i class="bi bi-bug"></i> Engine debug</div>
+            <div id="debugUsage" class="mb-2" style="font-family:monospace"></div>
+            <details>
+              <summary>Full system prompt sent (<span id="debugPromptChars"></span> chars) — verify the voice document is whole</summary>
+              <pre id="debugPrompt" style="white-space:pre-wrap;max-height:320px;overflow:auto;color:#9feaff;margin-top:6px"></pre>
+            </details>
+          </div>
           <div>
             <label class="form-label fw-semibold">Hashtags</label>
             <textarea id="hashtagResult" class="form-control mb-3" rows="2" style="resize:none;font-size:0.85rem;color:#6366f1"></textarea>
@@ -187,6 +196,21 @@ async function generate() {
       else { auditEl.classList.add('d-none'); }
     } else {
       scoreEl.classList.add('d-none'); auditEl.classList.add('d-none');
+    }
+
+    const dbg = document.getElementById('debugPanel');
+    if (data.debug) {
+      const u = data.debug.usage || {};
+      const c = u.caption || {}, a = u.audit || {};
+      const fmt = (x) => x ? `input=${x.input} cache_write=${x.cache_write} cache_read=${x.cache_read} output=${x.output}` : '(n/a)';
+      document.getElementById('debugUsage').innerHTML =
+        `caption &nbsp;→ ${fmt(c)}<br>audit &nbsp;&nbsp;&nbsp;→ ${fmt(a)}<br>` +
+        `voice_document = ${data.debug.voice_document_chars} chars → full system_prompt = ${data.debug.system_prompt_chars} chars`;
+      document.getElementById('debugPromptChars').textContent = data.debug.system_prompt_chars;
+      document.getElementById('debugPrompt').textContent = data.debug.system_prompt;
+      dbg.classList.remove('d-none');
+    } else {
+      dbg.classList.add('d-none');
     }
 
     document.getElementById('platformBadge').innerHTML =
