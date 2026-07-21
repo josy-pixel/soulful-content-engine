@@ -99,6 +99,15 @@ def setup():
         _db_ready = True
 
 
+# ── Health check ────────────────────────────────────────────────────────────
+# Public, always 200 — the login guard would otherwise 302 the root path and
+# fail Render's health check (which requires a 200-level status).
+
+@app.route('/healthz')
+def healthz():
+    return 'ok', 200
+
+
 # ── Dashboard ──────────────────────────────────────────────────────────────────
 
 @app.route('/')

@@ -26,7 +26,7 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Please sign in to continue.'
 
 # Routes reachable without a browser login.
-_PUBLIC_ENDPOINTS = {'login', 'setup_admin', 'static'}
+_PUBLIC_ENDPOINTS = {'login', 'setup_admin', 'healthz', 'static'}
 # Machine-to-machine routes: authenticated by their own X-Secret gate
 # (see webhooks.verify_secret / _check_secret), not by a session login —
 # Make.com cannot sign in. Keep this list in sync with the X-Secret routes.
