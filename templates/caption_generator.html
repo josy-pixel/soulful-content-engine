@@ -85,7 +85,11 @@
 
         <!-- Result -->
         <div id="resultState" class="d-none flex-column h-100">
-          <div id="platformBadge" class="mb-2"></div>
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div id="platformBadge"></div>
+            <span id="voiceScore" class="badge d-none"></span>
+          </div>
+          <div id="voiceAudit" class="small text-muted mb-2 d-none"></div>
           <textarea id="captionResult" class="form-control flex-grow-1 mb-3" rows="8" style="resize:none;font-size:0.95rem"></textarea>
           <div>
             <label class="form-label fw-semibold">Hashtags</label>
@@ -170,6 +174,21 @@ async function generate() {
 
     document.getElementById('captionResult').value = data.caption;
     document.getElementById('hashtagResult').value = data.hashtags || '';
+
+    const scoreEl = document.getElementById('voiceScore');
+    const auditEl = document.getElementById('voiceAudit');
+    if (data.voice_score != null) {
+      const s = data.voice_score;
+      const cls = s >= 9 ? 'bg-success' : (s >= 8 ? 'bg-primary' : 'bg-warning text-dark');
+      scoreEl.className = 'badge ' + cls;
+      scoreEl.textContent = 'Voice ' + s + '/10';
+      scoreEl.classList.remove('d-none');
+      if (data.voice_audit) { auditEl.textContent = data.voice_audit; auditEl.classList.remove('d-none'); }
+      else { auditEl.classList.add('d-none'); }
+    } else {
+      scoreEl.classList.add('d-none'); auditEl.classList.add('d-none');
+    }
+
     document.getElementById('platformBadge').innerHTML =
       `<span class="badge" style="background:${platformColors[platform] || '#6366f1'}">${platform.charAt(0).toUpperCase()+platform.slice(1)}</span>`;
 

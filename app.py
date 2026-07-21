@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import database as db
 import claude_api as ai
+import voice_engine as ve
 import webhooks
 import auth
 
@@ -169,9 +170,17 @@ def client_edit(client_id):
             'logo_color': request.form.get('logo_color', '#6366f1'),
         }
         db.update_client(client_id, data)
+        # Voice engine: full voice document + real sample captions (blank-line separated)
+        voice_document = request.form.get('voice_document', '').strip()
+        raw_samples = request.form.get('sample_captions', '')
+        sample_captions = [c.strip() for c in raw_samples.split('\n\n') if c.strip()]
+        db.update_client_voice(client_id, voice_document, sample_captions)
         flash('Client updated.', 'success')
         return redirect(url_for('client_detail', client_id=client_id))
-    return render_template('client_form.html', client=client)
+    voice_document, sample_captions = db.get_client_voice(client_id)
+    return render_template('client_form.html', client=client,
+                           voice_document=voice_document,
+                           sample_captions_text='\n\n'.join(sample_captions))
 
 
 # ── Media Gallery ─────────────────────────────────────────────────────────────
@@ -330,15 +339,25 @@ def api_generate_caption():
     if not client:
         return jsonify({'error': 'Client not found.'}), 404
 
-    brand_voice = db.get_brand_voice(client_id, platform) or db.get_brand_voice(client_id, 'general') or {}
+    brand_voice = dict(db.get_brand_voice(client_id, platform) or db.get_brand_voice(client_id, 'general') or {})
+    brand_voice['platform'] = platform   # ensure platform rules match the selection
 
-    caption, error = ai.generate_caption(client['name'], brand_voice, platform, topic, extra)
-    if error:
-        return jsonify({'error': error}), 500
+    # Full-fidelity voice: inject the entire voice document + real sample captions.
+    voice_document, sample_captions = db.get_client_voice(client_id)
 
-    hashtags = ai.generate_hashtags(client['name'], brand_voice, platform, topic, caption)
+    result = ve.generate_post(client['name'], brand_voice, topic,
+                              voice_document=voice_document,
+                              sample_captions=sample_captions,
+                              extra_context=extra)
+    if result.get('error'):
+        return jsonify({'error': result['error']}), 500
 
-    return jsonify({'caption': caption, 'hashtags': hashtags})
+    return jsonify({
+        'caption': result['caption'],
+        'hashtags': result['hashtags'],
+        'voice_score': result.get('voice_score'),
+        'voice_audit': result.get('voice_audit', ''),
+    })
 
 
 @app.route('/api/save-caption', methods=['POST'])
