@@ -3,7 +3,7 @@ import json
 import uuid
 import secrets
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import database as db
@@ -12,6 +12,14 @@ import voice_engine as ve
 import config
 import webhooks
 import auth
+
+# Pillow is used to serve web-optimized (downscaled) copies of large images so Facebook/Instagram
+# can fetch them — social APIs reject oversized files. Optional: falls back to the raw file if absent.
+try:
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None   # trusted uploads; allow large originals to be downscaled
+except Exception:
+    Image = None
 
 load_dotenv()
 
@@ -186,9 +194,29 @@ def client_edit(client_id):
 
 # ── Media Gallery ─────────────────────────────────────────────────────────────
 
+IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
+WEB_MAX = 1600   # cap the longest edge so Facebook/Instagram accept the fetched image
+
 @app.route('/uploads/<int:client_id>/<path:filename>')
 def serve_media(client_id, filename):
     directory = os.path.join(UPLOAD_PATH, str(client_id))
+    original = os.path.join(directory, filename)
+    ext = os.path.splitext(filename)[1].lower()
+    # Serve a downscaled, re-compressed copy of large images (cached next to the original on the
+    # persistent disk). Social APIs reject oversized files. Any failure falls back to the raw file.
+    if Image is not None and ext in IMG_EXTS and not filename.endswith('_web.jpg') and os.path.isfile(original):
+        web = os.path.join(directory, os.path.splitext(filename)[0] + '_web.jpg')
+        try:
+            if not os.path.isfile(web) or os.path.getmtime(web) < os.path.getmtime(original):
+                im = Image.open(original)
+                im.draft('RGB', (WEB_MAX, WEB_MAX))   # cheap JPEG downscale-on-decode (low memory)
+                if im.mode != 'RGB':
+                    im = im.convert('RGB')
+                im.thumbnail((WEB_MAX, WEB_MAX))
+                im.save(web, 'JPEG', quality=82, optimize=True)
+            return send_file(web, mimetype='image/jpeg')
+        except Exception:
+            pass
     return send_from_directory(directory, filename)
 
 
