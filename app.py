@@ -12,6 +12,10 @@ import voice_engine as ve
 import config
 import webhooks
 import auth
+import security
+from security import (current_scope, enforce_client_id, require_content_access,
+                     require_client_access, scoped_posts, scoped_clients, roles_required)
+from flask import abort, g
 
 # Pillow is used to serve web-optimized (downscaled) copies of large images so Facebook/Instagram
 # can fetch them — social APIs reject oversized files. Optional: falls back to the raw file if absent.
@@ -122,20 +126,25 @@ def healthz():
 
 @app.route('/')
 def dashboard():
-    stats = db.get_dashboard_stats()
+    # scope=None for admin/manager (org-wide); the client's own id for a client user.
+    stats = db.get_dashboard_stats(scope=current_scope())
     return render_template('dashboard.html', stats=stats, platforms=PLATFORMS, statuses=STATUSES,
-                           content_types=CONTENT_TYPES)
+                           content_types=CONTENT_TYPES, scope=current_scope())
 
 
 # ── Clients ────────────────────────────────────────────────────────────────────
 
 @app.route('/clients')
 def clients():
+    # A client user has no all-clients view — send them to their own client page.
+    if current_scope() is not None:
+        return redirect(url_for('client_detail', client_id=current_scope()))
     all_clients = db.get_clients()
     return render_template('clients.html', clients=all_clients)
 
 
 @app.route('/clients/new', methods=['GET', 'POST'])
+@roles_required('admin')          # create clients: admin only
 def client_new():
     if request.method == 'POST':
         data = {
@@ -154,6 +163,7 @@ def client_new():
 
 
 @app.route('/clients/<int:client_id>')
+@require_client_access('client_id')     # a client user may only open their own record
 def client_detail(client_id):
     client = db.get_client(client_id)
     if not client:
@@ -166,6 +176,7 @@ def client_detail(client_id):
 
 
 @app.route('/clients/<int:client_id>/edit', methods=['GET', 'POST'])
+@roles_required('admin')            # edit clients: admin only
 def client_edit(client_id):
     client = db.get_client(client_id)
     if not client:
@@ -221,6 +232,7 @@ def serve_media(client_id, filename):
 
 
 @app.route('/clients/<int:client_id>/gallery')
+@require_client_access('client_id')
 def client_gallery(client_id):
     client = db.get_client(client_id)
     if not client:
@@ -233,6 +245,7 @@ def client_gallery(client_id):
 
 
 @app.route('/clients/<int:client_id>/media/upload', methods=['POST'])
+@require_client_access('client_id')
 def media_upload(client_id):
     client = db.get_client(client_id)
     if not client:
@@ -276,6 +289,8 @@ def api_media_update(media_id):
     media = db.get_media(media_id)
     if not media:
         return jsonify({'error': 'Not found'}), 404
+    if not security.can_see_client(media['client_id']):   # object-level tenant check
+        abort(403)
     data = request.get_json(silent=True) or {}
     db.update_media(media_id,
                     caption_hint=data.get('caption_hint', media.get('caption_hint', '')),
@@ -288,6 +303,8 @@ def api_media_delete(media_id):
     media = db.get_media(media_id)
     if not media:
         return jsonify({'error': 'Not found'}), 404
+    if not security.can_see_client(media['client_id']):   # object-level tenant check
+        abort(403)
     file_path = os.path.join(UPLOAD_PATH, str(media['client_id']), media['filename'])
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -296,6 +313,7 @@ def api_media_delete(media_id):
 
 
 @app.route('/api/media/client/<int:client_id>')
+@require_client_access('client_id')
 def api_client_media(client_id):
     media_type = request.args.get('type')
     media = db.get_client_media(client_id, media_type or None)
@@ -305,11 +323,15 @@ def api_client_media(client_id):
 
 
 @app.route('/api/content/<int:post_id>/media', methods=['POST'])
+@require_content_access('post_id')
 def api_attach_media(post_id):
     data = request.get_json(silent=True) or {}
     media_id = data.get('media_id')
     if not media_id:
         return jsonify({'error': 'media_id required'}), 400
+    _m = db.get_media(media_id)
+    if _m and not security.can_see_client(_m['client_id']):   # no cross-client media
+        abort(403)
     db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0))
     media = db.get_media(media_id)
     if media:
@@ -325,6 +347,7 @@ def api_attach_media(post_id):
 
 
 @app.route('/api/content/<int:post_id>/media/<int:media_id>', methods=['DELETE'])
+@require_content_access('post_id')
 def api_detach_media(post_id, media_id):
     db.detach_media_from_post(post_id, media_id)
     return jsonify({'ok': True})
@@ -333,6 +356,7 @@ def api_detach_media(post_id, media_id):
 # ── Brand Voice ────────────────────────────────────────────────────────────────
 
 @app.route('/api/brand-voice/<int:client_id>/<platform>', methods=['POST'])
+@require_client_access('client_id')
 def save_brand_voice(client_id, platform):
     if platform not in PLATFORMS + ['general']:
         return jsonify({'error': 'Invalid platform'}), 400
@@ -345,8 +369,8 @@ def save_brand_voice(client_id, platform):
 
 @app.route('/caption-generator')
 def caption_generator():
-    all_clients = db.get_clients()
-    preselect_client = request.args.get('client_id', type=int)
+    all_clients = scoped_clients()   # a client user sees only their own client
+    preselect_client = current_scope() or request.args.get('client_id', type=int)
     preselect_platform = request.args.get('platform', '')
     return render_template('caption_generator.html', clients=all_clients,
                            platforms=PLATFORMS, preselect_client=preselect_client,
@@ -356,7 +380,8 @@ def caption_generator():
 @app.route('/api/generate-caption', methods=['POST'])
 def api_generate_caption():
     data = request.get_json()
-    client_id = data.get('client_id')
+    # HARD RULE 1: never trust client_id from the body for a client user.
+    client_id = enforce_client_id(data.get('client_id'))
     platform = data.get('platform')
     topic = data.get('topic', '').strip()
     extra = data.get('extra_context', '').strip()
@@ -401,6 +426,9 @@ def api_generate_caption():
 @app.route('/api/save-caption', methods=['POST'])
 def api_save_caption():
     data = request.get_json()
+    # HARD RULE 1: a client user's post is always created under THEIR client_id,
+    # never a forged one from the request body.
+    data['client_id'] = enforce_client_id(data.get('client_id'))
     required = ['client_id', 'platform', 'topic', 'caption']
     if not all(data.get(k) for k in required):
         return jsonify({'error': 'Missing required fields.'}), 400
@@ -415,13 +443,14 @@ def content_list():
     client_id = request.args.get('client_id', type=int)
     platform = request.args.get('platform', '')
     status = request.args.get('status', '')
-    posts = db.get_posts(
+    # scoped_posts imposes the client user's own client_id regardless of the filter.
+    posts = scoped_posts(
         client_id=client_id or None,
         platform=platform or None,
         status=status or None,
         limit=50
     )
-    all_clients = db.get_clients()
+    all_clients = scoped_clients()
     return render_template('content_list.html', posts=posts, clients=all_clients,
                            platforms=PLATFORMS, statuses=STATUSES,
                            filter_client=client_id, filter_platform=platform,
@@ -430,10 +459,12 @@ def content_list():
 
 @app.route('/content/new', methods=['GET', 'POST'])
 def content_new():
-    all_clients = db.get_clients()
+    all_clients = scoped_clients()
     if request.method == 'POST':
+        # HARD RULE 1: client user's client_id comes from the session, not the form.
+        submitted_cid = request.form.get('client_id', type=int)
         data = {
-            'client_id': int(request.form['client_id']),
+            'client_id': enforce_client_id(submitted_cid),
             'platform': request.form['platform'],
             'content_type': request.form.get('content_type', 'photo'),
             'topic': request.form['topic'].strip(),
@@ -462,6 +493,7 @@ def content_new():
 
 
 @app.route('/content/<int:post_id>')
+@require_content_access('post_id')
 def content_detail(post_id):
     post = db.get_post(post_id)
     if not post:
@@ -483,12 +515,13 @@ def content_detail(post_id):
 
 
 @app.route('/content/<int:post_id>/edit', methods=['GET', 'POST'])
+@require_content_access('post_id')
 def content_edit(post_id):
-    post = db.get_post(post_id)
-    if not post:
-        flash('Post not found.', 'error')
-        return redirect(url_for('content_list'))
-    all_clients = db.get_clients()
+    post = g.content_row   # loaded + scope-checked by the decorator
+    # Matrix: a client user may edit their own content only while NOT yet posted.
+    if current_scope() is not None and post.get('status') == 'posted':
+        abort(403)
+    all_clients = scoped_clients()
     if request.method == 'POST':
         data = {
             'topic': request.form['topic'].strip(),
@@ -508,6 +541,7 @@ def content_edit(post_id):
 
 
 @app.route('/content/<int:post_id>/status', methods=['POST'])
+@require_content_access('post_id')
 def content_status(post_id):
     new_status = request.form.get('status')
     notes = request.form.get('notes', '')
@@ -575,7 +609,13 @@ def webhook_test():
 
 
 @app.route('/content/<int:post_id>/delete', methods=['POST'])
+@require_content_access('post_id')
 def content_delete(post_id):
+    post = g.content_row
+    # Matrix: a client user may delete their own content only in draft/needs_review.
+    # (Stage 2 will replace this hard delete with soft-delete + trash + status rules.)
+    if current_scope() is not None and post.get('status') not in ('draft', 'needs_review'):
+        abort(403)
     db.delete_post(post_id)
     flash('Post deleted.', 'success')
     return redirect(url_for('content_list'))
@@ -585,7 +625,7 @@ def content_delete(post_id):
 
 @app.route('/scheduling')
 def scheduling():
-    scheduled = db.get_scheduled_posts()
+    scheduled = db.get_scheduled_posts(scope=current_scope())
     now = datetime.now()
     for p in scheduled:
         if p.get('scheduled_date'):
@@ -605,11 +645,11 @@ def scheduling():
 def performance():
     platform = request.args.get('platform', '')
     client_id = request.args.get('client_id', type=int)
-    all_clients = db.get_clients()
+    all_clients = scoped_clients()
 
-    # Only show posted posts
-    posted_posts = db.get_posts(platform=platform or None, client_id=client_id or None,
-                                 status='posted', limit=50)
+    # Only show posted posts; scoped_posts imposes the client user's own client_id.
+    posted_posts = scoped_posts(platform=platform or None, client_id=client_id or None,
+                                status='posted', limit=50)
     for p in posted_posts:
         metrics = db.get_performance(p['id'])
         if metrics:
@@ -628,6 +668,7 @@ def performance():
 
 
 @app.route('/api/performance/<int:post_id>', methods=['POST'])
+@require_content_access('post_id')
 def api_add_performance(post_id):
     data = request.get_json()
     db.add_performance(post_id, data)
@@ -809,13 +850,14 @@ def api_content_create():
 
 @app.route('/api/clients', methods=['GET'])
 def api_clients_list():
-    clients = db.get_clients()
+    clients = scoped_clients()
     return jsonify([{'id': c['id'], 'name': c['name'],
                      'description': c.get('description', ''),
                      'logo_color': c.get('logo_color', '')} for c in clients])
 
 
 @app.route('/api/client-config/<int:client_id>', methods=['GET'])
+@require_client_access('client_id')
 def api_client_config(client_id):
     client = db.get_client(client_id)
     if not client:
@@ -865,6 +907,7 @@ def trends():
 # ── Report ─────────────────────────────────────────────────────────────────────
 
 @app.route('/report')
+@roles_required('admin', 'manager')   # org-wide reports: not exposed to client users
 def report():
     end = datetime.now()
     start = end - timedelta(days=7)
@@ -874,6 +917,7 @@ def report():
 
 
 @app.route('/api/generate-report', methods=['POST'])
+@roles_required('admin', 'manager')
 def api_generate_report():
     data = request.get_json()
     start_date = data.get('start_date', '')

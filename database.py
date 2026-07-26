@@ -502,41 +502,61 @@ def add_performance(post_id, data):
     conn.close()
 
 
-def get_dashboard_stats():
+def get_dashboard_stats(scope=None):
+    """scope = a client_id to restrict every aggregate to that tenant (client
+    portal), or None for the org-wide admin/manager view."""
     conn = get_db()
+    cw = ' WHERE client_id = ?' if scope is not None else ''      # content_posts (no alias)
+    pw = ' AND p.client_id = ?' if scope is not None else ''      # aliased p.*
+    one = (scope,) if scope is not None else ()
 
     status_counts = {r['status']: r['cnt'] for r in conn.execute(
-        "SELECT status, COUNT(*) AS cnt FROM content_posts GROUP BY status"
+        "SELECT status, COUNT(*) AS cnt FROM content_posts" + cw + " GROUP BY status", one
     ).fetchall()}
 
     platform_counts = [dict(r) for r in conn.execute(
-        "SELECT platform, COUNT(*) AS cnt FROM content_posts GROUP BY platform ORDER BY cnt DESC"
+        "SELECT platform, COUNT(*) AS cnt FROM content_posts" + cw + " GROUP BY platform ORDER BY cnt DESC", one
     ).fetchall()]
 
-    client_counts = [dict(r) for r in conn.execute(
-        "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM clients c LEFT JOIN content_posts p ON p.client_id=c.id GROUP BY c.id"
+    if scope is not None:
+        client_counts = [dict(r) for r in conn.execute(
+            "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM clients c "
+            "LEFT JOIN content_posts p ON p.client_id=c.id WHERE c.id=? GROUP BY c.id", (scope,)
+        ).fetchall()]
+    else:
+        client_counts = [dict(r) for r in conn.execute(
+            "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM clients c "
+            "LEFT JOIN content_posts p ON p.client_id=c.id GROUP BY c.id"
+        ).fetchall()]
+
+    upcoming = [dict(r) for r in conn.execute(
+        "SELECT p.*, c.name AS client_name, c.logo_color "
+        "FROM content_posts p JOIN clients c ON c.id=p.client_id "
+        "WHERE p.status IN ('approved','scheduled') AND p.scheduled_date IS NOT NULL" + pw +
+        " ORDER BY p.scheduled_date ASC LIMIT 5", one
     ).fetchall()]
 
-    upcoming = [dict(r) for r in conn.execute('''
-        SELECT p.*, c.name AS client_name, c.logo_color
-        FROM content_posts p JOIN clients c ON c.id=p.client_id
-        WHERE p.status IN ('approved','scheduled') AND p.scheduled_date IS NOT NULL
-        ORDER BY p.scheduled_date ASC LIMIT 5
-    ''').fetchall()]
+    recent = [dict(r) for r in conn.execute(
+        "SELECT p.*, c.name AS client_name, c.logo_color "
+        "FROM content_posts p JOIN clients c ON c.id=p.client_id" +
+        (" WHERE p.client_id = ?" if scope is not None else "") +
+        " ORDER BY p.updated_at DESC LIMIT 6", one
+    ).fetchall()]
 
-    recent = [dict(r) for r in conn.execute('''
-        SELECT p.*, c.name AS client_name, c.logo_color
-        FROM content_posts p JOIN clients c ON c.id=p.client_id
-        ORDER BY p.updated_at DESC LIMIT 6
-    ''').fetchall()]
+    total_posts = conn.execute("SELECT COUNT(*) FROM content_posts" + cw, one).fetchone()[0]
 
-    total_posts = conn.execute('SELECT COUNT(*) FROM content_posts').fetchone()[0]
-
-    perf = conn.execute('''
-        SELECT SUM(likes) AS likes, SUM(comments) AS comments, SUM(shares) AS shares,
-               SUM(views) AS views, SUM(reach) AS reach, SUM(impressions) AS impressions
-        FROM performance_metrics
-    ''').fetchone()
+    if scope is not None:
+        perf = conn.execute(
+            "SELECT SUM(m.likes) AS likes, SUM(m.comments) AS comments, SUM(m.shares) AS shares, "
+            "SUM(m.views) AS views, SUM(m.reach) AS reach, SUM(m.impressions) AS impressions "
+            "FROM performance_metrics m JOIN content_posts p ON p.id=m.post_id WHERE p.client_id = ?", (scope,)
+        ).fetchone()
+    else:
+        perf = conn.execute(
+            "SELECT SUM(likes) AS likes, SUM(comments) AS comments, SUM(shares) AS shares, "
+            "SUM(views) AS views, SUM(reach) AS reach, SUM(impressions) AS impressions "
+            "FROM performance_metrics"
+        ).fetchone()
 
     conn.close()
     return {
@@ -552,14 +572,16 @@ def get_dashboard_stats():
     }
 
 
-def get_scheduled_posts():
+def get_scheduled_posts(scope=None):
     conn = get_db()
-    rows = conn.execute('''
-        SELECT p.*, c.name AS client_name, c.logo_color
-        FROM content_posts p JOIN clients c ON c.id=p.client_id
-        WHERE p.scheduled_date IS NOT NULL
-        ORDER BY p.scheduled_date ASC
-    ''').fetchall()
+    rows = conn.execute(
+        "SELECT p.*, c.name AS client_name, c.logo_color "
+        "FROM content_posts p JOIN clients c ON c.id=p.client_id "
+        "WHERE p.scheduled_date IS NOT NULL" +
+        (" AND p.client_id = ?" if scope is not None else "") +
+        " ORDER BY p.scheduled_date ASC",
+        (scope,) if scope is not None else ()
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
