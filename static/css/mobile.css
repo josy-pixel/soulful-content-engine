@@ -7,7 +7,10 @@
 /* ---------- 1. Base ---------- */
 html {
   -webkit-text-size-adjust: 100%;   /* stop iOS resizing text on rotate */
+  overflow-x: hidden;               /* the viewport scroller must not move sideways */
 }
+
+html, body { max-width: 100%; }
 
 body {
   overflow-x: hidden;               /* kill horizontal scroll */
@@ -16,6 +19,12 @@ body {
 
 /* No element may push the page wider than the screen */
 img, video, table, pre { max-width: 100%; }
+
+/* Contain any stray wide child inside the content column (clip, not hidden,
+   so the sticky topbar keeps working). Long words wrap instead of overflowing. */
+.content-area { max-width: 100%; overflow-x: clip; }
+.content-area * { min-width: 0; }
+.card, .stat-card { overflow-wrap: anywhere; }
 
 /* iOS: 100vh is wrong in Safari — use dynamic viewport height */
 .sidebar, .main-content { min-height: 100vh; min-height: 100dvh; }
