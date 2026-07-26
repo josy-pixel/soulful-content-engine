@@ -73,9 +73,9 @@
 
           <div class="mb-3">
             <label class="form-label fw-semibold">Media URL <small class="text-muted">(image / video — or pick from gallery below)</small></label>
-            <input type="url" name="image_url" id="imageUrlInput" class="form-control"
+            <input type="text" name="image_url" id="imageUrlInput" class="form-control"
                    value="{{ post.image_url if post else '' }}"
-                   placeholder="https://example.com/image.jpg or video.mp4">
+                   placeholder="/uploads/… או https://example.com/image.jpg">
           </div>
 
           <!-- Media picker from client gallery -->
