@@ -1,0 +1,1569 @@
+﻿{
+    "flow":  [
+                 {
+                     "id":  1,
+                     "mapper":  {
+
+                                },
+                     "module":  "gateway:CustomWebHook",
+                     "version":  1,
+                     "metadata":  {
+                                      "restore":  {
+                                                      "parameters":  {
+                                                                         "hook":  {
+                                                                                      "data":  {
+                                                                                                   "editable":  "true"
+                                                                                               },
+                                                                                      "label":  "My gateway-webhook webhook"
+                                                                                  }
+                                                                     }
+                                                  },
+                                      "designer":  {
+                                                       "x":  -700,
+                                                       "y":  0
+                                                   },
+                                      "parameters":  [
+                                                         {
+                                                             "name":  "hook",
+                                                             "type":  "hook:gateway-webhook",
+                                                             "label":  "Webhook",
+                                                             "required":  true
+                                                         },
+                                                         {
+                                                             "name":  "maxResults",
+                                                             "type":  "number",
+                                                             "label":  "Maximum number of results"
+                                                         }
+                                                     ]
+                                  },
+                     "parameters":  {
+                                        "hook":  2956080,
+                                        "maxResults":  1
+                                    }
+                 },
+                 {
+                     "id":  2,
+                     "mapper":  null,
+                     "module":  "builtin:BasicRouter",
+                     "routes":  [
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  3,
+                                                         "filter":  {
+                                                                        "name":  "Instagram Photo",
+                                                                        "conditions":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "a":  "{{1.platform}}",
+                                                                                                   "b":  "instagram",
+                                                                                                   "o":  "text:equal"
+                                                                                               },
+                                                                                               {
+                                                                                                   "a":  "{{1.content_type}}",
+                                                                                                   "b":  "photo",
+                                                                                                   "o":  "text:equal"
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                    },
+                                                         "mapper":  {
+                                                                        "ca":  "",
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/17841472300266327/media",
+                                                                        "data":  "{\"image_url\":\"{{1.image_url}}\",\"caption\":\"{{1.caption}} {{1.hashtags}}\"}",
+                                                                        "gzip":  true,
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "useMtls":  false,
+                                                                        "authPass":  "",
+                                                                        "authUser":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "shareCookies":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "useQuerystring":  false,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "expect":  [
+                                                                                         {
+                                                                                             "name":  "url",
+                                                                                             "type":  "url",
+                                                                                             "label":  "URL",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "serializeUrl",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Serialize URL",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "method",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Method",
+                                                                                             "required":  true,
+                                                                                             "validate":  {
+                                                                                                              "enum":  [
+                                                                                                                           "get",
+                                                                                                                           "head",
+                                                                                                                           "post",
+                                                                                                                           "put",
+                                                                                                                           "patch",
+                                                                                                                           "delete",
+                                                                                                                           "options"
+                                                                                                                       ]
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "headers",
+                                                                                             "spec":  [
+                                                                                                          {
+                                                                                                              "name":  "name",
+                                                                                                              "type":  "text",
+                                                                                                              "label":  "Name",
+                                                                                                              "required":  true
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "value",
+                                                                                                              "type":  "text",
+                                                                                                              "label":  "Value"
+                                                                                                          }
+                                                                                                      ],
+                                                                                             "type":  "array",
+                                                                                             "label":  "Headers"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "qs",
+                                                                                             "spec":  [
+                                                                                                          {
+                                                                                                              "name":  "name",
+                                                                                                              "type":  "text",
+                                                                                                              "label":  "Name",
+                                                                                                              "required":  true
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "value",
+                                                                                                              "type":  "text",
+                                                                                                              "label":  "Value"
+                                                                                                          }
+                                                                                                      ],
+                                                                                             "type":  "array",
+                                                                                             "label":  "Query String"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "bodyType",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Body type",
+                                                                                             "validate":  {
+                                                                                                              "enum":  [
+                                                                                                                           "raw",
+                                                                                                                           "x_www_form_urlencoded",
+                                                                                                                           "multipart_form_data"
+                                                                                                                       ]
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "parseResponse",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Parse response",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "authUser",
+                                                                                             "type":  "text",
+                                                                                             "label":  "User name"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "authPass",
+                                                                                             "type":  "password",
+                                                                                             "label":  "Password"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "timeout",
+                                                                                             "type":  "uinteger",
+                                                                                             "label":  "Timeout",
+                                                                                             "validate":  {
+                                                                                                              "max":  300,
+                                                                                                              "min":  1
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "shareCookies",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Share cookies with other HTTP modules",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "ca",
+                                                                                             "type":  "cert",
+                                                                                             "label":  "Self-signed certificate"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "rejectUnauthorized",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Reject connections that are using unverified (self-signed) certificates",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "followRedirect",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Follow redirect",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "useQuerystring",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Disable serialization of multiple same query string keys as arrays",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "gzip",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Request compressed content",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "useMtls",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Use Mutual TLS",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "contentType",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Content type",
+                                                                                             "validate":  {
+                                                                                                              "enum":  [
+                                                                                                                           "text/plain",
+                                                                                                                           "application/json",
+                                                                                                                           "application/xml",
+                                                                                                                           "text/xml",
+                                                                                                                           "text/html",
+                                                                                                                           "custom"
+                                                                                                                       ]
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "data",
+                                                                                             "type":  "buffer",
+                                                                                             "label":  "Request content"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "followAllRedirects",
+                                                                                             "type":  "boolean",
+                                                                                             "label":  "Follow all redirect",
+                                                                                             "required":  true
+                                                                                         }
+                                                                                     ],
+                                                                          "restore":  {
+                                                                                          "expect":  {
+                                                                                                         "qs":  {
+                                                                                                                    "mode":  "chose",
+                                                                                                                    "items":  [
+                                                                                                                                  null
+                                                                                                                              ]
+                                                                                                                },
+                                                                                                         "method":  {
+                                                                                                                        "mode":  "chose",
+                                                                                                                        "label":  "POST"
+                                                                                                                    },
+                                                                                                         "headers":  {
+                                                                                                                         "mode":  "chose",
+                                                                                                                         "items":  [
+                                                                                                                                       null
+                                                                                                                                   ]
+                                                                                                                     },
+                                                                                                         "bodyType":  {
+                                                                                                                          "label":  "Raw"
+                                                                                                                      },
+                                                                                                         "contentType":  {
+                                                                                                                             "label":  "JSON (application/json)"
+                                                                                                                         }
+                                                                                                     }
+                                                                                      },
+                                                                          "designer":  {
+                                                                                           "x":  -100,
+                                                                                           "y":  -500
+                                                                                       },
+                                                                          "parameters":  [
+                                                                                             {
+                                                                                                 "name":  "handleErrors",
+                                                                                                 "type":  "boolean",
+                                                                                                 "label":  "Evaluate all states as errors (except for 2xx and 3xx )",
+                                                                                                 "required":  true
+                                                                                             },
+                                                                                             {
+                                                                                                 "name":  "useNewZLibDeCompress",
+                                                                                                 "type":  "hidden"
+                                                                                             }
+                                                                                         ]
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false,
+                                                                            "useNewZLibDeCompress":  true
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  4,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/17841472300266327/media_publish",
+                                                                        "data":  "{\"creation_id\":\"{{3.data.id}}\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  200,
+                                                                                           "y":  -500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  5,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "{{1.callback_url}}",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{4.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  500,
+                                                                                           "y":  -500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  7,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "metric",
+                                                                                       "value":  "impressions,reach,saved"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "period",
+                                                                                       "value":  "lifetime"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{4.data.id}}/insights",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1100,
+                                                                                           "y":  -500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  8,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "fields",
+                                                                                       "value":  "like_count,comments_count"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{4.data.id}}",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1400,
+                                                                                           "y":  -500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  9,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "https://soulful-content-engine.onrender.com/api/performance",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{8.data.like_count}}\",\"comments\":\"{{8.data.comments_count}}\",\"impressions\":\"{{7.data.data[1].values[1].value}}\",\"reach\":\"{{7.data.data[2].values[1].value}}\",\"saves\":\"{{7.data.data[3].values[1].value}}\",\"shares\":0,\"platform\":\"instagram\",\"content_type\":\"photo\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1700,
+                                                                                           "y":  -500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  35,
+                                                         "mapper":  {
+                                                                        "photos":  [
+                                                                                       {
+                                                                                           "url":  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=1080\u0026q=80",
+                                                                                           "type":  "url",
+                                                                                           "caption":  "{{1.image_url}}"
+                                                                                       }
+                                                                                   ],
+                                                                        "message":  "{{1.caption}} {{1.hashtags}}",
+                                                                        "page_id":  "877081225487783"
+                                                                    },
+                                                         "module":  "facebook-pages:CreatePostWithPhotos",
+                                                         "version":  6,
+                                                         "metadata":  {
+                                                                          "expect":  [
+                                                                                         {
+                                                                                             "name":  "page_id",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Page",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "photos",
+                                                                                             "spec":  [
+                                                                                                          {
+                                                                                                              "name":  "type",
+                                                                                                              "type":  "select",
+                                                                                                              "label":  "Image input type",
+                                                                                                              "options":  [
+                                                                                                                              {
+                                                                                                                                  "label":  "Map from previous module",
+                                                                                                                                  "value":  "data",
+                                                                                                                                  "nested":  [
+                                                                                                                                                 {
+                                                                                                                                                     "name":  "fileName",
+                                                                                                                                                     "type":  "filename",
+                                                                                                                                                     "label":  "File name",
+                                                                                                                                                     "required":  true,
+                                                                                                                                                     "semantic":  "file:name"
+                                                                                                                                                 },
+                                                                                                                                                 {
+                                                                                                                                                     "name":  "data",
+                                                                                                                                                     "type":  "buffer",
+                                                                                                                                                     "label":  "Data",
+                                                                                                                                                     "required":  true,
+                                                                                                                                                     "semantic":  "file:data"
+                                                                                                                                                 }
+                                                                                                                                             ],
+                                                                                                                                  "default":  true
+                                                                                                                              },
+                                                                                                                              {
+                                                                                                                                  "label":  "Use a photo URL",
+                                                                                                                                  "value":  "url",
+                                                                                                                                  "nested":  [
+                                                                                                                                                 {
+                                                                                                                                                     "name":  "url",
+                                                                                                                                                     "type":  "url",
+                                                                                                                                                     "label":  "URL",
+                                                                                                                                                     "required":  true
+                                                                                                                                                 }
+                                                                                                                                             ]
+                                                                                                                              }
+                                                                                                                          ],
+                                                                                                              "required":  true
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "caption",
+                                                                                                              "type":  "text",
+                                                                                                              "label":  "Image caption"
+                                                                                                          }
+                                                                                                      ],
+                                                                                             "type":  "array",
+                                                                                             "label":  "Photos",
+                                                                                             "required":  true,
+                                                                                             "validate":  {
+                                                                                                              "maxItems":  30,
+                                                                                                              "minItems":  1
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "message",
+                                                                                             "type":  "text",
+                                                                                             "label":  "Post caption"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "date",
+                                                                                             "type":  "date",
+                                                                                             "label":  "Publish date"
+                                                                                         }
+                                                                                     ],
+                                                                          "restore":  {
+                                                                                          "expect":  {
+                                                                                                         "photos":  {
+                                                                                                                        "mode":  "chose",
+                                                                                                                        "items":  [
+                                                                                                                                      {
+                                                                                                                                          "type":  {
+                                                                                                                                                       "mode":  "chose",
+                                                                                                                                                       "label":  "Use a photo URL"
+                                                                                                                                                   }
+                                                                                                                                      }
+                                                                                                                                  ]
+                                                                                                                    },
+                                                                                                         "page_id":  {
+                                                                                                                         "mode":  "chose",
+                                                                                                                         "label":  "Synapseai"
+                                                                                                                     }
+                                                                                                     },
+                                                                                          "parameters":  {
+                                                                                                             "__IMTCONN__":  {
+                                                                                                                                 "data":  {
+                                                                                                                                              "scoped":  "true",
+                                                                                                                                              "connection":  "facebook"
+                                                                                                                                          },
+                                                                                                                                 "label":  "Synapseai (Yuval Khodus)"
+                                                                                                                             }
+                                                                                                         }
+                                                                                      },
+                                                                          "designer":  {
+                                                                                           "x":  -78,
+                                                                                           "y":  -239
+                                                                                       },
+                                                                          "parameters":  [
+                                                                                             {
+                                                                                                 "name":  "__IMTCONN__",
+                                                                                                 "type":  "account:facebook",
+                                                                                                 "label":  "Connection",
+                                                                                                 "required":  true
+                                                                                             }
+                                                                                         ]
+                                                                      },
+                                                         "parameters":  {
+                                                                            "__IMTCONN__":  9184422
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  10,
+                                                         "filter":  {
+                                                                        "name":  "Instagram Video / Reel",
+                                                                        "conditions":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "a":  "{{1.platform}}",
+                                                                                                   "b":  "instagram",
+                                                                                                   "o":  "text:equal"
+                                                                                               },
+                                                                                               {
+                                                                                                   "a":  "{{1.content_type}}",
+                                                                                                   "b":  "video",
+                                                                                                   "o":  "text:equal"
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                    },
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/17841472300266327/media",
+                                                                        "data":  "{\"media_type\":\"REELS\",\"video_url\":\"{{1.image_url}}\",\"caption\":\"{{1.caption}} {{1.hashtags}}\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  175,
+                                                                                           "y":  -262
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  12,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "fields",
+                                                                                       "value":  "status_code"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{10.data.id}}",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  500,
+                                                                                           "y":  -250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  13,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/17841472300266327/media_publish",
+                                                                        "data":  "{\"creation_id\":\"{{10.data.id}}\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  800,
+                                                                                           "y":  -250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  14,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "{{1.callback_url}}",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{13.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1100,
+                                                                                           "y":  -250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  16,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "metric",
+                                                                                       "value":  "impressions,reach,saved,plays"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "period",
+                                                                                       "value":  "lifetime"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{13.data.id}}/insights",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1700,
+                                                                                           "y":  -250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  17,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "fields",
+                                                                                       "value":  "like_count,comments_count"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{13.data.id}}",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  2000,
+                                                                                           "y":  -250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  18,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "https://soulful-content-engine.onrender.com/api/performance",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{17.data.like_count}}\",\"comments\":\"{{17.data.comments_count}}\",\"impressions\":\"{{16.data.data[1].values[1].value}}\",\"reach\":\"{{16.data.data[2].values[1].value}}\",\"saves\":\"{{16.data.data[3].values[1].value}}\",\"views\":\"{{16.data.data[4].values[1].value}}\",\"shares\":0,\"platform\":\"instagram\",\"content_type\":\"video\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  2300,
+                                                                                           "y":  -250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  19,
+                                                         "filter":  {
+                                                                        "name":  "Instagram Story",
+                                                                        "conditions":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "a":  "{{1.platform}}",
+                                                                                                   "b":  "instagram",
+                                                                                                   "o":  "text:equal"
+                                                                                               },
+                                                                                               {
+                                                                                                   "a":  "{{1.content_type}}",
+                                                                                                   "b":  "story",
+                                                                                                   "o":  "text:equal"
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                    },
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/17841472300266327/media",
+                                                                        "data":  "{\"media_type\":\"STORIES\",\"image_url\":\"{{1.image_url}}\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  -100,
+                                                                                           "y":  0
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  20,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/17841472300266327/media_publish",
+                                                                        "data":  "{\"creation_id\":\"{{19.data.id}}\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  200,
+                                                                                           "y":  0
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  21,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "{{1.callback_url}}",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{20.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  500,
+                                                                                           "y":  0
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  22,
+                                                         "filter":  {
+                                                                        "name":  "Facebook Photo",
+                                                                        "conditions":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "a":  "{{1.platform}}",
+                                                                                                   "b":  "facebook",
+                                                                                                   "o":  "text:equal"
+                                                                                               },
+                                                                                               {
+                                                                                                   "a":  "{{1.content_type}}",
+                                                                                                   "b":  "photo",
+                                                                                                   "o":  "text:equal"
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                    },
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/587235154463076/photos",
+                                                                        "data":  "{\"url\":\"{{1.image_url}}\",\"message\":\"{{1.caption}} {{1.hashtags}}\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  -100,
+                                                                                           "y":  250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  23,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "{{1.callback_url}}",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{22.data.post_id}}\",\"secret\":\"Soulful2026!\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  200,
+                                                                                           "y":  250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  25,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "fields",
+                                                                                       "value":  "likes.summary(true),comments.summary(true),shares"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{22.data.post_id}}",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  800,
+                                                                                           "y":  250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  26,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "metric",
+                                                                                       "value":  "post_impressions,post_reach,post_impressions_unique"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{22.data.post_id}}/insights",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1100,
+                                                                                           "y":  250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  27,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "https://soulful-content-engine.onrender.com/api/performance",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{25.data.likes.summary.total_count}}\",\"comments\":\"{{25.data.comments.summary.total_count}}\",\"shares\":\"{{25.data.shares.count}}\",\"impressions\":\"{{26.data.data[1].values[1].value}}\",\"reach\":\"{{26.data.data[2].values[1].value}}\",\"saves\":0,\"platform\":\"facebook\",\"content_type\":\"photo\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1400,
+                                                                                           "y":  250
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  28,
+                                                         "filter":  {
+                                                                        "name":  "Facebook Video",
+                                                                        "conditions":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "a":  "{{1.platform}}",
+                                                                                                   "b":  "facebook",
+                                                                                                   "o":  "text:equal"
+                                                                                               },
+                                                                                               {
+                                                                                                   "a":  "{{1.content_type}}",
+                                                                                                   "b":  "video",
+                                                                                                   "o":  "text:equal"
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                    },
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/587235154463076/videos",
+                                                                        "data":  "{\"file_url\":\"{{1.image_url}}\",\"description\":\"{{1.caption}} {{1.hashtags}}\",\"published\":true}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  -100,
+                                                                                           "y":  500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  30,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "{{1.callback_url}}",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"status\":\"posted\",\"platform_post_id\":\"{{28.data.id}}\",\"secret\":\"Soulful2026!\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  500,
+                                                                                           "y":  500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  32,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "fields",
+                                                                                       "value":  "likes.summary(true),comments.summary(true),shares,views"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{28.data.id}}",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1100,
+                                                                                           "y":  500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  33,
+                                                         "mapper":  {
+                                                                        "qs":  [
+                                                                                   {
+                                                                                       "name":  "metric",
+                                                                                       "value":  "total_video_impressions,total_video_reach,total_video_views"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "access_token",
+                                                                                       "value":  "YOUR_META_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                                        "url":  "https://graph.facebook.com/v19.0/{{28.data.id}}/video_insights",
+                                                                        "data":  "",
+                                                                        "method":  "get",
+                                                                        "headers":  [
+
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  true,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1400,
+                                                                                           "y":  500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     },
+                                                     {
+                                                         "id":  34,
+                                                         "mapper":  {
+                                                                        "qs":  [
+
+                                                                               ],
+                                                                        "url":  "https://soulful-content-engine.onrender.com/api/performance",
+                                                                        "data":  "{\"post_id\":\"{{1.post_id}}\",\"secret\":\"Soulful2026!\",\"likes\":\"{{32.data.likes.summary.total_count}}\",\"comments\":\"{{32.data.comments.summary.total_count}}\",\"shares\":\"{{32.data.shares.count}}\",\"views\":\"{{33.data.data[3].values[1].value}}\",\"impressions\":\"{{33.data.data[1].values[1].value}}\",\"reach\":\"{{33.data.data[2].values[1].value}}\",\"saves\":0,\"platform\":\"facebook\",\"content_type\":\"video\",\"notes\":\"Auto-fetched 24h post-publish\"}",
+                                                                        "method":  "post",
+                                                                        "headers":  [
+                                                                                        {
+                                                                                            "name":  "Content-Type",
+                                                                                            "value":  "application/json"
+                                                                                        }
+                                                                                    ],
+                                                                        "timeout":  "",
+                                                                        "bodyType":  "raw",
+                                                                        "contentType":  "application/json",
+                                                                        "serializeUrl":  false,
+                                                                        "parseResponse":  false,
+                                                                        "followRedirect":  true,
+                                                                        "followAllRedirects":  false,
+                                                                        "rejectUnauthorized":  true
+                                                                    },
+                                                         "module":  "http:ActionSendData",
+                                                         "version":  3,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  1700,
+                                                                                           "y":  500
+                                                                                       }
+                                                                      },
+                                                         "parameters":  {
+                                                                            "handleErrors":  false
+                                                                        }
+                                                     }
+                                                 ]
+                                    }
+                                ],
+                     "version":  1,
+                     "metadata":  {
+                                      "designer":  {
+                                                       "x":  -400,
+                                                       "y":  0
+                                                   }
+                                  },
+                     "parameters":  {
+
+                                    }
+                 }
+             ],
+    "name":  "Soulful Content Engine - Auto Publisher v3",
+    "metadata":  {
+                     "instant":  true,
+                     "version":  1,
+                     "designer":  {
+                                      "orphans":  [
+
+                                                  ],
+                                      "samples":  {
+                                                      "1":  {
+                                                                "hook":  "",
+                                                                "event":  "post_approved",
+                                                                "topic":  "אוטומציה",
+                                                                "client":  "yuval khodus",
+                                                                "caption":  "איך להפוך למלך האוטומציה",
+                                                                "post_id":  11,
+                                                                "hashtags":  "",
+                                                                "platform":  "facebook",
+                                                                "image_url":  "/uploads/3/5fd5db9f39364bb9aae499e7ed5a5413.jpg",
+                                                                "approved_at":  "2026-07-23T13:30:11.639177",
+                                                                "callback_url":  "https://soulful-content-engine.onrender.com/webhook/publish",
+                                                                "content_type":  "video",
+                                                                "scheduled_date":  "2026-07-23T17:29",
+                                                                "performance_url":  "https://soulful-content-engine.onrender.com/api/performance"
+                                                            },
+                                                      "35":  {
+                                                                 "id":  "877081225487783_122172661892984768",
+                                                                 "post_supports_client_mutation_id":  true
+                                                             }
+                                                  }
+                                  },
+                     "scenario":  {
+                                      "dlq":  false,
+                                      "slots":  null,
+                                      "dataloss":  false,
+                                      "maxErrors":  3,
+                                      "autoCommit":  true,
+                                      "roundtrips":  1,
+                                      "sequential":  false,
+                                      "confidential":  false,
+                                      "freshVariables":  false,
+                                      "autoCommitTriggerLast":  true
+                                  }
+                 }
+}

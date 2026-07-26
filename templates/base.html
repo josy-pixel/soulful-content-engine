@@ -19,12 +19,15 @@
   </div>
 
   <nav class="sidebar-nav">
+    {% set is_client = current_user.is_authenticated and current_user.role == 'client' %}
     <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
       <i class="bi bi-grid-1x2-fill"></i> Dashboard
     </a>
+    {% if not is_client %}
     <a href="{{ url_for('clients') }}" class="nav-link {% if 'client' in (request.endpoint or '') %}active{% endif %}">
       <i class="bi bi-people-fill"></i> Clients
     </a>
+    {% endif %}
     <a href="{{ url_for('caption_generator') }}" class="nav-link {% if request.endpoint == 'caption_generator' %}active{% endif %}">
       <i class="bi bi-magic"></i> Caption Generator
     </a>
@@ -40,9 +43,16 @@
     <a href="{{ url_for('trends') }}" class="nav-link {% if request.endpoint == 'trends' %}active{% endif %}">
       <i class="bi bi-stars"></i> Trends
     </a>
+    {% if not is_client %}
     <a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint == 'report' %}active{% endif %}">
       <i class="bi bi-file-earmark-bar-graph-fill"></i> Reports
     </a>
+    {% endif %}
+    {% if current_user.is_authenticated and current_user.role == 'admin' %}
+    <a href="{{ url_for('users') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('users') %}active{% endif %}">
+      <i class="bi bi-person-badge-fill"></i> Users
+    </a>
+    {% endif %}
   </nav>
 
   <div class="sidebar-footer">
@@ -62,7 +72,15 @@
       <i class="bi bi-list"></i>
     </button>
     <div class="topbar-title">{% block page_title %}{% endblock %}</div>
-    <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+    <div class="topbar-actions">
+      {% block topbar_actions %}{% endblock %}
+      {% if current_client %}
+      <div class="topbar-identity" title="{{ current_client.name }}">
+        <span class="topbar-identity-avatar">{{ current_client.name[:1]|upper }}</span>
+        <span class="topbar-identity-name">{{ current_client.name }}</span>
+      </div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="content-area">

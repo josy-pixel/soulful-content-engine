@@ -16,7 +16,7 @@ import security
 from security import (current_scope, enforce_client_id, require_content_access,
                      require_client_access, scoped_posts, scoped_clients, roles_required)
 from flask import abort, g
-from flask_login import login_user
+from flask_login import login_user, current_user
 from werkzeug.security import generate_password_hash
 import hashlib
 
@@ -131,6 +131,17 @@ def healthz():
 
 
 # ── Dashboard ──────────────────────────────────────────────────────────────────
+
+@app.context_processor
+def inject_user_scope():
+    """Expose the client user's own client record to every template so the
+    sidebar/topbar can render the portal identity. None for admin/manager."""
+    cc = None
+    if getattr(current_user, 'is_authenticated', False) and \
+       getattr(current_user, 'role', None) == 'client':
+        cc = db.get_client(current_user.client_id)
+    return {'current_client': cc}
+
 
 @app.route('/')
 def dashboard():

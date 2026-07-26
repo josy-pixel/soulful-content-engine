@@ -1,0 +1,479 @@
+﻿{
+    "flow":  [
+                 {
+                     "id":  1,
+                     "mapper":  {
+
+                                },
+                     "module":  "gateway:CustomWebHook",
+                     "version":  1,
+                     "metadata":  {
+                                      "restore":  {
+                                                      "parameters":  {
+                                                                         "hook":  {
+                                                                                      "data":  {
+                                                                                                   "editable":  "true"
+                                                                                               },
+                                                                                      "label":  "My gateway-webhook webhook"
+                                                                                  }
+                                                                     }
+                                                  },
+                                      "designer":  {
+                                                       "x":  -700,
+                                                       "y":  0
+                                                   },
+                                      "parameters":  [
+                                                         {
+                                                             "name":  "hook",
+                                                             "type":  "hook:gateway-webhook",
+                                                             "label":  "Webhook",
+                                                             "required":  true
+                                                         },
+                                                         {
+                                                             "name":  "maxResults",
+                                                             "type":  "number",
+                                                             "label":  "Maximum number of results"
+                                                         }
+                                                     ]
+                                  },
+                     "parameters":  {
+                                        "hook":  2956080,
+                                        "maxResults":  1
+                                    }
+                 },
+                 {
+                     "id":  2,
+                     "mapper":  null,
+                     "module":  "builtin:BasicRouter",
+                     "routes":  [
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  35,
+                                                         "filter":  {
+                                                                        "name":  "Facebook",
+                                                                        "conditions":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "a":  "{{1.platform}}",
+                                                                                                   "b":  "facebook",
+                                                                                                   "o":  "text:equal"
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                    },
+                                                         "mapper":  {
+                                                                        "photos":  [
+                                                                                       {
+                                                                                           "url":  "https://soulful-content-engine.onrender.com{{1.image_url}}",
+                                                                                           "type":  "url",
+                                                                                           "caption":  "{{1.caption}} {{1.hashtags}}"
+                                                                                       }
+                                                                                   ],
+                                                                        "message":  "{{1.caption}} {{1.hashtags}}",
+                                                                        "page_id":  "877081225487783"
+                                                                    },
+                                                         "module":  "facebook-pages:CreatePostWithPhotos",
+                                                         "version":  6,
+                                                         "metadata":  {
+                                                                          "expect":  [
+                                                                                         {
+                                                                                             "name":  "page_id",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Page",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "photos",
+                                                                                             "spec":  [
+                                                                                                          {
+                                                                                                              "name":  "type",
+                                                                                                              "type":  "select",
+                                                                                                              "label":  "Image input type",
+                                                                                                              "options":  [
+                                                                                                                              {
+                                                                                                                                  "label":  "Map from previous module",
+                                                                                                                                  "value":  "data",
+                                                                                                                                  "nested":  [
+                                                                                                                                                 {
+                                                                                                                                                     "name":  "fileName",
+                                                                                                                                                     "type":  "filename",
+                                                                                                                                                     "label":  "File name",
+                                                                                                                                                     "required":  true,
+                                                                                                                                                     "semantic":  "file:name"
+                                                                                                                                                 },
+                                                                                                                                                 {
+                                                                                                                                                     "name":  "data",
+                                                                                                                                                     "type":  "buffer",
+                                                                                                                                                     "label":  "Data",
+                                                                                                                                                     "required":  true,
+                                                                                                                                                     "semantic":  "file:data"
+                                                                                                                                                 }
+                                                                                                                                             ],
+                                                                                                                                  "default":  true
+                                                                                                                              },
+                                                                                                                              {
+                                                                                                                                  "label":  "Use a photo URL",
+                                                                                                                                  "value":  "url",
+                                                                                                                                  "nested":  [
+                                                                                                                                                 {
+                                                                                                                                                     "name":  "url",
+                                                                                                                                                     "type":  "url",
+                                                                                                                                                     "label":  "URL",
+                                                                                                                                                     "required":  true
+                                                                                                                                                 }
+                                                                                                                                             ]
+                                                                                                                              }
+                                                                                                                          ],
+                                                                                                              "required":  true
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "caption",
+                                                                                                              "type":  "text",
+                                                                                                              "label":  "Image caption"
+                                                                                                          }
+                                                                                                      ],
+                                                                                             "type":  "array",
+                                                                                             "label":  "Photos",
+                                                                                             "required":  true,
+                                                                                             "validate":  {
+                                                                                                              "maxItems":  30,
+                                                                                                              "minItems":  1
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "message",
+                                                                                             "type":  "text",
+                                                                                             "label":  "Post caption"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "date",
+                                                                                             "type":  "date",
+                                                                                             "label":  "Publish date"
+                                                                                         }
+                                                                                     ],
+                                                                          "restore":  {
+                                                                                          "expect":  {
+                                                                                                         "photos":  {
+                                                                                                                        "mode":  "chose",
+                                                                                                                        "items":  [
+                                                                                                                                      {
+                                                                                                                                          "type":  {
+                                                                                                                                                       "mode":  "chose",
+                                                                                                                                                       "label":  "Use a photo URL"
+                                                                                                                                                   }
+                                                                                                                                      }
+                                                                                                                                  ]
+                                                                                                                    },
+                                                                                                         "page_id":  {
+                                                                                                                         "mode":  "chose",
+                                                                                                                         "label":  "Synapseai"
+                                                                                                                     }
+                                                                                                     },
+                                                                                          "parameters":  {
+                                                                                                             "__IMTCONN__":  {
+                                                                                                                                 "data":  {
+                                                                                                                                              "scoped":  "true",
+                                                                                                                                              "connection":  "facebook"
+                                                                                                                                          },
+                                                                                                                                 "label":  "synapta (Yuval Khodus)"
+                                                                                                                             }
+                                                                                                         }
+                                                                                      },
+                                                                          "designer":  {
+                                                                                           "x":  -118,
+                                                                                           "y":  -605
+                                                                                       },
+                                                                          "parameters":  [
+                                                                                             {
+                                                                                                 "name":  "__IMTCONN__",
+                                                                                                 "type":  "account:facebook",
+                                                                                                 "label":  "Connection",
+                                                                                                 "required":  true
+                                                                                             }
+                                                                                         ]
+                                                                      },
+                                                         "parameters":  {
+                                                                            "__IMTCONN__":  9311340
+                                                                        }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  36,
+                                                         "module":  "facebook-pages:uploadAReel",
+                                                         "version":  6,
+                                                         "metadata":  {
+                                                                          "designer":  {
+                                                                                           "x":  -118,
+                                                                                           "y":  -305,
+                                                                                           "messages":  [
+                                                                                                            {
+                                                                                                                "message":  "Connection: Value must not be empty.",
+                                                                                                                "category":  "setup",
+                                                                                                                "severity":  "error"
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "message":  "Data: Value must not be empty.",
+                                                                                                                "category":  "setup",
+                                                                                                                "severity":  "error"
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "message":  "File name: Value must not be empty.",
+                                                                                                                "category":  "setup",
+                                                                                                                "severity":  "error"
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "message":  "Page: Value must not be empty.",
+                                                                                                                "category":  "setup",
+                                                                                                                "severity":  "error"
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "message":  "Upload method: Value must not be empty.",
+                                                                                                                "category":  "setup",
+                                                                                                                "severity":  "error"
+                                                                                                            }
+                                                                                                        ]
+                                                                                       }
+                                                                      }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  37,
+                                                         "mapper":  {
+                                                                        "message":  "{{1.caption}}",
+                                                                        "page_id":  "877081225487783"
+                                                                    },
+                                                         "module":  "facebook-pages:CreatePost",
+                                                         "version":  6,
+                                                         "metadata":  {
+                                                                          "expect":  [
+                                                                                         {
+                                                                                             "name":  "page_id",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Page",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "message",
+                                                                                             "type":  "text",
+                                                                                             "label":  "Post caption"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "link",
+                                                                                             "type":  "url",
+                                                                                             "label":  "Link"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "name",
+                                                                                             "type":  "text",
+                                                                                             "label":  "Link name"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "description",
+                                                                                             "type":  "text",
+                                                                                             "label":  "Link description"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "date",
+                                                                                             "type":  "date",
+                                                                                             "label":  "Publish date"
+                                                                                         }
+                                                                                     ],
+                                                                          "restore":  {
+                                                                                          "expect":  {
+                                                                                                         "page_id":  {
+                                                                                                                         "mode":  "chose",
+                                                                                                                         "label":  "Synapseai"
+                                                                                                                     }
+                                                                                                     },
+                                                                                          "parameters":  {
+                                                                                                             "__IMTCONN__":  {
+                                                                                                                                 "data":  {
+                                                                                                                                              "scoped":  "true",
+                                                                                                                                              "connection":  "facebook"
+                                                                                                                                          },
+                                                                                                                                 "label":  "Synapseai (Yuval Khodus)"
+                                                                                                                             }
+                                                                                                         }
+                                                                                      },
+                                                                          "designer":  {
+                                                                                           "x":  -118,
+                                                                                           "y":  -5
+                                                                                       },
+                                                                          "parameters":  [
+                                                                                             {
+                                                                                                 "name":  "__IMTCONN__",
+                                                                                                 "type":  "account:facebook",
+                                                                                                 "label":  "Connection",
+                                                                                                 "required":  true
+                                                                                             }
+                                                                                         ]
+                                                                      },
+                                                         "parameters":  {
+                                                                            "__IMTCONN__":  9184422
+                                                                        }
+                                                     }
+                                                 ]
+                                    },
+                                    {
+                                        "flow":  [
+                                                     {
+                                                         "id":  38,
+                                                         "mapper":  {
+                                                                        "data":  "{{1.approved_at}}",
+                                                                        "type":  "data",
+                                                                        "page_id":  "877081225487783",
+                                                                        "fileName":  "{{1.image_url}}",
+                                                                        "description":  "{{1.caption}}"
+                                                                    },
+                                                         "module":  "facebook-pages:UploadVideo",
+                                                         "version":  6,
+                                                         "metadata":  {
+                                                                          "expect":  [
+                                                                                         {
+                                                                                             "name":  "page_id",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Page",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "type",
+                                                                                             "type":  "select",
+                                                                                             "label":  "Type",
+                                                                                             "required":  true,
+                                                                                             "validate":  {
+                                                                                                              "enum":  [
+                                                                                                                           "data",
+                                                                                                                           "url"
+                                                                                                                       ]
+                                                                                                          }
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "description",
+                                                                                             "type":  "text",
+                                                                                             "label":  "Video caption"
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "fileName",
+                                                                                             "type":  "filename",
+                                                                                             "label":  "File name",
+                                                                                             "required":  true
+                                                                                         },
+                                                                                         {
+                                                                                             "name":  "data",
+                                                                                             "type":  "buffer",
+                                                                                             "label":  "Data",
+                                                                                             "required":  true
+                                                                                         }
+                                                                                     ],
+                                                                          "restore":  {
+                                                                                          "expect":  {
+                                                                                                         "type":  {
+                                                                                                                      "mode":  "chose",
+                                                                                                                      "label":  "upload a video"
+                                                                                                                  },
+                                                                                                         "page_id":  {
+                                                                                                                         "mode":  "chose",
+                                                                                                                         "label":  "Synapseai"
+                                                                                                                     }
+                                                                                                     },
+                                                                                          "parameters":  {
+                                                                                                             "__IMTCONN__":  {
+                                                                                                                                 "data":  {
+                                                                                                                                              "scoped":  "true",
+                                                                                                                                              "connection":  "facebook"
+                                                                                                                                          },
+                                                                                                                                 "label":  "Synapseai (Yuval Khodus)"
+                                                                                                                             }
+                                                                                                         }
+                                                                                      },
+                                                                          "designer":  {
+                                                                                           "x":  -118,
+                                                                                           "y":  295,
+                                                                                           "messages":  [
+                                                                                                            {
+                                                                                                                "message":  "Type: Value must not be empty.",
+                                                                                                                "category":  "setup",
+                                                                                                                "severity":  "error"
+                                                                                                            }
+                                                                                                        ]
+                                                                                       },
+                                                                          "parameters":  [
+                                                                                             {
+                                                                                                 "name":  "__IMTCONN__",
+                                                                                                 "type":  "account:facebook",
+                                                                                                 "label":  "Connection",
+                                                                                                 "required":  true
+                                                                                             }
+                                                                                         ]
+                                                                      },
+                                                         "parameters":  {
+                                                                            "__IMTCONN__":  9184422
+                                                                        }
+                                                     }
+                                                 ]
+                                    }
+                                ],
+                     "version":  1,
+                     "metadata":  {
+                                      "designer":  {
+                                                       "x":  -418,
+                                                       "y":  -155
+                                                   }
+                                  },
+                     "parameters":  {
+
+                                    }
+                 }
+             ],
+    "name":  "Soulful Content Engine - Auto Publisher v3",
+    "metadata":  {
+                     "instant":  true,
+                     "version":  1,
+                     "designer":  {
+                                      "orphans":  [
+
+                                                  ],
+                                      "samples":  {
+                                                      "1":  {
+                                                                "hook":  "",
+                                                                "event":  "post_approved",
+                                                                "topic":  "מומחה לאוטומציה",
+                                                                "client":  "Holly",
+                                                                "caption":  "פעם הייתי שוקע שעות בשליחת מיילים, עדכון גיליונות ומעקב אחרי לידים ידנית. הרגשתי שאני רץ במקום במקום...",
+                                                                "post_id":  12,
+                                                                "hashtags":  "#אוטומציה #ניהול_עסק #CRM #חיסכון_זמן #פרודוקטיביות #קהילה_תומכת #המסע_שלך #עסקאים #טיפים_עסקיים #הצ...",
+                                                                "platform":  "facebook",
+                                                                "image_url":  "/uploads/1/32b0cbc3a3294b679e8b69153c18e151.jpg",
+                                                                "approved_at":  "2026-07-23T15:40:45.855178",
+                                                                "callback_url":  "https://soulful-content-engine.onrender.com/webhook/publish",
+                                                                "content_type":  "photo",
+                                                                "scheduled_date":  "2026-07-23T18:32",
+                                                                "performance_url":  "https://soulful-content-engine.onrender.com/api/performance"
+                                                            },
+                                                      "35":  {
+                                                                 "id":  "877081225487783_122173034210984768",
+                                                                 "post_supports_client_mutation_id":  true
+                                                             }
+                                                  }
+                                  },
+                     "scenario":  {
+                                      "dlq":  false,
+                                      "slots":  null,
+                                      "dataloss":  false,
+                                      "maxErrors":  3,
+                                      "autoCommit":  true,
+                                      "roundtrips":  1,
+                                      "sequential":  false,
+                                      "confidential":  false,
+                                      "freshVariables":  false,
+                                      "autoCommitTriggerLast":  true
+                                  }
+                 }
+}

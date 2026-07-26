@@ -210,6 +210,9 @@ textarea { min-height: 120px; }
   }
   .topbar-actions .btn span,
   .topbar-actions .btn { font-size: .85rem; }
+  /* On phones keep only the client avatar to save the narrow topbar width */
+  .topbar-identity { max-width: none; padding: 2px; background: transparent; }
+  .topbar-identity-name { display: none; }
   .content-area { padding: 1rem; }
 }
 

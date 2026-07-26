@@ -131,6 +131,44 @@ body {
   color: #1e293b;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Client-portal identity chip in the topbar */
+.topbar-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  background: var(--primary-soft, #eef2ff);
+  border-radius: 999px;
+  max-width: 220px;
+}
+.topbar-identity-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary, #4f46e5);
+  color: #fff;
+  font-weight: 700;
+  font-size: .85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+}
+.topbar-identity-name {
+  font-weight: 600;
+  font-size: .9rem;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .content-area {
   flex: 1;
   padding: 24px;
