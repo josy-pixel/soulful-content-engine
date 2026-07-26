@@ -906,6 +906,14 @@ def trends():
 
 # ── Report ─────────────────────────────────────────────────────────────────────
 
+@app.route('/users')
+@roles_required('admin')     # user management: admin only
+def users():
+    # Full management UI (invite flow etc.) is built in Stage 1 step 3.
+    # The @roles_required guard here is what the authz suite verifies.
+    return render_template('users.html', users=db.get_users(), clients=db.get_clients())
+
+
 @app.route('/report')
 @roles_required('admin', 'manager')   # org-wide reports: not exposed to client users
 def report():

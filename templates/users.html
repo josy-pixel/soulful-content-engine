@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Users — Soulful Content Engine{% endblock %}
+{% block page_title %}Users{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">Team & client logins</span>
+    <!-- Invite flow wired in Stage 1 step 3 -->
+    <button class="btn btn-sm btn-primary" disabled>Invite client user</button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr><th>Email</th><th>Role</th><th>Client</th><th>Last login</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td data-label="Email">{{ u.email }}</td>
+          <td data-label="Role"><span class="badge bg-secondary text-capitalize">{{ u.role }}</span></td>
+          <td data-label="Client">{{ u.client_name or '—' }}</td>
+          <td data-label="Last login"><small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small></td>
+          <td data-label="Status">
+            {% if u.is_active %}<span class="badge bg-success">Active</span>
+            {% else %}<span class="badge bg-danger">Inactive</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

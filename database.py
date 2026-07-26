@@ -765,6 +765,13 @@ def any_users():
 
 
 def create_user(email, password_hash, role='admin', client_id=None):
+    # Code-level enforcement of the tenancy invariant that SQLite can't express
+    # as a CHECK on an existing table: a client user MUST be bound to a client,
+    # and admin/manager must NOT be. (chk_client_user_scope in the spec.)
+    if role == 'client' and client_id is None:
+        raise ValueError("a 'client' user must be bound to a client_id")
+    if role != 'client' and client_id is not None:
+        raise ValueError("only a 'client' user may have a client_id")
     conn = get_db()
     c = conn.cursor()
     c.execute(
