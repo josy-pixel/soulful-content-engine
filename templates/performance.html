@@ -79,28 +79,28 @@
         <tbody>
           {% for p in posts %}
           <tr>
-            <td>
+            <td data-label="Post">
               <a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">
                 {{ p.topic }}
               </a>
             </td>
-            <td>
+            <td data-label="Client">
               <div class="d-flex align-items-center gap-2">
                 <div class="client-avatar sm" style="background:{{ p.logo_color }}">{{ p.client_name[0] }}</div>
                 {{ p.client_name }}
               </div>
             </td>
-            <td>
+            <td data-label="Platform">
               <i class="bi {{ platform_icons.get(p.platform,'bi-globe') }} platform-icon platform-{{ p.platform }}"></i>
               <span class="text-capitalize">{{ p.platform }}</span>
             </td>
-            <td><small class="text-muted">{{ p.posted_date[:10] if p.posted_date else '—' }}</small></td>
+            <td data-label="Posted"><small class="text-muted">{{ p.posted_date[:10] if p.posted_date else '—' }}</small></td>
             {% if p.metrics %}
-            <td class="text-center">{{ "{:,}".format(p.metrics.likes or 0) }}</td>
-            <td class="text-center">{{ "{:,}".format(p.metrics.comments or 0) }}</td>
-            <td class="text-center">{{ "{:,}".format(p.metrics.shares or 0) }}</td>
-            <td class="text-center">{{ "{:,}".format(p.metrics.reach or 0) }}</td>
-            <td class="text-center">
+            <td class="text-center" data-label="Likes">{{ "{:,}".format(p.metrics.likes or 0) }}</td>
+            <td class="text-center" data-label="Comments">{{ "{:,}".format(p.metrics.comments or 0) }}</td>
+            <td class="text-center" data-label="Shares">{{ "{:,}".format(p.metrics.shares or 0) }}</td>
+            <td class="text-center" data-label="Reach">{{ "{:,}".format(p.metrics.reach or 0) }}</td>
+            <td class="text-center" data-label="Eng.%">
               {% if p.engagement_rate is not none %}
               <span class="badge {{ 'bg-success' if p.engagement_rate > 3 else 'bg-warning text-dark' if p.engagement_rate > 1 else 'bg-danger' }}">
                 {{ p.engagement_rate }}%

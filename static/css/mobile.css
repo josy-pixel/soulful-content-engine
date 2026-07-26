@@ -1,0 +1,222 @@
+/* ============================================================
+   Soulful Content Engine — Mobile patch (Android + iOS)
+   Load AFTER style.css:
+   <link href="/static/css/mobile.css" rel="stylesheet">
+   ============================================================ */
+
+/* ---------- 1. Base ---------- */
+html {
+  -webkit-text-size-adjust: 100%;   /* stop iOS resizing text on rotate */
+}
+
+body {
+  overflow-x: hidden;               /* kill horizontal scroll */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* No element may push the page wider than the screen */
+img, video, table, pre { max-width: 100%; }
+
+/* iOS: 100vh is wrong in Safari — use dynamic viewport height */
+.sidebar, .main-content { min-height: 100vh; min-height: 100dvh; }
+
+/* ---------- 2. Safe areas (notch / home indicator) ---------- */
+.topbar {
+  padding-top: calc(0.75rem + env(safe-area-inset-top));
+  padding-left: calc(1rem + env(safe-area-inset-left));
+  padding-right: calc(1rem + env(safe-area-inset-right));
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: #fff;
+}
+
+.content-area {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+}
+
+.sidebar {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---------- 3. Off-canvas sidebar under lg ---------- */
+@media (max-width: 991.98px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 82vw;
+    max-width: 300px;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    z-index: 1050;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, .45);
+    z-index: 1040;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+  .sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+
+  body.sidebar-open { overflow: hidden; }   /* lock scroll behind drawer */
+
+  .main-content { margin-left: 0 !important; width: 100% !important; }
+}
+
+/* ---------- 4. Touch targets ---------- */
+.sidebar .nav-link {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+}
+
+.btn, .nav-link, .table a {
+  touch-action: manipulation;       /* removes the 300ms tap delay */
+}
+
+@media (max-width: 767.98px) {
+  .btn-sm {
+    min-height: 44px;
+    padding: .55rem 1rem;
+    font-size: .95rem;
+  }
+  #sidebarToggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Inputs: 16px exactly, or iOS auto-zooms on focus */
+input, select, textarea {
+  font-size: 16px !important;
+  min-height: 48px;
+}
+textarea { min-height: 120px; }
+
+/* ---------- 5. Timeline table → cards on mobile ---------- */
+@media (max-width: 767.98px) {
+  .table-responsive { overflow: visible; }
+
+  .table thead { display: none; }
+
+  .table, .table tbody, .table tr, .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table tr {
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: .85rem 1rem;
+    margin: 0 0 .85rem;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  }
+
+  .table tr.table-danger {
+    border-color: #fca5a5;
+    background: #fef2f2;
+  }
+
+  .table td {
+    border: 0 !important;
+    padding: .4rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    text-align: right;
+  }
+
+  /* Label each cell, taken from the hidden header */
+  .table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #6b7280;
+    text-align: left;
+  }
+
+  /* Fallback labels for the scheduling timeline table (columns are fixed there).
+     Other tables use per-cell data-label instead. */
+  .timeline-table td:nth-child(1)::before { content: "Date"; }
+  .timeline-table td:nth-child(2)::before { content: "Client"; }
+  .timeline-table td:nth-child(3)::before { content: "Platform"; }
+  .timeline-table td:nth-child(4)::before { content: "Type"; }
+  .timeline-table td:nth-child(5)::before { content: "Topic"; }
+  .timeline-table td:nth-child(6)::before { content: "Status"; }
+  .timeline-table td:nth-child(7)::before { content: "Days"; }
+
+  /* Topic row: give the text room, it's the important one */
+  .timeline-table td:nth-child(5) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .2rem;
+    text-align: start;
+  }
+  .timeline-table td:nth-child(5) a { font-size: 1.05rem; line-height: 1.4; }
+
+  /* Action cell: full-width button, no label */
+  .table td:last-child {
+    padding-top: .75rem;
+    margin-top: .4rem;
+    border-top: 1px solid #f1f5f9 !important;
+  }
+  .table td:last-child::before { content: none; }
+  .table td:last-child .btn { width: 100%; }
+
+  /* Empty cells shouldn't leave a floating label */
+  .table td:empty { display: none; }
+}
+
+/* ---------- 6. Stat cards ---------- */
+@media (max-width: 575.98px) {
+  .stat-card { padding: .9rem; }
+  .stat-value { font-size: 1.6rem; line-height: 1.1; }
+  .stat-label { font-size: .75rem; }
+  .stat-icon { width: 36px; height: 36px; }
+}
+
+/* ---------- 7. Topbar ---------- */
+@media (max-width: 575.98px) {
+  .topbar-title {
+    font-size: 1.05rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-actions .btn span,
+  .topbar-actions .btn { font-size: .85rem; }
+  .content-area { padding: 1rem; }
+}
+
+/* ---------- 8. Mixed Hebrew / English text ---------- */
+/* Lets each string pick its own direction inside an lang="en" page */
+.table td a, .table td .fw-semibold, .card-header { unicode-bidi: plaintext; }
+
+/* ---------- 9. Accessibility floor ---------- */
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

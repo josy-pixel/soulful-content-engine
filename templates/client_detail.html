@@ -143,10 +143,10 @@
         <tbody>
           {% for p in posts %}
           <tr>
-            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">{{ p.topic }}</a></td>
-            <td><span class="text-capitalize">{{ p.platform }}</span></td>
-            <td><span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span></td>
-            <td><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
+            <td data-label="Topic"><a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">{{ p.topic }}</a></td>
+            <td data-label="Platform"><span class="text-capitalize">{{ p.platform }}</span></td>
+            <td data-label="Status"><span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span></td>
+            <td data-label="Date"><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
             <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
           </tr>
           {% endfor %}
