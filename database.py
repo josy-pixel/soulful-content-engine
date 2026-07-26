@@ -738,6 +738,13 @@ def create_user(email, password_hash, role='admin'):
     conn.close()
 
 
+def set_password(email, password_hash):
+    conn = get_db()
+    conn.execute('UPDATE users SET password_hash = ? WHERE email = ?', (password_hash, email))
+    conn.commit()
+    conn.close()
+
+
 # ── Voice engine ─────────────────────────────────────────────────────────────
 
 def get_client_voice(client_id):

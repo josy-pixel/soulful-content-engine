@@ -149,14 +149,21 @@ def roles_required(*roles):
 
 def bootstrap_admin():
     """Seed the first admin from env vars. Values are read only from
-    os.environ — never stored in code, the repo, or example files."""
+    os.environ — never stored in code, the repo, or example files.
+    If ADMIN_RESET=1, also (re)set the given admin's password even when the
+    account already exists — a controlled, env-gated password recovery."""
     email = os.environ.get('ADMIN_EMAIL', '').strip().lower()
     password = os.environ.get('ADMIN_PASSWORD', '')
     if not email or not password:
         return
-    if db.get_user_by_email(email) or db.any_users():
+    reset = os.environ.get('ADMIN_RESET') == '1'
+    existing = db.get_user_by_email(email)
+    if existing:
+        if reset:
+            db.set_password(email, generate_password_hash(password))
         return
-    db.create_user(email, generate_password_hash(password), role='admin')
+    if reset or not db.any_users():
+        db.create_user(email, generate_password_hash(password), role='admin')
 
 
 def init_auth(app):
