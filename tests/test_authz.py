@@ -131,3 +131,55 @@ def test_client_user_requires_client_id():
 def test_non_client_cannot_have_client_id(data):
     with pytest.raises(ValueError):
         db.create_user("weird@t.co", "h", role="admin", client_id=data["client_a"])
+
+
+# ── invite flow (step 3) ──
+
+def test_admin_invite_creates_pending_client_user(client, data):
+    login_as(client, data["admin"])
+    r = client.post("/users/invite",
+                    data={"email": "new@t.co", "client_id": data["client_a"]})
+    assert r.status_code in (301, 302)
+    u = db.get_user_by_email("new@t.co")
+    assert u and u["role"] == "client" and u["client_id"] == data["client_a"]
+    assert u["is_active"] == 0          # pending until the invite is consumed
+    assert u["password_hash"] == ""     # no usable password yet
+    assert u["invite_token_hash"]       # has a stored invite hash
+
+
+def test_invite_acceptance_sets_password_and_activates(client, data):
+    import hashlib
+    from datetime import datetime, timedelta
+    token = "known-test-token-123456"
+    thash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    exp = (datetime.now() + timedelta(hours=72)).isoformat()
+    uid = db.create_pending_client_user("invitee@t.co", data["client_a"], thash, exp)
+
+    assert client.get("/invite/wrong-token").status_code in (301, 302)   # rejected
+    assert client.get(f"/invite/{token}").status_code == 200             # form shown
+
+    r = client.post(f"/invite/{token}",
+                    data={"password": "longenough123", "confirm": "longenough123"})
+    assert r.status_code in (301, 302)
+    u = db.get_user_by_id(uid)
+    assert u["is_active"] == 1
+    assert u["password_hash"]                    # now set
+    assert u["invite_token_hash"] is None        # single-use: consumed
+
+
+def test_short_invite_password_rejected(client, data):
+    import hashlib
+    from datetime import datetime, timedelta
+    token = "another-token-abcdef"
+    thash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    exp = (datetime.now() + timedelta(hours=72)).isoformat()
+    uid = db.create_pending_client_user("short@t.co", data["client_a"], thash, exp)
+    client.post(f"/invite/{token}", data={"password": "short", "confirm": "short"})
+    assert db.get_user_by_id(uid)["is_active"] == 0   # still not activated
+
+
+def test_deactivated_user_is_bounced(client, data):
+    db.set_user_active(data["client_user"], False)
+    login_as(client, data["client_user"])
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code in (301, 302)   # before_request logs out an inactive session

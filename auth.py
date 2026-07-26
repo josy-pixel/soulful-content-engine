@@ -28,7 +28,8 @@ login_manager.login_message = 'Please sign in to continue.'
 # Routes reachable without a browser login.
 # 'serve_media' is public so social platforms (Facebook/Instagram) can fetch
 # post images by URL when publishing — filenames are unguessable hashes.
-_PUBLIC_ENDPOINTS = {'login', 'setup_admin', 'healthz', 'static', 'serve_media'}
+_PUBLIC_ENDPOINTS = {'login', 'setup_admin', 'healthz', 'static', 'serve_media',
+                     'accept_invite'}
 # Machine-to-machine routes: authenticated by their own X-Secret gate
 # (see webhooks.verify_secret / _check_secret), not by a session login —
 # Make.com cannot sign in. Keep this list in sync with the X-Secret routes.

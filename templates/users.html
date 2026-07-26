@@ -3,16 +3,38 @@
 {% block page_title %}Users{% endblock %}
 
 {% block content %}
-<div class="card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span class="fw-semibold">Team & client logins</span>
-    <!-- Invite flow wired in Stage 1 step 3 -->
-    <button class="btn btn-sm btn-primary" disabled>Invite client user</button>
+<div class="card mb-4">
+  <div class="card-header fw-semibold">Invite a client user</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('users_invite') }}" class="row g-2 align-items-end">
+      <div class="col-sm-5">
+        <label class="form-label">Email</label>
+        <input name="email" type="email" class="form-control" required placeholder="client@company.com">
+      </div>
+      <div class="col-sm-4">
+        <label class="form-label">Client</label>
+        <select name="client_id" class="form-select" required>
+          <option value="">Choose client…</option>
+          {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3">
+        <button class="btn btn-primary w-100">Generate invite link</button>
+      </div>
+    </form>
+    <small class="text-muted d-block mt-2">
+      A single-use link (valid 72h) is shown once after you submit. Copy it and
+      send it to the client yourself — the app never emails it.
+    </small>
   </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-semibold">All users</div>
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead>
-        <tr><th>Email</th><th>Role</th><th>Client</th><th>Last login</th><th>Status</th></tr>
+        <tr><th>Email</th><th>Role</th><th>Client</th><th>Last login</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in users %}
@@ -24,6 +46,22 @@
           <td data-label="Status">
             {% if u.is_active %}<span class="badge bg-success">Active</span>
             {% else %}<span class="badge bg-danger">Inactive</span>{% endif %}
+          </td>
+          <td data-label="Actions" class="text-nowrap">
+            <form method="post" action="{{ url_for('users_reset', user_id=u.id) }}" class="d-inline">
+              <button class="btn btn-sm btn-outline-secondary">Reset password</button>
+            </form>
+            {% if u.role != 'admin' %}
+              {% if u.is_active %}
+              <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline">
+                <button class="btn btn-sm btn-outline-danger">Deactivate</button>
+              </form>
+              {% else %}
+              <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
+                <button class="btn btn-sm btn-outline-success">Reactivate</button>
+              </form>
+              {% endif %}
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

@@ -16,6 +16,14 @@ import security
 from security import (current_scope, enforce_client_id, require_content_access,
                      require_client_access, scoped_posts, scoped_clients, roles_required)
 from flask import abort, g
+from flask_login import login_user
+from werkzeug.security import generate_password_hash
+import hashlib
+
+
+def _hash_token(tok):
+    """sha256 of an invite token — only the hash is stored, like the setup token."""
+    return hashlib.sha256(tok.encode('utf-8')).hexdigest()
 
 # Pillow is used to serve web-optimized (downscaled) copies of large images so Facebook/Instagram
 # can fetch them — social APIs reject oversized files. Optional: falls back to the raw file if absent.
@@ -909,9 +917,97 @@ def trends():
 @app.route('/users')
 @roles_required('admin')     # user management: admin only
 def users():
-    # Full management UI (invite flow etc.) is built in Stage 1 step 3.
-    # The @roles_required guard here is what the authz suite verifies.
     return render_template('users.html', users=db.get_users(), clients=db.get_clients())
+
+
+@app.route('/users/invite', methods=['POST'])
+@roles_required('admin')
+def users_invite():
+    email = request.form.get('email', '').strip().lower()
+    client_id = request.form.get('client_id', type=int)
+    if not email or not client_id:
+        flash('Email and client are both required.', 'error')
+        return redirect(url_for('users'))
+    if db.get_user_by_email(email):
+        flash('A user with that email already exists.', 'error')
+        return redirect(url_for('users'))
+    if not db.get_client(client_id):
+        flash('Client not found.', 'error')
+        return redirect(url_for('users'))
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now() + timedelta(hours=72)).isoformat()
+    db.create_pending_client_user(email, client_id, _hash_token(token), expires)
+    invite_url = url_for('accept_invite', token=token, _external=True)
+    # Shown once, on screen only — never emailed from the app.
+    flash(f'Invite link for {email} (valid 72h, copy it now): {invite_url}', 'invite')
+    return redirect(url_for('users'))
+
+
+@app.route('/users/<int:user_id>/deactivate', methods=['POST'])
+@roles_required('admin')
+def users_deactivate(user_id):
+    db.set_user_active(user_id, False)
+    flash('User deactivated. Their login is blocked; audit history is kept.', 'success')
+    return redirect(url_for('users'))
+
+
+@app.route('/users/<int:user_id>/activate', methods=['POST'])
+@roles_required('admin')
+def users_activate(user_id):
+    db.set_user_active(user_id, True)
+    flash('User reactivated.', 'success')
+    return redirect(url_for('users'))
+
+
+@app.route('/users/<int:user_id>/reset', methods=['POST'])
+@roles_required('admin')
+def users_reset(user_id):
+    u = db.get_user_by_id(user_id)
+    if not u:
+        flash('User not found.', 'error')
+        return redirect(url_for('users'))
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now() + timedelta(hours=72)).isoformat()
+    db.set_user_invite(user_id, _hash_token(token), expires)
+    invite_url = url_for('accept_invite', token=token, _external=True)
+    flash(f'Password-reset link for {u["email"]} (valid 72h, copy it now): {invite_url}', 'invite')
+    return redirect(url_for('users'))
+
+
+@app.route('/invite/<token>', methods=['GET', 'POST'])
+def accept_invite(token):
+    """Public: consume a single-use invite, set a password (min 12), log in.
+    Expired / used / unknown tokens all get the same generic rejection."""
+    generic = 'This invite link is invalid or has expired.'
+    row = db.get_user_by_invite_hash(_hash_token(token))
+    if not row:
+        flash(generic, 'danger')
+        return redirect(url_for('login'))
+    try:
+        if not row['invite_expires_at'] or \
+           datetime.fromisoformat(row['invite_expires_at']) < datetime.now():
+            flash(generic, 'danger')
+            return redirect(url_for('login'))
+    except (ValueError, TypeError):
+        flash(generic, 'danger')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        pw = request.form.get('password', '')
+        confirm = request.form.get('confirm', '')
+        if len(pw) < 12:
+            flash('Password must be at least 12 characters.', 'danger')
+        elif pw != confirm:
+            flash('Passwords do not match.', 'danger')
+        else:
+            db.consume_invite(row['id'], generate_password_hash(pw))
+            fresh = db.get_user_by_id(row['id'])
+            login_user(auth.User(fresh))
+            db.update_last_login(fresh['id'])
+            flash('Welcome! Your account is ready.', 'success')
+            return redirect(url_for('dashboard'))
+
+    return render_template('invite.html', token=token, email=row['email'])
 
 
 @app.route('/report')
