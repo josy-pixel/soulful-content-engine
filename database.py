@@ -149,6 +149,15 @@ def init_db():
         # Voice-audit results per post
         "ALTER TABLE content_posts ADD COLUMN voice_score INTEGER",
         "ALTER TABLE content_posts ADD COLUMN voice_audit TEXT DEFAULT ''",
+        # ── Roles & client portal (Stage 1) ──
+        # SQLite can't ADD a CHECK/FK to an existing table, so the
+        # "client role must be bound to exactly one client" rule is enforced in
+        # app code (security.py / create_client_user), not by a DB constraint.
+        "ALTER TABLE users ADD COLUMN client_id INTEGER",          # NULL for admin/manager
+        "ALTER TABLE users ADD COLUMN invite_token_hash TEXT",     # sha256 of single-use invite
+        "ALTER TABLE users ADD COLUMN invite_expires_at TEXT",     # ISO8601
+        "ALTER TABLE users ADD COLUMN last_login_at TEXT",         # ISO8601
+        "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
     ]:
         try:
             conn.execute(migration)
@@ -733,19 +742,111 @@ def any_users():
     return n > 0
 
 
-def create_user(email, password_hash, role='admin'):
+def create_user(email, password_hash, role='admin', client_id=None):
     conn = get_db()
-    conn.execute(
-        'INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)',
-        (email, password_hash, role),
+    c = conn.cursor()
+    c.execute(
+        'INSERT INTO users (email, password_hash, role, client_id) VALUES (?, ?, ?, ?)',
+        (email, password_hash, role, client_id),
     )
     conn.commit()
+    new_id = c.lastrowid
     conn.close()
+    return new_id
 
 
 def set_password(email, password_hash):
     conn = get_db()
     conn.execute('UPDATE users SET password_hash = ? WHERE email = ?', (password_hash, email))
+    conn.commit()
+    conn.close()
+
+
+# ── User management (Stage 1: roles & client portal) ──
+
+def get_users():
+    """All users with their linked client name — for the /users admin page."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT u.id, u.email, u.role, u.client_id, u.is_active,
+               u.last_login_at, u.created_at,
+               u.invite_token_hash, u.invite_expires_at,
+               c.name AS client_name
+        FROM users u LEFT JOIN clients c ON c.id = u.client_id
+        ORDER BY u.created_at DESC
+    ''').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_pending_client_user(email, client_id, token_hash, expires_at):
+    """Invite a client user: created inactive with no usable password until the
+    invite is consumed. role is always 'client' and MUST have a client_id."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        '''INSERT INTO users (email, password_hash, role, client_id,
+                              invite_token_hash, invite_expires_at, is_active)
+           VALUES (?, '', 'client', ?, ?, ?, 0)''',
+        (email, client_id, token_hash, expires_at),
+    )
+    conn.commit()
+    new_id = c.lastrowid
+    conn.close()
+    return new_id
+
+
+def set_user_invite(user_id, token_hash, expires_at):
+    """(Re)issue an invite token for an existing user — also used for password reset."""
+    conn = get_db()
+    conn.execute(
+        'UPDATE users SET invite_token_hash=?, invite_expires_at=? WHERE id=?',
+        (token_hash, expires_at, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_invite_hash(token_hash):
+    conn = get_db()
+    row = conn.execute(
+        'SELECT * FROM users WHERE invite_token_hash = ?', (token_hash,)
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def consume_invite(user_id, password_hash):
+    """Set the password, clear the invite, activate the account."""
+    conn = get_db()
+    conn.execute(
+        '''UPDATE users SET password_hash=?, invite_token_hash=NULL,
+               invite_expires_at=NULL, is_active=1 WHERE id=?''',
+        (password_hash, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_user_active(user_id, active):
+    conn = get_db()
+    conn.execute('UPDATE users SET is_active=? WHERE id=?', (1 if active else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def deactivate_users_for_client(client_id):
+    """Used when a client is (soft-)deleted — block their logins."""
+    conn = get_db()
+    conn.execute('UPDATE users SET is_active=0 WHERE client_id=?', (client_id,))
+    conn.commit()
+    conn.close()
+
+
+def update_last_login(user_id):
+    conn = get_db()
+    conn.execute('UPDATE users SET last_login_at=? WHERE id=?',
+                 (datetime.now().isoformat(), user_id))
     conn.commit()
     conn.close()
 

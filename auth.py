@@ -117,9 +117,20 @@ def _setup_token_ok(submitted):
 # ── User model ──
 class User(UserMixin):
     def __init__(self, row):
+        keys = row.keys()
         self.id = row['id']
         self.email = row['email']
         self.role = row['role']
+        # NULL for admin/manager; the bound client id for a 'client' user.
+        self.client_id = row['client_id'] if 'client_id' in keys else None
+        raw_active = row['is_active'] if 'is_active' in keys else 1
+        self._active = raw_active in (1, '1', True)
+
+    @property
+    def is_active(self):
+        # Deactivated users cannot log in (login_user honours this) and are
+        # bounced by the before_request guard if a live session goes inactive.
+        return self._active
 
     def get_id(self):
         return str(self.id)
@@ -178,6 +189,11 @@ def init_auth(app):
             return
         if not current_user.is_authenticated:
             return redirect(url_for('login', next=request.path))
+        # A session that went inactive mid-life (deactivated by an admin) is bounced.
+        if not getattr(current_user, 'is_active', True):
+            logout_user()
+            flash('Your account has been deactivated.', 'danger')
+            return redirect(url_for('login'))
 
     @app.route('/setup', methods=['GET', 'POST'])
     def setup_admin():
@@ -232,10 +248,18 @@ def init_auth(app):
                 return render_template('login.html', csrf_token=_csrf_token())
 
             row = db.get_user_by_email(email)
-            if row and check_password_hash(row['password_hash'], password):
+            # row['password_hash'] is '' for an invited-but-not-yet-activated user
+            # -> falsy -> they cannot log in until they consume their invite.
+            if row and row['password_hash'] and check_password_hash(row['password_hash'], password):
+                user = User(row)
+                if not user.is_active:
+                    _record_failure(email)
+                    flash('This account is deactivated. Contact an administrator.', 'danger')
+                    return render_template('login.html', csrf_token=_csrf_token())
                 _clear_attempts(email)
                 session.pop('_csrf_token', None)
-                login_user(User(row))
+                login_user(user)
+                db.update_last_login(user.id)
                 nxt = request.args.get('next', '')
                 if nxt.startswith('/') and not nxt.startswith('//'):
                     return redirect(nxt)
