@@ -1,6 +1,8 @@
 import sqlite3
 import json
 import os
+import shutil
+import logging
 from datetime import datetime, timedelta
 
 # Render mounts a persistent disk at /data — fall back to local file for dev
@@ -19,7 +21,79 @@ def get_db():
     return conn
 
 
+def restore_if_requested():
+    """Boot-time, guarded DB restore. MUST run before any connection is opened.
+    Env-controlled and OFF by default:
+      RESTORE_FROM     path to a backup file to restore over DB_PATH
+      RESTORE_CONFIRM  must equal basename(RESTORE_FROM) — a second, deliberate step
+    Five guards:
+      1. source validation   — file exists, opens, PRAGMA integrity_check == 'ok'
+      2. confirmation token   — RESTORE_CONFIRM must match the backup's filename
+      3. marker file          — a completed restore of this source is not repeated on
+                                the next boot (an env var left set can't re-overwrite)
+      4. pre-overwrite backup — the current live DB is VACUUM INTO'd first; if that
+                                fails, the restore ABORTS (never overwrite unbacked)
+      5. before/after counts  — logged for users/clients/content_posts
+    Returns a short status string. Never raises into boot.
+    """
+    log = logging.getLogger('restore')
+    src = os.environ.get('RESTORE_FROM', '').strip()
+    if not src:
+        return 'noop'
+    try:
+        if os.environ.get('RESTORE_CONFIRM', '').strip() != os.path.basename(src):   # guard 2
+            log.error('restore: RESTORE_CONFIRM must equal the filename %r — skipping',
+                      os.path.basename(src))
+            return 'unconfirmed'
+        if not os.path.isfile(src):                                                   # guard 1a
+            log.error('restore: RESTORE_FROM %s not found — skipping', src)
+            return 'missing-source'
+        sc = sqlite3.connect(src)
+        integrity = sc.execute('PRAGMA integrity_check').fetchone()[0]
+        src_counts = {t: sc.execute('SELECT COUNT(*) FROM %s' % t).fetchone()[0]
+                      for t in ('users', 'clients', 'content_posts')}
+        sc.close()
+        if integrity != 'ok':                                                        # guard 1b
+            log.error('restore: source integrity_check=%s — skipping', integrity)
+            return 'bad-source'
+        data_dir = os.path.dirname(DB_PATH) or '.'
+        marker = os.path.join(data_dir, '.restored-' + os.path.basename(src))
+        if os.path.exists(marker):                                                   # guard 3
+            log.warning('restore: %s already restored (marker present) — skipping', src)
+            return 'already-restored'
+        before = None
+        if os.path.exists(DB_PATH):                                                  # guards 4 + 5(before)
+            try:
+                lc = sqlite3.connect(DB_PATH)
+                before = {t: lc.execute('SELECT COUNT(*) FROM %s' % t).fetchone()[0]
+                          for t in ('users', 'clients', 'content_posts')}
+                bdir = os.path.join(data_dir, 'backups')
+                os.makedirs(bdir, exist_ok=True)
+                stamp = datetime.now().strftime('%Y%m%dT%H%M%S')
+                pre = os.path.join(bdir, 'pre-restore-%s.db' % stamp).replace('\\', '/')
+                lc.execute("VACUUM INTO '%s'" % pre)
+                lc.close()
+                log.warning('restore: current DB backed up to %s (counts=%s)', pre, before)
+            except Exception as e:
+                log.error('restore: pre-overwrite backup failed (%s) — ABORTING for safety', e)
+                return 'pre-backup-failed'
+        shutil.copyfile(src, DB_PATH)                                                # perform overwrite
+        for sfx in ('-wal', '-shm'):
+            stale = DB_PATH + sfx
+            if os.path.exists(stale):
+                os.remove(stale)
+        with open(marker, 'w', encoding='utf-8') as fh:
+            fh.write('restored %s from %s\n' % (datetime.now().isoformat(), src))
+        log.warning('restore: RESTORED %s over %s — before=%s after=%s',
+                    src, DB_PATH, before, src_counts)                                # guard 5(after)
+        return 'restored'
+    except Exception as e:
+        log.error('restore: unexpected error (%s) — DB left as-is', e)
+        return 'error'
+
+
 def init_db():
+    restore_if_requested()   # guarded, env-gated, no-op unless RESTORE_FROM is set
     conn = get_db()
     c = conn.cursor()
     c.executescript('''
