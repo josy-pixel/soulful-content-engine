@@ -1062,6 +1062,58 @@ def api_generate_report():
     })
 
 
+@app.route('/admin/_ops', methods=['GET', 'POST'])
+@roles_required('admin')
+def _admin_ops():
+    """TEMPORARY cleanup-pass ops. Admin + MAINT_TOKEN gated, removed after use.
+    The only channel to the prod DB is this web process (no shell/CLI/disk job),
+    so a handful of explicit one-shot operations are exposed here and audited in
+    the response. Inert without MAINT_TOKEN."""
+    import os
+    token = os.environ.get('MAINT_TOKEN', '')
+    if not token or request.args.get('token', '') != token:
+        abort(404)
+    action = request.args.get('action', 'report')
+    con = db.get_db()
+    out = {'action': action}
+    if action == 'report':
+        p12 = con.execute(
+            "SELECT p.id,p.client_id,c.name AS client,p.platform,p.status,"
+            "p.posted_url,p.scheduled_date FROM content_posts p "
+            "JOIN clients c ON c.id=p.client_id WHERE p.id=12").fetchone()
+        out['post_12'] = dict(p12) if p12 else None
+        out['scheduled'] = [dict(r) for r in con.execute(
+            "SELECT p.id,p.client_id,c.name AS client,p.platform,p.status,"
+            "p.scheduled_date,p.posted_url FROM content_posts p "
+            "JOIN clients c ON c.id=p.client_id WHERE p.status='scheduled'")]
+        out['zztest_posts'] = [dict(r) for r in con.execute(
+            "SELECT id,platform,status,scheduled_date,posted_url "
+            "FROM content_posts WHERE client_id=6")]
+        out['users'] = [dict(r) for r in con.execute(
+            "SELECT id,email,role,is_active FROM users ORDER BY id")]
+    elif action == 'draft_post':
+        pid = int(request.args['id'])
+        before = con.execute("SELECT status,scheduled_date FROM content_posts WHERE id=?", (pid,)).fetchone()
+        con.execute("UPDATE content_posts SET status='draft', scheduled_date=NULL, "
+                    "updated_at=CURRENT_TIMESTAMP WHERE id=?", (pid,))
+        con.commit()
+        after = con.execute("SELECT status,scheduled_date FROM content_posts WHERE id=?", (pid,)).fetchone()
+        out['before'] = dict(before) if before else None
+        out['after'] = dict(after) if after else None
+    elif action == 'delete_user':
+        email = request.args['email'].strip().lower()
+        u = con.execute("SELECT id,role FROM users WHERE email=?", (email,)).fetchone()
+        before = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        con.execute("DELETE FROM users WHERE email=?", (email,))
+        con.commit()
+        after = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        out['target'] = dict(u) if u else None
+        out['users_before'] = before
+        out['users_after'] = after
+    con.close()
+    return jsonify(out)
+
+
 # Register auth after all page routes are defined so the login guard's
 # before_request runs after setup() (DB init) on the first request.
 auth.init_auth(app)
