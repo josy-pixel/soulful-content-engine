@@ -21,6 +21,16 @@ def get_db():
     return conn
 
 
+def _raise_if_deleted(conn, table, row_id):
+    """Write guard (Stage 2): refuse to mutate a soft-deleted row — raise, never
+    silently no-op. Reads the BASE table on purpose: it must be able to SEE deleted
+    rows in order to reject them. `table` is an internal constant, never user input.
+    # raw-query-ok: write guard must read base table to detect deleted rows"""
+    row = conn.execute("SELECT deleted_at FROM %s WHERE id=?" % table, (row_id,)).fetchone()
+    if row is not None and row['deleted_at'] is not None:
+        raise ValueError('%s id=%s is deleted; refusing to mutate it' % (table, row_id))
+
+
 def restore_if_requested():
     """Boot-time, guarded DB restore. MUST run before any connection is opened.
     Env-controlled and OFF by default:
@@ -232,12 +242,56 @@ def init_db():
         "ALTER TABLE users ADD COLUMN invite_expires_at TEXT",     # ISO8601
         "ALTER TABLE users ADD COLUMN last_login_at TEXT",         # ISO8601
         "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+        # ── Deletion, trash & lifecycle (Stage 2) — additive only ──
+        "ALTER TABLE content_posts ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE content_posts ADD COLUMN deleted_by INTEGER",
+        "ALTER TABLE content_posts ADD COLUMN deleted_reason TEXT",
+        "ALTER TABLE content_posts ADD COLUMN status_before_delete TEXT",
+        "ALTER TABLE content_posts ADD COLUMN purge_after TEXT",
+        "ALTER TABLE clients ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE clients ADD COLUMN deleted_by INTEGER",
+        "ALTER TABLE clients ADD COLUMN deleted_reason TEXT",
+        "ALTER TABLE clients ADD COLUMN purge_after TEXT",
+        "ALTER TABLE clients ADD COLUMN erased_at TEXT",
     ]:
         try:
             conn.execute(migration)
             conn.commit()
         except Exception:
             pass
+
+    # Stage 2: append-only audit log + delete indexes (idempotent).
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_user_id INTEGER,
+            actor_role TEXT,
+            tenant_client_id INTEGER,
+            entity_type TEXT NOT NULL,   -- client | content | user | social_account
+            entity_id INTEGER NOT NULL,
+            action TEXT NOT NULL,        -- delete | restore | purge | erase | republish
+            reason TEXT,
+            metadata TEXT,               -- json.dumps(); SQLite has no jsonb
+            request_ip TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_content_deleted ON content_posts(deleted_at);
+        CREATE INDEX IF NOT EXISTS idx_clients_deleted ON clients(deleted_at);
+    ''')
+    conn.commit()
+
+    # Filtered read views — EVERY application read goes through these, so a new
+    # query can't forget the delete filter. Recreated on every boot (never
+    # CREATE VIEW IF NOT EXISTS) so `SELECT *` cannot go stale against a later
+    # ADD COLUMN. Writes and the trash/purge readers use the base tables directly.
+    conn.executescript('''
+        DROP VIEW IF EXISTS v_content_active;
+        CREATE VIEW v_content_active AS SELECT * FROM content_posts WHERE deleted_at IS NULL;
+        DROP VIEW IF EXISTS v_clients_active;
+        CREATE VIEW v_clients_active AS SELECT * FROM clients WHERE deleted_at IS NULL;
+    ''')
+    conn.commit()
 
     existing = c.execute('SELECT COUNT(*) FROM clients').fetchone()[0]
     if existing == 0:
@@ -368,14 +422,14 @@ def _seed_data(c):
 
 def get_clients():
     conn = get_db()
-    rows = conn.execute('SELECT * FROM clients ORDER BY name').fetchall()
+    rows = conn.execute('SELECT * FROM v_clients_active ORDER BY name').fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def get_client(client_id):
     conn = get_db()
-    row = conn.execute('SELECT * FROM clients WHERE id=?', (client_id,)).fetchone()
+    row = conn.execute('SELECT * FROM v_clients_active WHERE id=?', (client_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -395,6 +449,7 @@ def create_client(data):
 
 def update_client(client_id, data):
     conn = get_db()
+    _raise_if_deleted(conn, 'clients', client_id)   # write guard
     conn.execute(
         'UPDATE clients SET name=?,description=?,contact_email=?,logo_color=? WHERE id=?',
         (data['name'], data.get('description', ''), data.get('contact_email', ''), data.get('logo_color', '#6366f1'), client_id)
@@ -440,8 +495,8 @@ def get_posts(client_id=None, platform=None, status=None, limit=100, offset=0):
     conn = get_db()
     query = '''
         SELECT p.*, c.name AS client_name, c.logo_color
-        FROM content_posts p
-        JOIN clients c ON c.id = p.client_id
+        FROM v_content_active p
+        JOIN v_clients_active c ON c.id = p.client_id
         WHERE 1=1
     '''
     params = []
@@ -462,11 +517,36 @@ def get_post(post_id):
     conn = get_db()
     row = conn.execute('''
         SELECT p.*, c.name AS client_name, c.logo_color
-        FROM content_posts p JOIN clients c ON c.id=p.client_id
+        FROM v_content_active p JOIN v_clients_active c ON c.id=p.client_id
         WHERE p.id=?
     ''', (post_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# ── Trash / restore / purge readers — the ONLY readers of the base tables ──
+# These deliberately bypass the v_*_active views so soft-deleted rows are visible.
+# Never use them for normal reads. Callers must be trash/restore/purge paths.
+
+def get_post_including_deleted(post_id):
+    """Base-table read (sees soft-deleted). For trash/restore/purge ONLY.
+    # raw-query-ok: trash/restore/purge must see deleted rows"""
+    conn = get_db()
+    row = conn.execute(
+        'SELECT p.*, c.name AS client_name, c.logo_color '
+        'FROM content_posts p JOIN clients c ON c.id=p.client_id WHERE p.id=?',
+        (post_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_clients_including_deleted():
+    """Base-table read (sees soft-deleted). For trash/restore/purge ONLY.
+    # raw-query-ok: trash/restore/purge must see deleted rows"""
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM clients ORDER BY name').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def create_post(data):
@@ -492,6 +572,7 @@ def create_post(data):
 
 def update_post(post_id, data):
     conn = get_db()
+    _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
     conn.execute('''
         UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,content_type=?,hook=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
         WHERE id=?
@@ -504,10 +585,13 @@ def update_post(post_id, data):
 
 def update_post_status(post_id, new_status, notes='', changed_by='user', posted_url=None):
     conn = get_db()
-    post = conn.execute('SELECT status FROM content_posts WHERE id=?', (post_id,)).fetchone()
+    post = conn.execute('SELECT status, deleted_at FROM content_posts WHERE id=?', (post_id,)).fetchone()
     if not post:
         conn.close()
         return False
+    if post['deleted_at'] is not None:      # write guard: a deleted post cannot reach the publish queue
+        conn.close()
+        raise ValueError('content_posts id=%s is deleted; refusing to change status' % post_id)
     old_status = post['status']
     update_clause = 'status=?, updated_at=CURRENT_TIMESTAMP'
     params = [new_status]
@@ -528,6 +612,7 @@ def update_post_status(post_id, new_status, notes='', changed_by='user', posted_
 
 def set_post_error(post_id, error_message):
     conn = get_db()
+    _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
     conn.execute(
         'UPDATE content_posts SET error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
         (error_message, post_id)
@@ -585,45 +670,45 @@ def get_dashboard_stats(scope=None):
     one = (scope,) if scope is not None else ()
 
     status_counts = {r['status']: r['cnt'] for r in conn.execute(
-        "SELECT status, COUNT(*) AS cnt FROM content_posts" + cw + " GROUP BY status", one
+        "SELECT status, COUNT(*) AS cnt FROM v_content_active" + cw + " GROUP BY status", one
     ).fetchall()}
 
     platform_counts = [dict(r) for r in conn.execute(
-        "SELECT platform, COUNT(*) AS cnt FROM content_posts" + cw + " GROUP BY platform ORDER BY cnt DESC", one
+        "SELECT platform, COUNT(*) AS cnt FROM v_content_active" + cw + " GROUP BY platform ORDER BY cnt DESC", one
     ).fetchall()]
 
     if scope is not None:
         client_counts = [dict(r) for r in conn.execute(
-            "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM clients c "
-            "LEFT JOIN content_posts p ON p.client_id=c.id WHERE c.id=? GROUP BY c.id", (scope,)
+            "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM v_clients_active c "
+            "LEFT JOIN v_content_active p ON p.client_id=c.id WHERE c.id=? GROUP BY c.id", (scope,)
         ).fetchall()]
     else:
         client_counts = [dict(r) for r in conn.execute(
-            "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM clients c "
-            "LEFT JOIN content_posts p ON p.client_id=c.id GROUP BY c.id"
+            "SELECT c.name, c.logo_color, COUNT(p.id) AS cnt FROM v_clients_active c "
+            "LEFT JOIN v_content_active p ON p.client_id=c.id GROUP BY c.id"
         ).fetchall()]
 
     upcoming = [dict(r) for r in conn.execute(
         "SELECT p.*, c.name AS client_name, c.logo_color "
-        "FROM content_posts p JOIN clients c ON c.id=p.client_id "
+        "FROM v_content_active p JOIN v_clients_active c ON c.id=p.client_id "
         "WHERE p.status IN ('approved','scheduled') AND p.scheduled_date IS NOT NULL" + pw +
         " ORDER BY p.scheduled_date ASC LIMIT 5", one
     ).fetchall()]
 
     recent = [dict(r) for r in conn.execute(
         "SELECT p.*, c.name AS client_name, c.logo_color "
-        "FROM content_posts p JOIN clients c ON c.id=p.client_id" +
+        "FROM v_content_active p JOIN v_clients_active c ON c.id=p.client_id" +
         (" WHERE p.client_id = ?" if scope is not None else "") +
         " ORDER BY p.updated_at DESC LIMIT 6", one
     ).fetchall()]
 
-    total_posts = conn.execute("SELECT COUNT(*) FROM content_posts" + cw, one).fetchone()[0]
+    total_posts = conn.execute("SELECT COUNT(*) FROM v_content_active" + cw, one).fetchone()[0]
 
     if scope is not None:
         perf = conn.execute(
             "SELECT SUM(m.likes) AS likes, SUM(m.comments) AS comments, SUM(m.shares) AS shares, "
             "SUM(m.views) AS views, SUM(m.reach) AS reach, SUM(m.impressions) AS impressions "
-            "FROM performance_metrics m JOIN content_posts p ON p.id=m.post_id WHERE p.client_id = ?", (scope,)
+            "FROM performance_metrics m JOIN v_content_active p ON p.id=m.post_id WHERE p.client_id = ?", (scope,)
         ).fetchone()
     else:
         perf = conn.execute(
@@ -650,7 +735,7 @@ def get_scheduled_posts(scope=None):
     conn = get_db()
     rows = conn.execute(
         "SELECT p.*, c.name AS client_name, c.logo_color "
-        "FROM content_posts p JOIN clients c ON c.id=p.client_id "
+        "FROM v_content_active p JOIN v_clients_active c ON c.id=p.client_id "
         "WHERE p.scheduled_date IS NOT NULL" +
         (" AND p.client_id = ?" if scope is not None else "") +
         " ORDER BY p.scheduled_date ASC",
@@ -665,14 +750,14 @@ def get_report_data(start_date, end_date):
 
     posts = [dict(r) for r in conn.execute('''
         SELECT p.*, c.name AS client_name
-        FROM content_posts p JOIN clients c ON c.id=p.client_id
+        FROM v_content_active p JOIN v_clients_active c ON c.id=p.client_id
         WHERE p.created_at BETWEEN ? AND ?
         ORDER BY p.created_at DESC
     ''', (start_date, end_date)).fetchall()]
 
     posted = [dict(r) for r in conn.execute('''
         SELECT p.*, c.name AS client_name
-        FROM content_posts p JOIN clients c ON c.id=p.client_id
+        FROM v_content_active p JOIN v_clients_active c ON c.id=p.client_id
         WHERE p.posted_date BETWEEN ? AND ?
     ''', (start_date, end_date)).fetchall()]
 
@@ -681,13 +766,13 @@ def get_report_data(start_date, end_date):
                SUM(m.shares) AS shares, SUM(m.saves) AS saves,
                SUM(m.views) AS views, SUM(m.reach) AS reach, SUM(m.impressions) AS impressions
         FROM performance_metrics m
-        JOIN content_posts p ON p.id=m.post_id
+        JOIN v_content_active p ON p.id=m.post_id
         WHERE m.recorded_at BETWEEN ? AND ?
     ''', (start_date, end_date)).fetchone()
 
     platform_breakdown = [dict(r) for r in conn.execute('''
         SELECT platform, COUNT(*) AS cnt
-        FROM content_posts WHERE created_at BETWEEN ? AND ?
+        FROM v_content_active WHERE created_at BETWEEN ? AND ?
         GROUP BY platform
     ''', (start_date, end_date)).fetchall()]
 
@@ -875,7 +960,7 @@ def get_users():
                u.last_login_at, u.created_at,
                u.invite_token_hash, u.invite_expires_at,
                c.name AS client_name
-        FROM users u LEFT JOIN clients c ON c.id = u.client_id
+        FROM users u LEFT JOIN v_clients_active c ON c.id = u.client_id
         ORDER BY u.created_at DESC
     ''').fetchall()
     conn.close()
@@ -961,7 +1046,7 @@ def get_client_voice(client_id):
     list of real sample captions. Returns (voice_document, [sample_captions])."""
     conn = get_db()
     row = conn.execute(
-        'SELECT voice_document, sample_captions FROM clients WHERE id = ?',
+        'SELECT voice_document, sample_captions FROM v_clients_active WHERE id = ?',
         (client_id,),
     ).fetchone()
     conn.close()
@@ -978,6 +1063,7 @@ def get_client_voice(client_id):
 def update_client_voice(client_id, voice_document, sample_captions):
     """sample_captions: a list of strings (10–15 real captions)."""
     conn = get_db()
+    _raise_if_deleted(conn, 'clients', client_id)   # write guard
     conn.execute(
         'UPDATE clients SET voice_document = ?, sample_captions = ? WHERE id = ?',
         (voice_document or '', json.dumps(sample_captions or []), client_id),
@@ -988,6 +1074,7 @@ def update_client_voice(client_id, voice_document, sample_captions):
 
 def set_post_voice_audit(post_id, score, audit_notes):
     conn = get_db()
+    _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
     conn.execute(
         'UPDATE content_posts SET voice_score = ?, voice_audit = ? WHERE id = ?',
         (score, audit_notes or '', post_id),
