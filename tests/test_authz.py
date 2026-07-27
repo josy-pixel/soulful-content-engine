@@ -46,10 +46,21 @@ def client():
     return flask_app.app.test_client()
 
 
+CSRF = "test-csrf-token"   # CSRF is enforced app-wide; tests inject a known token
+
+
 def login_as(client, user_id):
     with client.session_transaction() as s:
         s["_user_id"] = str(user_id)
         s["_fresh"] = True
+        s["_csrf_token"] = CSRF          # so state-changing POSTs pass the CSRF guard
+
+
+def seed_csrf(client):
+    """Put a known CSRF token in the session for flows without login_as (invites)."""
+    with client.session_transaction() as s:
+        s["_csrf_token"] = CSRF
+    return CSRF
 
 
 # ── client user is confined to their own tenant ──
@@ -67,7 +78,7 @@ def test_client_can_view_own_content(client, data):
 def test_client_cannot_edit_other_clients_content(client, data):
     login_as(client, data["client_user"])
     r = client.post(f"/content/{data['post_b']}/edit",
-                    data={"topic": "x", "caption": "y", "content_type": "photo"})
+                    data={"topic": "x", "caption": "y", "content_type": "photo", "csrf_token": CSRF})
     assert r.status_code == 403
 
 
@@ -75,7 +86,7 @@ def test_forged_client_id_is_overwritten(client, data):
     """A client user POSTs another client's id in the body; the post must land
     under THEIR client_id, never the forged one."""
     login_as(client, data["client_user"])
-    r = client.post("/api/save-caption", json={
+    r = client.post("/api/save-caption", headers={"X-CSRF-Token": CSRF}, json={
         "client_id": data["client_b"],   # forged
         "platform": "facebook", "topic": "t", "caption": "c",
     })
@@ -138,7 +149,7 @@ def test_non_client_cannot_have_client_id(data):
 def test_admin_invite_creates_pending_client_user(client, data):
     login_as(client, data["admin"])
     r = client.post("/users/invite",
-                    data={"email": "new@t.co", "client_id": data["client_a"]})
+                    data={"email": "new@t.co", "client_id": data["client_a"], "csrf_token": CSRF})
     assert r.status_code in (301, 302)
     u = db.get_user_by_email("new@t.co")
     assert u and u["role"] == "client" and u["client_id"] == data["client_a"]
@@ -154,12 +165,13 @@ def test_invite_acceptance_sets_password_and_activates(client, data):
     thash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     exp = (datetime.now() + timedelta(hours=72)).isoformat()
     uid = db.create_pending_client_user("invitee@t.co", data["client_a"], thash, exp)
+    seed_csrf(client)
 
     assert client.get("/invite/wrong-token").status_code in (301, 302)   # rejected
     assert client.get(f"/invite/{token}").status_code == 200             # form shown
 
     r = client.post(f"/invite/{token}",
-                    data={"password": "longenough123", "confirm": "longenough123"})
+                    data={"password": "longenough123", "confirm": "longenough123", "csrf_token": CSRF})
     assert r.status_code in (301, 302)
     u = db.get_user_by_id(uid)
     assert u["is_active"] == 1
@@ -174,7 +186,8 @@ def test_short_invite_password_rejected(client, data):
     thash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     exp = (datetime.now() + timedelta(hours=72)).isoformat()
     uid = db.create_pending_client_user("short@t.co", data["client_a"], thash, exp)
-    client.post(f"/invite/{token}", data={"password": "short", "confirm": "short"})
+    seed_csrf(client)
+    client.post(f"/invite/{token}", data={"password": "short", "confirm": "short", "csrf_token": CSRF})
     assert db.get_user_by_id(uid)["is_active"] == 0   # still not activated
 
 
@@ -183,3 +196,12 @@ def test_deactivated_user_is_bounced(client, data):
     login_as(client, data["client_user"])
     r = client.get("/", follow_redirects=False)
     assert r.status_code in (301, 302)   # before_request logs out an inactive session
+
+
+# ── CSRF is enforced app-wide (machine X-Secret routes are exempt) ──
+
+def test_csrf_required_on_state_change(client, data):
+    login_as(client, data["admin"])
+    # POST omits csrf_token entirely -> rejected 400 before the handler runs
+    r = client.post("/users/invite", data={"email": "x@t.co", "client_id": data["client_a"]})
+    assert r.status_code == 400
