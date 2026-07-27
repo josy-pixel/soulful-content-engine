@@ -1062,6 +1062,49 @@ def api_generate_report():
     })
 
 
+@app.route('/admin/_maint_dbinfo')
+@roles_required('admin')
+def _maint_dbinfo():
+    """TEMPORARY (Stage-1 post-migration verification). Admin + token gated.
+    Runs in the web process because it is the only place /data is mounted:
+    reports schema + row counts and takes a VACUUM INTO backup. Removed right
+    after use; inert without MAINT_TOKEN set."""
+    import sqlite3, os, glob, datetime
+    token = os.environ.get('MAINT_TOKEN', '')
+    if not token or request.args.get('token', '') != token:
+        abort(404)
+    dbpath = os.environ.get('DB_PATH', 'soulful_content.db')
+    con = db.get_db()
+    con.commit()                 # ensure no open txn before VACUUM
+    con.isolation_level = None
+    tables = {}
+    for t in ('users', 'clients', 'content_posts'):
+        cols = [r['name'] for r in con.execute('PRAGMA table_info(%s)' % t)]
+        n = con.execute('SELECT COUNT(*) FROM %s' % t).fetchone()[0]
+        tables[t] = {'rows': n, 'cols': cols}
+    bdir = os.path.join(os.path.dirname(dbpath) or '.', 'backups')
+    os.makedirs(bdir, exist_ok=True)
+    ts = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    bpath = os.path.join(bdir, 'soulful-%s.db' % ts).replace('\\', '/')
+    con.execute("VACUUM INTO '%s'" % bpath)
+    b = sqlite3.connect(bpath)
+    verify = {t: b.execute('SELECT COUNT(*) FROM %s' % t).fetchone()[0]
+              for t in ('users', 'clients', 'content_posts')}
+    b.close()
+    result = {
+        'db_path': dbpath,
+        'db_size': os.path.getsize(dbpath),
+        'tables': tables,
+        'backup_path': bpath,
+        'backup_size': os.path.getsize(bpath),
+        'backup_verify': verify,
+        'backups_present': [[f.replace('\\', '/'), os.path.getsize(f)]
+                            for f in sorted(glob.glob(os.path.join(bdir, '*.db')))],
+    }
+    con.close()
+    return jsonify(result)
+
+
 # Register auth after all page routes are defined so the login guard's
 # before_request runs after setup() (DB init) on the first request.
 auth.init_auth(app)
