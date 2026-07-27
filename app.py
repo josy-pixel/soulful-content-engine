@@ -15,7 +15,7 @@ import auth
 import security
 from security import (current_scope, enforce_client_id, require_content_access,
                      require_client_access, scoped_posts, scoped_clients, roles_required)
-from flask import abort, g
+from flask import abort, g, session
 from flask_login import login_user, current_user
 from werkzeug.security import generate_password_hash
 import hashlib
@@ -131,6 +131,13 @@ def healthz():
 
 
 # ── Dashboard ──────────────────────────────────────────────────────────────────
+
+@app.errorhandler(403)
+def _forbidden(e):
+    # 403 fires only for authenticated-but-unauthorized users (login_required
+    # redirects anonymous ones first), so the base layout renders fine.
+    return render_template('403.html'), 403
+
 
 @app.context_processor
 def inject_user_scope():
@@ -927,7 +934,11 @@ def trends():
 @app.route('/users')
 @roles_required('admin')     # user management: admin only
 def users():
-    return render_template('users.html', users=db.get_users(), clients=db.get_clients())
+    # The one-time invite/reset link is carried in the session (not a query string
+    # or a flash of the raw URL) so it renders once in a copy box, then is gone.
+    new_invite = session.pop('new_invite', None)
+    return render_template('users.html', users=db.get_users(),
+                           clients=db.get_clients(), new_invite=new_invite)
 
 
 @app.route('/users/invite', methods=['POST'])
@@ -949,7 +960,7 @@ def users_invite():
     db.create_pending_client_user(email, client_id, _hash_token(token), expires)
     invite_url = url_for('accept_invite', token=token, _external=True)
     # Shown once, on screen only — never emailed from the app.
-    flash(f'Invite link for {email} (valid 72h, copy it now): {invite_url}', 'invite')
+    session['new_invite'] = {'email': email, 'url': invite_url, 'kind': 'invite'}
     return redirect(url_for('users'))
 
 
@@ -980,7 +991,7 @@ def users_reset(user_id):
     expires = (datetime.now() + timedelta(hours=72)).isoformat()
     db.set_user_invite(user_id, _hash_token(token), expires)
     invite_url = url_for('accept_invite', token=token, _external=True)
-    flash(f'Password-reset link for {u["email"]} (valid 72h, copy it now): {invite_url}', 'invite')
+    session['new_invite'] = {'email': u['email'], 'url': invite_url, 'kind': 'reset'}
     return redirect(url_for('users'))
 
 

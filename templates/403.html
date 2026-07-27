@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Access denied — Soulful Content Engine{% endblock %}
+{% block page_title %}Access denied{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-shield-lock-fill text-danger d-block mb-3" style="font-size:3rem;"></i>
+    <h1 class="h4 mb-2">403 — You don't have access to this</h1>
+    <p class="text-muted mb-4">
+      Your account isn't permitted to view this page. If you believe this is a
+      mistake, contact your Soulful admin.
+    </p>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+      <i class="bi bi-house-door me-1"></i> Back to dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}

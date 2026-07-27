@@ -3,6 +3,31 @@
 {% block page_title %}Users{% endblock %}
 
 {% block content %}
+{% if new_invite %}
+<div class="card border-warning mb-4" id="inviteBox">
+  <div class="card-body">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <i class="bi bi-link-45deg fs-4 text-warning"></i>
+      <h2 class="h6 mb-0">
+        {% if new_invite.kind == 'reset' %}Password-reset link{% else %}Invite link{% endif %}
+        for <strong>{{ new_invite.email }}</strong>
+      </h2>
+    </div>
+    <div class="alert alert-warning py-2 small mb-2">
+      <i class="bi bi-exclamation-triangle-fill me-1"></i>
+      <strong>Shown once.</strong> The app does <strong>not</strong> email it — copy it now and
+      send it to the client yourself (WhatsApp, DM, email). Valid 72 hours, single use.
+    </div>
+    <div class="input-group">
+      <input type="text" class="form-control" id="inviteUrl" value="{{ new_invite.url }}" readonly>
+      <button class="btn btn-primary" type="button" id="copyInviteBtn">
+        <i class="bi bi-clipboard"></i> Copy
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="card mb-4">
   <div class="card-header fw-semibold">Invite a client user</div>
   <div class="card-body">
@@ -39,19 +64,25 @@
       </thead>
       <tbody>
         {% for u in users %}
+        {% set pending = (not u.is_active) and u.invite_token_hash and (not u.last_login_at) %}
         <tr>
           <td data-label="Email">{{ u.email }}</td>
           <td data-label="Role"><span class="badge bg-secondary text-capitalize">{{ u.role }}</span></td>
           <td data-label="Client">{{ u.client_name or '—' }}</td>
-          <td data-label="Last login"><small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small></td>
+          <td data-label="Last login">
+            <small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small>
+          </td>
           <td data-label="Status">
             {% if u.is_active %}<span class="badge bg-success">Active</span>
-            {% else %}<span class="badge bg-danger">Inactive</span>{% endif %}
+            {% elif pending %}<span class="badge bg-warning text-dark">Invited — not yet accepted</span>
+            {% else %}<span class="badge bg-danger">Deactivated</span>{% endif %}
           </td>
           <td data-label="Actions" class="text-nowrap">
             <form method="post" action="{{ url_for('users_reset', user_id=u.id) }}" class="d-inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-secondary">Reset password</button>
+              <button class="btn btn-sm btn-outline-secondary">
+                {% if pending %}Re-issue link{% else %}Reset password{% endif %}
+              </button>
             </form>
             {% if u.role != 'admin' %}
               {% if u.is_active %}
@@ -73,4 +104,27 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var btn = document.getElementById('copyInviteBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var input = document.getElementById('inviteUrl');
+      input.select();
+      input.setSelectionRange(0, 99999);
+      var done = function () {
+        btn.innerHTML = '<i class="bi bi-check2"></i> Copied';
+        btn.classList.replace('btn-primary', 'btn-success');
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
+      } else {
+        document.execCommand('copy'); done();
+      }
+    });
+  })();
+</script>
 {% endblock %}
