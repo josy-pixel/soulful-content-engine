@@ -611,16 +611,15 @@ def webhook_publish():
     return jsonify({'ok': True, 'post_id': post_id, 'status': 'posted'})
 
 
-@app.route('/webhook/test', methods=['POST'])
-def webhook_test():
-    """Fire the Make.com webhook for a post manually (for testing)."""
-    data = request.get_json(silent=True) or {}
-    post_id = data.get('post_id')
-    if not post_id:
-        return jsonify({'error': 'post_id is required'}), 400
-    post = db.get_post(int(post_id))
-    if not post:
-        return jsonify({'error': 'Post not found'}), 404
+@app.route('/webhook/test/<int:post_id>', methods=['POST'])
+@roles_required('admin')
+@require_content_access('post_id')
+def webhook_test(post_id):
+    """Manually (re)fire the Make.com webhook for a post. Admin only, and
+    object-scoped: this dispatches a real publish, so it is gated the same as
+    any content mutation. A client user is rejected with 403 before reaching it.
+    (post_id moved into the URL so @require_content_access applies.)"""
+    post = g.content_row
     ok, err = webhooks.send_to_make(post)
     if ok:
         return jsonify({'ok': True, 'message': 'Webhook fired successfully'})

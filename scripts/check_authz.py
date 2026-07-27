@@ -135,6 +135,15 @@ def main():
     # cross-check: the foreign client must NOT be able to see it either way is implied;
     # additionally confirm the row is NOT visible as client 1's by construction (own=200).
 
+    # ---- Check 3: /webhook/test must be admin-only (client -> 403, not a publish) ----
+    r3 = client.post('%s/webhook/test/%d' % (BASE, FOREIGN_POST), timeout=30,
+                     allow_redirects=False)
+    ok3 = r3.status_code == 403
+    detail = 'POST /webhook/test/%d -> %d' % (FOREIGN_POST, r3.status_code)
+    if r3.status_code in (301, 302):
+        detail += '  (redirect to %s — NOT authenticated; FAIL)' % r3.headers.get('Location')
+    record('client cannot fire the publish webhook (admin-only, 403)', ok3, detail)
+
     finish()
 
 
