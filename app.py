@@ -1092,7 +1092,7 @@ def _admin_ops():
             "SELECT id,email,role,client_id,is_active FROM users ORDER BY id")]
         out['all_posts'] = [dict(r) for r in con.execute(
             "SELECT p.id,p.client_id,c.name AS client,p.platform,p.status,"
-            "p.scheduled_date,p.posted_url FROM content_posts p "
+            "p.scheduled_date,p.posted_url,p.topic,p.caption FROM content_posts p "
             "JOIN clients c ON c.id=p.client_id ORDER BY p.id")]
         out['clients'] = [dict(r) for r in con.execute(
             "SELECT id,name FROM clients ORDER BY id")]
