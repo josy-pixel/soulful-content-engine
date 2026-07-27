@@ -196,6 +196,27 @@ def init_auth(app):
             flash('Your account has been deactivated.', 'danger')
             return redirect(url_for('login'))
 
+    # Global CSRF: every state-changing request must carry the session token,
+    # in the form field csrf_token OR the header X-CSRF-Token (for fetch/JSON).
+    # Exempt: X-Secret machine routes (no session), and login/setup which handle
+    # their own token inline and give a friendlier error.
+    _csrf_exempt = _MACHINE_ENDPOINTS | {'login', 'setup_admin'}
+
+    @app.before_request
+    def _csrf_protect():
+        if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            return
+        if request.endpoint in _csrf_exempt:
+            return
+        submitted = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token', '')
+        if not _csrf_ok(submitted):
+            abort(400, description='CSRF token missing or invalid. Reload the page and try again.')
+
+    @app.context_processor
+    def _inject_csrf():
+        # Lets every template drop {{ csrf_token }} into a form field or <meta>.
+        return {'csrf_token': _csrf_token()}
+
     @app.route('/setup', methods=['GET', 'POST'])
     def setup_admin():
         # First-run only: available until the first admin account exists,

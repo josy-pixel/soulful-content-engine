@@ -27,6 +27,7 @@
         {% endwith %}
 
         <form method="post" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-3">
             <label class="form-label">New password</label>
             <input type="password" name="password" class="form-control" minlength="12" required autocomplete="new-password">

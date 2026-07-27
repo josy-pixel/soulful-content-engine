@@ -10,6 +10,7 @@
   </a>
   <form method="POST" action="{{ url_for('content_delete', post_id=post.id) }}" class="d-inline"
         onsubmit="return confirm('Delete this post?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i> Delete</button>
   </form>
 {% endblock %}
@@ -221,6 +222,7 @@
 
         {% if allowed_transitions %}
         <form method="POST" action="{{ url_for('content_status', post_id=post.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-2">
             <label class="form-label fw-semibold small">Move to</label>
             <select name="status" class="form-select form-select-sm">

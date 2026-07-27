@@ -7,6 +7,7 @@
   <div class="card-header fw-semibold">Invite a client user</div>
   <div class="card-body">
     <form method="post" action="{{ url_for('users_invite') }}" class="row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="col-sm-5">
         <label class="form-label">Email</label>
         <input name="email" type="email" class="form-control" required placeholder="client@company.com">
@@ -49,15 +50,18 @@
           </td>
           <td data-label="Actions" class="text-nowrap">
             <form method="post" action="{{ url_for('users_reset', user_id=u.id) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-secondary">Reset password</button>
             </form>
             {% if u.role != 'admin' %}
               {% if u.is_active %}
               <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="btn btn-sm btn-outline-danger">Deactivate</button>
               </form>
               {% else %}
               <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="btn btn-sm btn-outline-success">Reactivate</button>
               </form>
               {% endif %}

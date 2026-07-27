@@ -55,6 +55,14 @@ def csrf(html):
     return m.group(1) if m else ''
 
 
+def csrf_meta(sess):
+    """The session's CSRF token, from the <meta> tag every authed page renders.
+    Needed because the app enforces CSRF on all state-changing requests."""
+    html = sess.get(BASE + '/', timeout=30).text
+    m = re.search(r'name="csrf-token" content="([^"]+)"', html)
+    return m.group(1) if m else ''
+
+
 def login(sess, email, password):
     html = sess.get(BASE + '/login', timeout=30).text
     sess.post(BASE + '/login', timeout=30,
@@ -64,8 +72,9 @@ def login(sess, email, password):
 def issue_invite(admin, email):
     """Invite the probe email on TARGET_CLIENT; if it already exists, re-issue via
     reset. Returns the one-time invite URL scraped from the flash."""
+    atok = csrf_meta(admin)
     r = admin.post(BASE + '/users/invite', timeout=30,
-                   data={'email': email, 'client_id': str(TARGET_CLIENT)})
+                   data={'email': email, 'client_id': str(TARGET_CLIENT), 'csrf_token': atok})
     m = re.search(r'(https?://[^\s"<]+/invite/[A-Za-z0-9_\-]+)', r.text)
     if m:
         return m.group(1)
@@ -74,7 +83,8 @@ def issue_invite(admin, email):
     for row in users.split('<tr'):
         if email in row:
             uid = re.search(r'/users/(\d+)/reset', row).group(1)
-            rr = admin.post(BASE + '/users/%s/reset' % uid, timeout=30)
+            rr = admin.post(BASE + '/users/%s/reset' % uid, timeout=30,
+                            data={'csrf_token': atok})
             return re.search(r'(https?://[^\s"<]+/invite/[A-Za-z0-9_\-]+)', rr.text).group(1)
     sys.exit('could not obtain an invite link for ' + email)
 
@@ -106,10 +116,11 @@ def main():
            'GET / -> %s %s' % (home.status_code, home.url))
     if not authed:
         finish()
+    ctok = csrf_meta(client)   # valid CSRF token so we reach the real authz check, not a 400
 
     # ---- Check 1: cross-tenant POST /content/<foreign>/status must be 403 ----
     r1 = client.post('%s/content/%d/status' % (BASE, FOREIGN_POST), timeout=30,
-                     data={'status': 'draft'}, allow_redirects=False)
+                     data={'status': 'draft', 'csrf_token': ctok}, allow_redirects=False)
     ok1 = r1.status_code == 403
     detail = 'POST /content/%d/status -> %d' % (FOREIGN_POST, r1.status_code)
     if r1.status_code in (301, 302):
@@ -117,7 +128,8 @@ def main():
     record('cross-tenant status change is 403 (not 302/login, not 200)', ok1, detail)
 
     # ---- Check 2: forged client_id in body is overwritten to the client's own ----
-    r2 = client.post(BASE + '/api/save-caption', timeout=30, json={
+    r2 = client.post(BASE + '/api/save-caption', timeout=30,
+                     headers={'X-CSRF-Token': ctok}, json={
         'client_id': FOREIGN_CLIENT,          # forged: Holly
         'platform': 'facebook', 'topic': 'authz probe', 'caption': 'authz probe',
     })
@@ -137,7 +149,7 @@ def main():
 
     # ---- Check 3: /webhook/test must be admin-only (client -> 403, not a publish) ----
     r3 = client.post('%s/webhook/test/%d' % (BASE, FOREIGN_POST), timeout=30,
-                     allow_redirects=False)
+                     headers={'X-CSRF-Token': ctok}, allow_redirects=False)
     ok3 = r3.status_code == 403
     detail = 'POST /webhook/test/%d -> %d' % (FOREIGN_POST, r3.status_code)
     if r3.status_code in (301, 302):
