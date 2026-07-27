@@ -1,9 +1,23 @@
 # Environment — never commit secrets
 .env
 
-# Database (local state)
+# Database (local state) + SQLite WAL/SHM sidecars
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
+
+# Persistent data dir (Render disk) — never committed
+/data/
+backups/
+
+# Secrets / access files (kept outside the repo, but guard anyway)
+*access*.json
+soulful-access.json
+*-SETUP-TOKEN.txt
+.authz-admin*
+*.key
+*.pem
 
 # Python
 __pycache__/
