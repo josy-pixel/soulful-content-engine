@@ -1090,7 +1090,13 @@ def _admin_ops():
             "SELECT id,platform,status,scheduled_date,posted_url "
             "FROM content_posts WHERE client_id=6")]
         out['users'] = [dict(r) for r in con.execute(
-            "SELECT id,email,role,is_active FROM users ORDER BY id")]
+            "SELECT id,email,role,client_id,is_active FROM users ORDER BY id")]
+        out['all_posts'] = [dict(r) for r in con.execute(
+            "SELECT p.id,p.client_id,c.name AS client,p.platform,p.status,"
+            "p.scheduled_date,p.posted_url FROM content_posts p "
+            "JOIN clients c ON c.id=p.client_id ORDER BY p.id")]
+        out['clients'] = [dict(r) for r in con.execute(
+            "SELECT id,name FROM clients ORDER BY id")]
     elif action == 'draft_post':
         pid = int(request.args['id'])
         before = con.execute("SELECT status,scheduled_date FROM content_posts WHERE id=?", (pid,)).fetchone()
