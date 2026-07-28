@@ -197,8 +197,9 @@ def client_detail(client_id):
         return redirect(url_for('clients'))
     voices = db.get_all_brand_voices(client_id)
     posts = db.get_posts(client_id=client_id, limit=10)
+    webhook = db.get_client_webhook(client_id)   # for the onboarding-status banner
     return render_template('client_detail.html', client=client, voices=voices,
-                           posts=posts, platforms=PLATFORMS)
+                           posts=posts, platforms=PLATFORMS, webhook=webhook)
 
 
 @app.route('/clients/<int:client_id>/edit', methods=['GET', 'POST'])

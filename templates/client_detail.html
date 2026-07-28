@@ -14,6 +14,20 @@
 {% endblock %}
 
 {% block content %}
+{% if current_user.role == 'admin' %}
+  {% if not webhook %}
+  <div class="alert alert-dark d-flex justify-content-between align-items-center py-2">
+    <span><i class="bi bi-exclamation-triangle me-1"></i> No publishing webhook configured for this client — content can't be dispatched.</span>
+    <a href="{{ url_for('settings.webhooks_page') }}" class="btn btn-sm btn-light">Configure</a>
+  </div>
+  {% elif webhook.status in ('untested', 'insecure', 'failing') %}
+  <div class="alert {{ 'alert-danger' if webhook.status in ('insecure','failing') else 'alert-warning' }} d-flex justify-content-between align-items-center py-2">
+    <span><i class="bi bi-exclamation-triangle me-1"></i>
+      Webhook is <strong>{{ webhook.status }}</strong> — {% if webhook.status == 'untested' %}send a test ping before publishing.{% else %}{{ webhook.last_error }}{% endif %}</span>
+    <a href="{{ url_for('settings.webhooks_page') }}" class="btn btn-sm btn-light">Settings</a>
+  </div>
+  {% endif %}
+{% endif %}
 <!-- Client header -->
 <div class="client-hero mb-4" style="border-left: 4px solid {{ client.logo_color }}">
   <div class="d-flex align-items-center gap-4">
