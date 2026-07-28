@@ -1,5 +1,6 @@
 import os
 import hmac
+import uuid
 import hashlib
 import requests
 from datetime import datetime
@@ -16,10 +17,17 @@ def send_to_make(post):
     app_url = os.environ.get('APP_URL', '').rstrip('/')
 
     payload = {
+        # v1 contract — see WEBHOOK_CONTRACT.md. Never remove or rename a v1 field;
+        # additions are allowed. A breaking change ships as v2 alongside v1.
+        'contract_version': 1,
         'event':          'post_approved',
         'post_id':        post['id'],
+        'client_id':      post.get('client_id'),   # v1 add: stable id (client NAME is ambiguous — two clients can share one)
         'client':         post['client_name'],
         'platform':       post['platform'],
+        # v1 add: unique per dispatch attempt (post_id:platform:random). Lets a scenario
+        # recognise a redelivered POST and lets us investigate double-posts later.
+        'idempotency_key': '%s:%s:%s' % (post['id'], post['platform'], uuid.uuid4().hex),
         'content_type':   post.get('content_type') or 'photo',
         'topic':          post['topic'],
         'caption':        post['caption'],
