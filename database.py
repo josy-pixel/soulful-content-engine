@@ -236,6 +236,10 @@ def init_db():
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_client_webhook_unique
             ON client_webhooks(client_id) WHERE deleted_at IS NULL;
+        -- one webhook URL belongs to exactly one client: two clients on one scenario
+        -- would publish to the wrong page and the routing test would not catch it.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_client_webhook_url_unique
+            ON client_webhooks(webhook_url) WHERE deleted_at IS NULL;
     ''')
     conn.commit()
 
@@ -606,9 +610,18 @@ def get_client_webhook_including_deleted(client_id):
 
 def upsert_client_webhook(client_id, webhook_url, webhook_secret, platforms_enabled):
     """Create the client's webhook or update the existing active one. A new URL/secret
-    resets status to 'untested' — it must be re-tested before real content flows."""
+    resets status to 'untested' — it must be re-tested before real content flows.
+    Raises ValueError if the URL already belongs to a DIFFERENT active client (two
+    clients on one scenario would publish to the wrong page)."""
     now = datetime.now().isoformat()
     conn = get_db()
+    clash = conn.execute(
+        'SELECT client_id FROM client_webhooks WHERE webhook_url=? AND deleted_at IS NULL '
+        'AND client_id<>?', (webhook_url, client_id)).fetchone()
+    if clash:
+        conn.close()
+        raise ValueError('That webhook URL is already assigned to another client. '
+                         'Each client needs its own Make scenario / webhook URL.')
     existing = conn.execute(
         'SELECT id FROM client_webhooks WHERE client_id=? AND deleted_at IS NULL',
         (client_id,)).fetchone()
@@ -645,6 +658,24 @@ def record_webhook_result(client_id, success, error=None, is_test=False):
             "UPDATE client_webhooks SET status='failing', last_error=?, updated_at=?" + test_set +
             " WHERE client_id=? AND deleted_at IS NULL",
             [error, now] + ([now] if is_test else []) + [client_id])
+    conn.commit()
+    conn.close()
+
+
+def set_client_webhook_test_status(client_id, status, error=None):
+    """Record a test-ping verdict: 'verified' | 'failing' | 'insecure'. 'insecure'
+    means the scenario accepted a deliberately wrong secret — it is NOT verifying
+    X-Secret and must not be treated as safe."""
+    now = datetime.now().isoformat()
+    conn = get_db()
+    if status == 'verified':
+        conn.execute("UPDATE client_webhooks SET status='verified', last_test_at=?, "
+                     "last_success_at=?, last_error=NULL, updated_at=? "
+                     "WHERE client_id=? AND deleted_at IS NULL", (now, now, now, client_id))
+    else:
+        conn.execute("UPDATE client_webhooks SET status=?, last_test_at=?, last_error=?, "
+                     "updated_at=? WHERE client_id=? AND deleted_at IS NULL",
+                     (status, now, error, now, client_id))
     conn.commit()
     conn.close()
 

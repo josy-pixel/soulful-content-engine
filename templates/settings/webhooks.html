@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Settings — Webhooks{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-3">{% include 'settings/_nav.html' %}</div>
+  <div class="col-lg-9">
+
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Add / edit a client webhook</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('settings.webhooks_save') }}" class="row g-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="col-sm-4">
+            <label class="form-label">Client</label>
+            <select name="client_id" class="form-select" required>
+              <option value="">Choose…</option>
+              {% for c in clients %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.webhook %} — configured{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-8">
+            <label class="form-label">Webhook URL</label>
+            <input name="webhook_url" type="url" class="form-control"
+                   placeholder="https://hook.eu1.make.com/…" required>
+            <small class="text-muted">Each client needs its own scenario URL — a URL already used by another client is rejected.</small>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Secret (sent as <code>X-Secret</code>)</label>
+            <div class="input-group">
+              <input name="webhook_secret" type="password" class="form-control" id="secretInput"
+                     placeholder="leave blank to keep current" autocomplete="new-password">
+              <button class="btn btn-outline-secondary" type="button" id="toggleSecret" tabindex="-1"
+                      title="Show/hide what you're typing"><i class="bi bi-eye"></i></button>
+            </div>
+            <small class="text-muted">Stored masked (shown only as …last4). Changing it resets status to untested.</small>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label d-block">Platforms</label>
+            {% for p in platforms %}
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="platforms" value="{{ p }}" id="pf_{{ p }}" checked>
+              <label class="form-check-label text-capitalize" for="pf_{{ p }}">{{ p }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="col-12"><button class="btn btn-primary">Save webhook</button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header fw-semibold">All clients</div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr><th>Client</th><th>Status</th><th>Platforms</th><th>Secret</th><th>Last success</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for c in clients %}
+            {% set w = c.webhook %}
+            <tr>
+              <td data-label="Client">{{ c.name }}</td>
+              <td data-label="Status">
+                {% if not w %}<span class="badge bg-dark">Not configured</span>
+                {% else %}{% include 'settings/_status_badge.html' %}{% endif %}
+              </td>
+              <td data-label="Platforms">{{ (w.platforms_enabled|replace(',', ', ')) if w else '—' }}</td>
+              <td data-label="Secret"><code>{{ w.secret_masked if w else '—' }}</code></td>
+              <td data-label="Last success"><small class="text-muted">{{ (w.last_success_at[:16]) if (w and w.last_success_at) else '—' }}</small></td>
+              <td class="text-nowrap">
+                {% if w %}
+                <button class="btn btn-sm btn-outline-primary test-ping"
+                        data-test-url="{{ url_for('settings.webhooks_test', client_id=c.id) }}">Send test ping</button>
+                {% if w.status == 'disabled' %}
+                <form method="post" action="{{ url_for('settings.webhooks_enable', client_id=c.id) }}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-success">Enable</button></form>
+                {% else %}
+                <form method="post" action="{{ url_for('settings.webhooks_disable', client_id=c.id) }}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">Disable</button></form>
+                {% endif %}
+                <form method="post" action="{{ url_for('settings.webhooks_delete', client_id=c.id) }}" class="d-inline"
+                      onsubmit="return confirm('Remove this webhook?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">Remove</button></form>
+                {% endif %}
+                <div class="small mt-1 ping-result" id="ping-{{ c.id }}"></div>
+              </td>
+            </tr>
+            {% if w and w.status in ('untested', 'insecure', 'failing') %}
+            <tr class="table-borderless"><td colspan="6" class="pt-0">
+              <div class="alert {{ 'alert-danger' if w.status in ('insecure', 'failing') else 'alert-warning' }} py-2 small mb-2">
+                {% if w.status == 'untested' %}Not verified yet — <strong>send a test ping</strong> before publishing real content.
+                {% elif w.status == 'insecure' %}<strong>Insecure:</strong> {{ w.last_error }}
+                {% else %}<strong>Last test failed:</strong> {{ w.last_error }}{% endif %}
+              </div>
+            </td></tr>
+            {% endif %}
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Reveal-on-click reveals what the admin is TYPING; the stored secret is never in the HTML.
+  var tgl = document.getElementById('toggleSecret');
+  if (tgl) tgl.addEventListener('click', function () {
+    var i = document.getElementById('secretInput');
+    i.type = i.type === 'password' ? 'text' : 'password';
+  });
+
+  document.querySelectorAll('.test-ping').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var url = btn.dataset.testUrl;
+      var row = btn.parentElement.querySelector('.ping-result');
+      btn.disabled = true;
+      row.className = 'small mt-1 ping-result text-muted';
+      row.textContent = 'Pinging with the correct AND a deliberately wrong secret…';
+      try {
+        var res = await fetch(url, { method: 'POST' });   // X-CSRF-Token added by base.html
+        var d = await res.json();
+        var cls = d.status === 'verified' ? 'text-success'
+                : (d.status === 'insecure' || d.status === 'failing') ? 'text-danger' : 'text-warning';
+        row.className = 'small mt-1 ping-result ' + cls;
+        row.textContent = (d.status ? d.status.toUpperCase() + ' — ' : '') + (d.detail || '');
+      } catch (e) {
+        row.className = 'small mt-1 ping-result text-danger';
+        row.textContent = 'Request failed';
+      } finally {
+        btn.disabled = false;
+        setTimeout(function () { location.reload(); }, 2500);
+      }
+    });
+  });
+</script>
+{% endblock %}

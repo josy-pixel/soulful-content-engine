@@ -112,6 +112,44 @@ def dispatch_post(post, actor_user_id=None, actor_role=None, request_ip=None):
     return (True, "Dispatched to this client's webhook.") if ok else (False, 'Dispatch failed: %s' % err)
 
 
+def send_test_ping(client_id, actor_user_id=None, actor_role=None, request_ip=None):
+    """Verify a newly-cloned scenario before real content flows. Sends TWO pings:
+       1. with the CORRECT secret  -> must be ACCEPTED (2xx)
+       2. with a deliberately WRONG secret -> must be REJECTED (non-2xx)
+    A scenario that accepts the wrong secret is NOT verifying X-Secret — that is
+    'insecure', never 'verified'. Records the verdict, audits it, returns a UI dict.
+    The payload carries "test": true so a correctly-built scenario skips publishing.
+    """
+    webhook = db.get_client_webhook(client_id)
+    if webhook is None:
+        return {'ok': False, 'status': None, 'detail': 'No webhook configured for this client.'}
+    url, secret = webhook['webhook_url'], webhook['webhook_secret']
+    base = {'contract_version': 1, 'event': 'test_ping', 'test': True,
+            'client_id': client_id, 'platform': 'facebook',
+            'idempotency_key': 'test:%s:%s' % (client_id, uuid.uuid4().hex)}
+
+    good_ok, good_http, good_err = _http_post(url, base, secret)
+    wrong_ok, wrong_http, _ = _http_post(url, dict(base, note='wrong-secret-probe'), secret + '_WRONG')
+
+    if not good_ok:
+        status = 'failing'
+        detail = 'Correct-secret ping failed (%s) — the scenario did not accept a valid request.' % good_err
+    elif wrong_ok:
+        status = 'insecure'
+        detail = ('The scenario ACCEPTED a deliberately WRONG secret (HTTP %s) — it is not verifying '
+                  'X-Secret. Add the secret check (see ONBOARDING.md) before sending real content.' % wrong_http)
+    else:
+        status = 'verified'
+        detail = 'Correct secret accepted (HTTP %s); wrong secret rejected (HTTP %s).' % (good_http, wrong_http)
+
+    db.set_client_webhook_test_status(client_id, status, None if status == 'verified' else detail)
+    db.add_audit(actor_user_id, actor_role, client_id, 'webhook', webhook['id'], 'test_ping',
+                 metadata={'result': status, 'good_http': good_http, 'wrong_http': wrong_http},
+                 request_ip=request_ip)
+    return {'ok': status == 'verified', 'status': status, 'detail': detail,
+            'good_http': good_http, 'wrong_http': wrong_http}
+
+
 def mask_secret(secret):
     """Show only the last 4 characters of a secret, for UI and logs. Never reveal the
     rest, and don't leak the length."""

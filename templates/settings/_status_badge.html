@@ -1,0 +1,7 @@
+{% set s = w.status %}
+{%- if s == 'verified' %}<span class="badge bg-success">Verified</span>
+{%- elif s == 'untested' %}<span class="badge bg-warning text-dark">Untested</span>
+{%- elif s == 'insecure' %}<span class="badge bg-danger">Insecure</span>
+{%- elif s == 'failing' %}<span class="badge bg-danger">Failing</span>
+{%- elif s == 'disabled' %}<span class="badge bg-secondary">Disabled</span>
+{%- else %}<span class="badge bg-light text-dark">{{ s }}</span>{%- endif %}

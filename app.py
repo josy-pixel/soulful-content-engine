@@ -1073,6 +1073,12 @@ def api_generate_report():
     })
 
 
+# Admin-only Settings section (integration config). Access is enforced on the
+# blueprint, not per route.
+import settings
+app.register_blueprint(settings.settings_bp)
+
+
 # Register auth after all page routes are defined so the login guard's
 # before_request runs after setup() (DB init) on the first request.
 auth.init_auth(app)

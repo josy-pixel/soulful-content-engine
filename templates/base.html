@@ -72,6 +72,9 @@
     <a href="{{ url_for('users') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('users') %}active{% endif %}">
       <i class="bi bi-person-badge-fill"></i> Users
     </a>
+    <a href="{{ url_for('settings.webhooks_page') }}" class="nav-link {% if request.blueprint == 'settings' %}active{% endif %}">
+      <i class="bi bi-gear-fill"></i> Settings
+    </a>
     {% endif %}
   </nav>
 
