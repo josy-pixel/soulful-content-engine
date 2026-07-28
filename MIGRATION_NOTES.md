@@ -1,4 +1,18 @@
-# MIGRATION NOTES — Phase 2, Stage 1 (Roles & Client Portal)
+# MIGRATION NOTES
+
+> ## 🚨 DEPLOY ORDER — read before deploying `feat/per-client-webhooks`
+> **Set `LEGACY_WEBHOOK_FALLBACK=true` on Render BEFORE you deploy this branch**
+> (with `MAKE_WEBHOOK_URL` still set). Dispatch now resolves per client and **refuses
+> a client that has no webhook row** — the currently working client has none yet, so
+> without this flag its first approve after deploy fails with "No webhook configured
+> for this client" and it silently stops publishing. Migrate clients one at a time in
+> Settings → Webhooks (add → **Send test ping** → verify), then remove the flag once
+> every client has a verified row. Full detail in the "Deploy order for per-client
+> webhooks" section below.
+
+---
+
+# Phase 2, Stage 1 (Roles & Client Portal)
 
 Branch: `feat/roles-client-portal` → merges into `master`.
 
