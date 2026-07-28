@@ -579,11 +579,12 @@ def content_status(post_id):
 
     if new_status == 'approved':
         post = db.get_post(post_id)
-        ok, err = webhooks.send_to_make(post)
+        ok, msg = webhooks.dispatch_post(post, current_user.id, current_user.role, request.remote_addr)
         if ok:
-            flash('Post sent to Make.com webhook.', 'success')
-        elif err and 'not configured' not in err:
-            flash(f'Make.com webhook failed: {err}', 'warning')
+            flash(msg, 'success')
+        else:
+            db.set_post_error(post_id, msg)   # persist the failure — never leave it silently "sent"
+            flash(f'Dispatch failed: {msg}', 'warning')
 
     return redirect(url_for('content_detail', post_id=post_id))
 
@@ -627,10 +628,10 @@ def webhook_test(post_id):
     any content mutation. A client user is rejected with 403 before reaching it.
     (post_id moved into the URL so @require_content_access applies.)"""
     post = g.content_row
-    ok, err = webhooks.send_to_make(post)
+    ok, msg = webhooks.dispatch_post(post, current_user.id, current_user.role, request.remote_addr)
     if ok:
-        return jsonify({'ok': True, 'message': 'Webhook fired successfully'})
-    return jsonify({'ok': False, 'error': err}), 500
+        return jsonify({'ok': True, 'message': msg})
+    return jsonify({'ok': False, 'error': msg}), 502
 
 
 @app.route('/content/<int:post_id>/delete', methods=['POST'])

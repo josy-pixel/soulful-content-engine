@@ -141,3 +141,20 @@ global secret). Mitigations in place:
 If this needs hardening later: encrypt the column at rest with a KMS-held key (the
 same `BACKUP_ENCRYPTION_KEY` pattern proposed for R2 backups), or move secrets to a
 secrets manager. Not done now.
+
+## Deploy order for per-client webhooks (Part 3)
+
+Dispatch now resolves the target from the post's `client_id` and **refuses if the
+client has no webhook row** — there is no silent global default. The currently
+working client has no row yet, so:
+
+1. **Before deploying**, set `LEGACY_WEBHOOK_FALLBACK=true` on Render (with the
+   existing `MAKE_WEBHOOK_URL` still set). The un-migrated client then keeps
+   dispatching via the global webhook; every use logs a WARNING naming the client.
+2. Migrate clients one at a time (Settings → Webhooks): add each client's webhook,
+   press **Send test ping**, confirm it passes, then publish real content for them.
+3. When every client has a verified row, **remove `LEGACY_WEBHOOK_FALLBACK`** — the
+   fallback code path is then dead and gets deleted.
+
+Deploying without step 1 would break the working client's publishing on the first
+approve (it would refuse with "No webhook configured for this client").
