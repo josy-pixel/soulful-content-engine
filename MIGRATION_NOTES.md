@@ -73,3 +73,51 @@ become live for that session only.
 - **DB:** no action needed — the added columns are nullable/defaulted and ignored by
   the old code. If you nonetheless want a clean DB, the disk snapshot on Render can be
   restored, but this is not required for a code rollback.
+
+---
+
+# Stage 2 (Deletion, Trash & Data Lifecycle)
+
+## Backup & Restore drill (tested)
+
+Only the web process can see `/data` (no shell, and Render one-off jobs do NOT mount
+the disk). So backups are produced in-process and restores happen at boot, before any
+connection opens, via `database.restore_if_requested()` (called at the top of
+`init_db()`). It is OFF by default and guarded five ways: source validation
+(`PRAGMA integrity_check`), a confirmation token, a marker file (no re-run), a
+pre-overwrite backup of the current DB (restore ABORTS if that backup fails), and
+before/after row counts written to the logs.
+
+### To restore the production DB from a backup
+
+1. Pick the backup file on the disk, e.g. `/data/backups/soulful-20260727T174225Z.db`.
+2. Set two env vars on the Render service (API or dashboard):
+   - `RESTORE_FROM=/data/backups/soulful-20260727T174225Z.db`
+   - `RESTORE_CONFIRM=soulful-20260727T174225Z.db`   ← must equal the **filename** of RESTORE_FROM
+3. Trigger a deploy. On boot the app will, in order:
+   validate the backup → back up the CURRENT DB to `/data/backups/pre-restore-<ts>.db`
+   (aborting if that fails) → overwrite `/data/soulful_content.db` → drop stale
+   `-wal`/`-shm` → write marker `/data/.restored-<filename>` → log before/after counts.
+   Grep the deploy logs for `restore: RESTORED ... before=... after=...` to confirm.
+4. **Remove `RESTORE_FROM` and `RESTORE_CONFIRM`** and redeploy. (The marker also stops
+   a left-behind env var from re-restoring on the next restart.)
+5. To restore the **same** file again later, delete its marker: `/data/.restored-<filename>`.
+
+The pre-overwrite backup means the restore itself is reversible: to undo, restore from
+the `pre-restore-<ts>.db` the same way.
+
+> Offsite copies: `/data/backups` lives on the same disk as the DB — that is versioning,
+> not backup. Encrypted upload to Cloudflare R2 is wired in the Stage 2 backup routine
+> (env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
+> `BACKUP_ENCRYPTION_KEY`). Until that is live, pull a copy off Render manually.
+
+## ⚠️ Blocker to resolve BEFORE Part 3 (deletion rules)
+
+The inbound callback path appears broken: **0 posts have a `posted_url`** yet a post was
+observed live on Facebook — so Make is not calling back into `/webhook/publish`, and the
+app shows a `posted` status nothing verifies. Part 3's rules are written per status
+("deleting a `posted` item is admin-only and does not remove the live post"), which is
+meaningless if `posted` cannot be verified. Before Part 3: diagnose whether Make is
+configured to call `/webhook/publish`, whether it is reachable, whether it authenticates
+(the X-Secret), and whether it writes `posted_url`. Report findings then — not during
+Part 1 (which is purely structural).
