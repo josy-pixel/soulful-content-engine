@@ -216,6 +216,26 @@ def init_db():
             role TEXT NOT NULL DEFAULT 'admin',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Per-client outbound webhook (one active per client; platform routed inside
+        -- the client's Make scenario). webhook_secret is plaintext in SQLite — masked
+        -- in all UI/logs; see MIGRATION_NOTES.md for the limitation.
+        CREATE TABLE IF NOT EXISTS client_webhooks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            webhook_url TEXT NOT NULL,
+            webhook_secret TEXT NOT NULL,
+            platforms_enabled TEXT NOT NULL DEFAULT 'facebook',   -- csv: facebook,instagram
+            status TEXT NOT NULL DEFAULT 'untested',              -- untested | verified | failing | disabled
+            last_test_at TEXT,
+            last_success_at TEXT,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_client_webhook_unique
+            ON client_webhooks(client_id) WHERE deleted_at IS NULL;
     ''')
     conn.commit()
 
@@ -290,6 +310,8 @@ def init_db():
         CREATE VIEW v_content_active AS SELECT * FROM content_posts WHERE deleted_at IS NULL;
         DROP VIEW IF EXISTS v_clients_active;
         CREATE VIEW v_clients_active AS SELECT * FROM clients WHERE deleted_at IS NULL;
+        DROP VIEW IF EXISTS v_client_webhooks_active;
+        CREATE VIEW v_client_webhooks_active AS SELECT * FROM client_webhooks WHERE deleted_at IS NULL;
     ''')
     conn.commit()
 
@@ -547,6 +569,122 @@ def get_clients_including_deleted():
     rows = conn.execute('SELECT * FROM clients ORDER BY name').fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Per-client outbound webhooks ──────────────────────────────────────────────
+# Reads go through v_client_webhooks_active. The base table is touched only by the
+# writes below and by *_including_deleted (re-onboarding a removed webhook).
+
+def get_client_webhook(client_id):
+    """The active webhook row for a client, or None. Read via the view."""
+    conn = get_db()
+    row = conn.execute('SELECT * FROM v_client_webhooks_active WHERE client_id=?',
+                       (client_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_client_webhooks():
+    """Every active webhook joined to its client name — for the settings table."""
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT w.*, c.name AS client_name FROM v_client_webhooks_active w '
+        'JOIN v_clients_active c ON c.id = w.client_id ORDER BY c.name').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_client_webhook_including_deleted(client_id):
+    """Base-table read (sees soft-deleted). For re-onboarding a removed webhook.
+    # raw-query-ok: must see deleted rows to re-activate"""
+    conn = get_db()
+    row = conn.execute('SELECT * FROM client_webhooks WHERE client_id=? ORDER BY id DESC LIMIT 1',
+                       (client_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def upsert_client_webhook(client_id, webhook_url, webhook_secret, platforms_enabled):
+    """Create the client's webhook or update the existing active one. A new URL/secret
+    resets status to 'untested' — it must be re-tested before real content flows."""
+    now = datetime.now().isoformat()
+    conn = get_db()
+    existing = conn.execute(
+        'SELECT id FROM client_webhooks WHERE client_id=? AND deleted_at IS NULL',
+        (client_id,)).fetchone()
+    if existing:
+        conn.execute(
+            'UPDATE client_webhooks SET webhook_url=?, webhook_secret=?, platforms_enabled=?, '
+            "status='untested', updated_at=? WHERE id=?",
+            (webhook_url, webhook_secret, platforms_enabled, now, existing['id']))
+        wid = existing['id']
+    else:
+        cur = conn.execute(
+            'INSERT INTO client_webhooks (client_id, webhook_url, webhook_secret, '
+            'platforms_enabled, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?)',
+            (client_id, webhook_url, webhook_secret, platforms_enabled, 'untested', now, now))
+        wid = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return wid
+
+
+def record_webhook_result(client_id, success, error=None, is_test=False):
+    """Persist a dispatch or test-ping outcome onto the client's active webhook row.
+    Never stores the secret."""
+    now = datetime.now().isoformat()
+    test_set = ', last_test_at=?' if is_test else ''
+    conn = get_db()
+    if success:
+        conn.execute(
+            "UPDATE client_webhooks SET status='verified', last_success_at=?, last_error=NULL, "
+            "updated_at=?" + test_set + " WHERE client_id=? AND deleted_at IS NULL",
+            [now, now] + ([now] if is_test else []) + [client_id])
+    else:
+        conn.execute(
+            "UPDATE client_webhooks SET status='failing', last_error=?, updated_at=?" + test_set +
+            " WHERE client_id=? AND deleted_at IS NULL",
+            [error, now] + ([now] if is_test else []) + [client_id])
+    conn.commit()
+    conn.close()
+
+
+def set_client_webhook_enabled(client_id, enabled):
+    """Disable (status='disabled', dispatch refuses) or re-enable (status='untested',
+    must be re-tested) a client's webhook without deleting the row."""
+    now = datetime.now().isoformat()
+    conn = get_db()
+    conn.execute(
+        "UPDATE client_webhooks SET status=?, updated_at=? WHERE client_id=? AND deleted_at IS NULL",
+        ('untested' if enabled else 'disabled', now, client_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_client_webhook(client_id):
+    """Soft-delete the client's active webhook (frees the unique index for re-onboarding)."""
+    now = datetime.now().isoformat()
+    conn = get_db()
+    conn.execute(
+        "UPDATE client_webhooks SET deleted_at=?, updated_at=? WHERE client_id=? AND deleted_at IS NULL",
+        (now, now, client_id))
+    conn.commit()
+    conn.close()
+
+
+def add_audit(actor_user_id, actor_role, tenant_client_id, entity_type, entity_id,
+              action, reason=None, metadata=None, request_ip=None):
+    """Append-only audit row (Stage 2 audit_log). metadata is json.dumps'd.
+    NEVER pass a secret in reason or metadata."""
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO audit_log (actor_user_id, actor_role, tenant_client_id, entity_type, '
+        'entity_id, action, reason, metadata, request_ip, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        (actor_user_id, actor_role, tenant_client_id, entity_type, entity_id, action, reason,
+         json.dumps(metadata) if metadata is not None else None, request_ip,
+         datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
 
 
 def create_post(data):

@@ -33,7 +33,8 @@ def _soft_delete(table, row_id):
 def test_view_columns_match_base_tables():
     db.init_db()
     conn = db.get_db()
-    for base, view in (("content_posts", "v_content_active"), ("clients", "v_clients_active")):
+    for base, view in (("content_posts", "v_content_active"), ("clients", "v_clients_active"),
+                       ("client_webhooks", "v_client_webhooks_active")):
         b = [r["name"] for r in conn.execute("PRAGMA table_info(%s)" % base)]
         v = [r["name"] for r in conn.execute("PRAGMA table_info(%s)" % view)]
         assert b == v, "%s columns drifted from %s:\n base=%s\n view=%s" % (view, base, b, v)

@@ -16,7 +16,7 @@ import os
 
 # built from fragments so the literal patterns never appear in this file
 _VERBS = ('FROM', 'UPDATE', 'DELETE FROM')
-_TABLES = ('content_posts', 'clients')
+_TABLES = ('content_posts', 'clients', 'client_webhooks')
 NEEDLES = tuple('%s %s' % (v, t) for v in _VERBS for t in _TABLES)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

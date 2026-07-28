@@ -121,3 +121,23 @@ meaningless if `posted` cannot be verified. Before Part 3: diagnose whether Make
 configured to call `/webhook/publish`, whether it is reachable, whether it authenticates
 (the X-Secret), and whether it writes `posted_url`. Report findings then — not during
 Part 1 (which is purely structural).
+
+---
+
+# Per-client webhooks
+
+## Known limitation: `webhook_secret` is stored in plaintext
+
+`client_webhooks.webhook_secret` sits in plaintext in the SQLite file on the Render
+disk. This is a deliberate, accepted limitation for now, with a **per-client blast
+radius** (a disk compromise exposes each client's outbound secret, not one shared
+global secret). Mitigations in place:
+
+- The secret is **masked everywhere** — UI and logs show only the last 4 characters
+  (`…1234`), never the full value, and it is never written to `audit_log`.
+- Rotating a client's secret is a single UI action (paste a new one), and doing so
+  resets that webhook's status to `untested` so it must be re-verified.
+
+If this needs hardening later: encrypt the column at rest with a KMS-held key (the
+same `BACKUP_ENCRYPTION_KEY` pattern proposed for R2 backups), or move secrets to a
+secrets manager. Not done now.

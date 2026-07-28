@@ -53,6 +53,14 @@ def send_to_make(post):
         return False, str(e)
 
 
+def mask_secret(secret):
+    """Show only the last 4 characters of a secret, for UI and logs. Never reveal the
+    rest, and don't leak the length."""
+    if not secret:
+        return ''
+    return '…' + secret[-4:] if len(secret) >= 4 else '…'
+
+
 def verify_secret(provided: str) -> bool:
     """Constant-time comparison of the inbound webhook secret."""
     expected = os.environ.get('MAKE_WEBHOOK_SECRET', '')
