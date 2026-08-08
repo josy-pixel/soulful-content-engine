@@ -43,6 +43,8 @@ user without the secret is rejected by `_check_secret`, so they cannot hit them.
 | `/api/generate-report` | POST | admin/manager | **403** | `@roles_required('admin','manager')` |
 | `/trends` | GET | all | all | Trends is org-wide per the matrix — intentionally NOT scoped |
 | `/users` | GET/POST | admin | 403 | `@roles_required('admin')` (built in step 3) |
+| `/users/invite` | POST | admin | 403 | `@roles_required('admin')`. Mints privileges: `role` is read from an **allowlist** (`admin`/`client`), defaulting to `client`. An `admin` invite forces `client_id = None` server-side, so a posted `client_id` can never scope an admin — and no path can escalate a client user, because the route rejects them before the handler runs. |
+| `/users/<id>/deactivate` | POST | admin | 403 | Two lockout guards **in the route, not the template**: you cannot deactivate yourself, and the last active admin cannot be deactivated (`db.count_active_admins`). An invited-not-yet-accepted admin has `is_active=0` and does not count as a survivor. |
 
 ## Machine routes (X-Secret, whitelisted from the login guard)
 `webhook_publish`, `api_performance_inbound`, `api_content_get`,

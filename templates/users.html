@@ -11,12 +11,19 @@
       <h2 class="h6 mb-0">
         {% if new_invite.kind == 'reset' %}Password-reset link{% else %}Invite link{% endif %}
         for <strong>{{ new_invite.email }}</strong>
+        {% if new_invite.role == 'admin' %}
+          <span class="badge bg-danger ms-1">Admin</span>
+        {% endif %}
       </h2>
     </div>
     <div class="alert alert-warning py-2 small mb-2">
       <i class="bi bi-exclamation-triangle-fill me-1"></i>
       <strong>Shown once.</strong> The app does <strong>not</strong> email it — copy it now and
-      send it to the client yourself (WhatsApp, DM, email). Valid 72 hours, single use.
+      send it to the person yourself (WhatsApp, DM, email). Valid 72 hours, single use.
+      {% if new_invite.role == 'admin' %}
+        Whoever opens this link gets <strong>full admin access to every client</strong> —
+        send it only over a channel you trust.
+      {% endif %}
     </div>
     <div class="input-group">
       <input type="text" class="form-control" id="inviteUrl" value="{{ new_invite.url }}" readonly>
@@ -29,28 +36,36 @@
 {% endif %}
 
 <div class="card mb-4">
-  <div class="card-header fw-semibold">Invite a client user</div>
+  <div class="card-header fw-semibold">Invite a user</div>
   <div class="card-body">
     <form method="post" action="{{ url_for('users_invite') }}" class="row g-2 align-items-end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="col-sm-5">
-        <label class="form-label">Email</label>
-        <input name="email" type="email" class="form-control" required placeholder="client@company.com">
-      </div>
       <div class="col-sm-4">
+        <label class="form-label">Email</label>
+        <input name="email" type="email" class="form-control" required placeholder="name@company.com">
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label">Role</label>
+        <select name="role" id="inviteRole" class="form-select" required>
+          <option value="client" selected>Client — their own client only</option>
+          <option value="admin">Admin — full access, all clients</option>
+        </select>
+      </div>
+      <div class="col-sm-3" id="inviteClientWrap">
         <label class="form-label">Client</label>
-        <select name="client_id" class="form-select" required>
+        <select name="client_id" id="inviteClient" class="form-select" required>
           <option value="">Choose client…</option>
           {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-sm-3">
-        <button class="btn btn-primary w-100">Generate invite link</button>
+      <div class="col-sm-2">
+        <button class="btn btn-primary w-100">Generate link</button>
       </div>
     </form>
     <small class="text-muted d-block mt-2">
       A single-use link (valid 72h) is shown once after you submit. Copy it and
-      send it to the client yourself — the app never emails it.
+      send it to the person yourself — the app never emails it. An admin invite
+      grants full access to every client, so only send it to someone on your team.
     </small>
   </div>
 </div>
@@ -63,11 +78,18 @@
         <tr><th>Email</th><th>Role</th><th>Client</th><th>Last login</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
+        {% set active_admins = users | selectattr('role', 'equalto', 'admin') | selectattr('is_active') | list | length %}
         {% for u in users %}
         {% set pending = (not u.is_active) and u.invite_token_hash and (not u.last_login_at) %}
+        {% set is_me = u.id == current_user.id %}
+        {% set last_admin = u.role == 'admin' and u.is_active and active_admins <= 1 %}
         <tr>
-          <td data-label="Email">{{ u.email }}</td>
-          <td data-label="Role"><span class="badge bg-secondary text-capitalize">{{ u.role }}</span></td>
+          <td data-label="Email">
+            {{ u.email }}{% if is_me %} <span class="text-muted small">(you)</span>{% endif %}
+          </td>
+          <td data-label="Role">
+            <span class="badge text-capitalize {{ 'bg-danger' if u.role == 'admin' else 'bg-secondary' }}">{{ u.role }}</span>
+          </td>
           <td data-label="Client">{{ u.client_name or '—' }}</td>
           <td data-label="Last login">
             <small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small>
@@ -84,18 +106,25 @@
                 {% if pending %}Re-issue link{% else %}Reset password{% endif %}
               </button>
             </form>
-            {% if u.role != 'admin' %}
-              {% if u.is_active %}
+            {% if u.is_active %}
+              {% if is_me %}
+                <span class="text-muted small ms-1">—</span>
+              {% elif last_admin %}
+                <span class="text-muted small ms-1" title="Promote another admin first">Last admin</span>
+              {% else %}
               <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="btn btn-sm btn-outline-danger">Deactivate</button>
-              </form>
-              {% else %}
-              <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="btn btn-sm btn-outline-success">Reactivate</button>
+                <button class="btn btn-sm btn-outline-danger"
+                        {% if u.role == 'admin' %}onclick="return confirm('Deactivate this admin? They lose access to every client.')"{% endif %}>
+                  Deactivate
+                </button>
               </form>
               {% endif %}
+            {% else %}
+            <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-success">Reactivate</button>
+            </form>
             {% endif %}
           </td>
         </tr>
@@ -108,6 +137,23 @@
 
 {% block scripts %}
 <script>
+  // An admin is org-wide, so the client picker is meaningless for that role.
+  // Hide it AND drop `required`, or the browser blocks submit on a hidden field.
+  (function () {
+    var role = document.getElementById('inviteRole');
+    if (!role) return;
+    var wrap = document.getElementById('inviteClientWrap');
+    var select = document.getElementById('inviteClient');
+    var sync = function () {
+      var isAdmin = role.value === 'admin';
+      wrap.style.display = isAdmin ? 'none' : '';
+      select.required = !isAdmin;
+      if (isAdmin) select.value = '';
+    };
+    role.addEventListener('change', sync);
+    sync();
+  })();
+
   (function () {
     var btn = document.getElementById('copyInviteBtn');
     if (!btn) return;

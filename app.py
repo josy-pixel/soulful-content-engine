@@ -947,29 +947,54 @@ def users():
 @roles_required('admin')
 def users_invite():
     email = request.form.get('email', '').strip().lower()
+    # Allowlist, never the raw form value: this route mints privileges.
+    role = request.form.get('role', 'client').strip().lower()
+    if role not in ('admin', 'client'):
+        flash('Unknown role.', 'error')
+        return redirect(url_for('users'))
     client_id = request.form.get('client_id', type=int)
-    if not email or not client_id:
-        flash('Email and client are both required.', 'error')
+    if role == 'admin':
+        client_id = None            # an admin is org-wide, never client-scoped
+    if not email or (role == 'client' and not client_id):
+        flash('Email is required, and a client user must be assigned to a client.', 'error')
         return redirect(url_for('users'))
     if db.get_user_by_email(email):
         flash('A user with that email already exists.', 'error')
         return redirect(url_for('users'))
-    if not db.get_client(client_id):
+    if role == 'client' and not db.get_client(client_id):
         flash('Client not found.', 'error')
         return redirect(url_for('users'))
     token = secrets.token_urlsafe(32)
     expires = (datetime.now() + timedelta(hours=72)).isoformat()
-    db.create_pending_client_user(email, client_id, _hash_token(token), expires)
+    new_id = db.create_pending_user(email, role, client_id, _hash_token(token), expires)
+    # Never the token itself — only that an invite of this role was issued.
+    db.add_audit(current_user.id, current_user.role, client_id, 'user', new_id,
+                 'invite', reason=f'{role} invite issued for {email}')
     invite_url = url_for('accept_invite', token=token, _external=True)
     # Shown once, on screen only — never emailed from the app.
-    session['new_invite'] = {'email': email, 'url': invite_url, 'kind': 'invite'}
+    session['new_invite'] = {'email': email, 'url': invite_url,
+                             'kind': 'invite', 'role': role}
     return redirect(url_for('users'))
 
 
 @app.route('/users/<int:user_id>/deactivate', methods=['POST'])
 @roles_required('admin')
 def users_deactivate(user_id):
+    u = db.get_user_by_id(user_id)
+    if not u:
+        flash('User not found.', 'error')
+        return redirect(url_for('users'))
+    # Two locks that can't be left to the UI: you can't shut yourself out, and
+    # the last admin standing can't be removed (nobody could get back in).
+    if user_id == current_user.id:
+        flash('You cannot deactivate your own account.', 'error')
+        return redirect(url_for('users'))
+    if u['role'] == 'admin' and db.count_active_admins(exclude_user_id=user_id) == 0:
+        flash('This is the last active admin — promote another admin first.', 'error')
+        return redirect(url_for('users'))
     db.set_user_active(user_id, False)
+    db.add_audit(current_user.id, current_user.role, u['client_id'], 'user', user_id,
+                 'deactivate', reason=f"deactivated {u['email']}")
     flash('User deactivated. Their login is blocked; audit history is kept.', 'success')
     return redirect(url_for('users'))
 

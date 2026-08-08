@@ -191,6 +191,96 @@ def test_short_invite_password_rejected(client, data):
     assert db.get_user_by_id(uid)["is_active"] == 0   # still not activated
 
 
+# ── admin can invite another admin (and only an admin can) ──
+
+def test_admin_can_invite_another_admin(client, data):
+    login_as(client, data["admin"])
+    r = client.post("/users/invite",
+                    data={"email": "second@t.co", "role": "admin", "csrf_token": CSRF})
+    assert r.status_code in (301, 302)
+    u = db.get_user_by_email("second@t.co")
+    assert u and u["role"] == "admin"
+    assert u["client_id"] is None        # org-wide: never bound to a tenant
+    assert u["is_active"] == 0           # pending until the invite is consumed
+    assert u["password_hash"] == ""
+    assert u["invite_token_hash"]
+
+
+def test_admin_invite_ignores_a_submitted_client_id(client, data):
+    """Role wins over the form: an admin never comes out client-scoped."""
+    login_as(client, data["admin"])
+    client.post("/users/invite", data={"email": "third@t.co", "role": "admin",
+                                       "client_id": data["client_a"], "csrf_token": CSRF})
+    u = db.get_user_by_email("third@t.co")
+    assert u["role"] == "admin" and u["client_id"] is None
+
+
+def test_client_user_cannot_invite_anyone(client, data):
+    login_as(client, data["client_user"])
+    r = client.post("/users/invite",
+                    data={"email": "sneaky@t.co", "role": "admin", "csrf_token": CSRF})
+    assert r.status_code == 403
+    assert db.get_user_by_email("sneaky@t.co") is None
+
+
+def test_unknown_role_is_rejected(client, data):
+    login_as(client, data["admin"])
+    client.post("/users/invite", data={"email": "weird@t.co", "role": "superuser",
+                                       "csrf_token": CSRF})
+    assert db.get_user_by_email("weird@t.co") is None
+
+
+def test_client_invite_still_requires_a_client(client, data):
+    login_as(client, data["admin"])
+    client.post("/users/invite", data={"email": "noclient@t.co", "role": "client",
+                                       "csrf_token": CSRF})
+    assert db.get_user_by_email("noclient@t.co") is None
+
+
+def test_role_defaults_to_client(client, data):
+    """Back-compat: an older form that posts no role must not mint an admin."""
+    login_as(client, data["admin"])
+    client.post("/users/invite", data={"email": "legacy@t.co",
+                                       "client_id": data["client_a"], "csrf_token": CSRF})
+    u = db.get_user_by_email("legacy@t.co")
+    assert u and u["role"] == "client"
+
+
+def test_users_page_renders_the_role_picker(client, data):
+    """Catches Jinja errors in users.html, which only surface at render time."""
+    login_as(client, data["admin"])
+    r = client.get("/users")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert 'name="role"' in body
+    assert 'value="admin"' in body
+
+
+# ── lockout guards ──
+
+def test_cannot_deactivate_the_last_admin(client, data):
+    login_as(client, data["admin"])
+    other = db.create_user("other-admin@t.co", generate_password_hash("pw"), role="admin")
+    db.set_user_active(other, False)     # invited-not-accepted: doesn't count
+    r = client.post(f"/users/{other}/deactivate", data={"csrf_token": CSRF})
+    # data['admin'] is now the only active admin -> deactivating them must fail
+    r = client.post(f"/users/{data['admin']}/deactivate", data={"csrf_token": CSRF})
+    assert r.status_code in (301, 302)
+    assert db.get_user_by_id(data["admin"])["is_active"] == 1
+
+
+def test_cannot_deactivate_yourself(client, data):
+    login_as(client, data["admin"])
+    second = db.create_user("live-admin@t.co", generate_password_hash("pw"), role="admin")
+    assert db.count_active_admins() == 2          # not the last-admin case
+    r = client.post(f"/users/{data['admin']}/deactivate", data={"csrf_token": CSRF})
+    assert r.status_code in (301, 302)
+    assert db.get_user_by_id(data["admin"])["is_active"] == 1
+    # ...but a second admin can be deactivated
+    client.post(f"/users/{second}/deactivate", data={"csrf_token": CSRF})
+    assert db.get_user_by_id(second)["is_active"] == 0
+
+
 def test_deactivated_user_is_bounced(client, data):
     db.set_user_active(data["client_user"], False)
     login_as(client, data["client_user"])
