@@ -1,0 +1,480 @@
+﻿{
+    "code":  "OK",
+    "response":  {
+                     "blueprint":  {
+                                       "flow":  [
+                                                    {
+                                                        "id":  25,
+                                                        "mapper":  {
+
+                                                                   },
+                                                        "module":  "gateway:CustomWebHook",
+                                                        "version":  1,
+                                                        "metadata":  {
+                                                                         "designer":  {
+                                                                                          "x":  -2620,
+                                                                                          "y":  -908
+                                                                                      }
+                                                                     },
+                                                        "parameters":  {
+                                                                           "hook":  3516770,
+                                                                           "maxResults":  1
+                                                                       }
+                                                    },
+                                                    {
+                                                        "id":  15,
+                                                        "filter":  null,
+                                                        "mapper":  null,
+                                                        "module":  "builtin:BasicRouter",
+                                                        "routes":  [
+                                                                       {
+                                                                           "flow":  [
+                                                                                        {
+                                                                                            "id":  16,
+                                                                                            "filter":  {
+                                                                                                           "name":  "Facebook",
+                                                                                                           "conditions":  [
+                                                                                                                              [
+                                                                                                                                  {
+                                                                                                                                      "a":  "{{25.platform}}",
+                                                                                                                                      "b":  "facebook",
+                                                                                                                                      "o":  "text:equal"
+                                                                                                                                  }
+                                                                                                                              ]
+                                                                                                                          ]
+                                                                                                       },
+                                                                                            "mapper":  null,
+                                                                                            "module":  "builtin:BasicRouter",
+                                                                                            "routes":  [
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  17,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Photo",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.content_type}}",
+                                                                                                                                                                          "b":  "photo",
+                                                                                                                                                                          "o":  "text:equal"
+                                                                                                                                                                      },
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.image_url}}",
+                                                                                                                                                                          "b":  "http",
+                                                                                                                                                                          "o":  "text:notcontain"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "photos":  [
+                                                                                                                                                              {
+                                                                                                                                                                  "url":  "https://soulful-content-engine.onrender.com{{25.image_url}}",
+                                                                                                                                                                  "type":  "url",
+                                                                                                                                                                  "caption":  "{{25.caption}} {{25.hashtags}}"
+                                                                                                                                                              }
+                                                                                                                                                          ],
+                                                                                                                                               "message":  "{{25.caption}} {{25.hashtags}}",
+                                                                                                                                               "page_id":  "877081225487783"
+                                                                                                                                           },
+                                                                                                                                "module":  "facebook-pages:CreatePostWithPhotos",
+                                                                                                                                "version":  6,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -93,
+                                                                                                                                                                  "y":  -614,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Facebook Pages - Create a Post with Photos\u0027 [module ID 17] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  18,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Reel",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.content_type}}",
+                                                                                                                                                                          "b":  "reel",
+                                                                                                                                                                          "o":  "text:equal"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "url":  "https://soulful-content-engine.onrender.com{{25.image_url}}",
+                                                                                                                                               "page_id":  "587235154463076",
+                                                                                                                                               "description":  "{{25.caption}} {{25.hashtags}}",
+                                                                                                                                               "uploadMethod":  "url"
+                                                                                                                                           },
+                                                                                                                                "module":  "facebook-pages:uploadAReel",
+                                                                                                                                "version":  6,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -90,
+                                                                                                                                                                  "y":  -337,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Facebook Pages - Publish a Reel\u0027 [module ID 18] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  19,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Link",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.image_url}}",
+                                                                                                                                                                          "b":  "http",
+                                                                                                                                                                          "o":  "text:contain"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "link":  "{{25.image_url}}",
+                                                                                                                                               "message":  "{{25.caption}} {{25.hashtags}}",
+                                                                                                                                               "page_id":  "587235154463076"
+                                                                                                                                           },
+                                                                                                                                "module":  "facebook-pages:CreatePost",
+                                                                                                                                "version":  6,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -79,
+                                                                                                                                                                  "y":  -102,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Facebook Pages - Create a Post\u0027 [module ID 19] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  20,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Video",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.content_type}}",
+                                                                                                                                                                          "b":  "video",
+                                                                                                                                                                          "o":  "text:equal"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "url":  "https://soulful-content-engine.onrender.com{{25.image_url}}",
+                                                                                                                                               "type":  "url",
+                                                                                                                                               "page_id":  "587235154463076",
+                                                                                                                                               "description":  "{{25.caption}} {{25.hashtags}}"
+                                                                                                                                           },
+                                                                                                                                "module":  "facebook-pages:UploadVideo",
+                                                                                                                                "version":  6,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -84,
+                                                                                                                                                                  "y":  179,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Facebook Pages - Upload a Video\u0027 [module ID 20] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           }
+                                                                                                       ],
+                                                                                            "version":  1,
+                                                                                            "metadata":  {
+                                                                                                             "designer":  {
+                                                                                                                              "x":  -1414,
+                                                                                                                              "y":  -518
+                                                                                                                          }
+                                                                                                         },
+                                                                                            "parameters":  {
+
+                                                                                                           }
+                                                                                        }
+                                                                                    ]
+                                                                       },
+                                                                       {
+                                                                           "flow":  [
+                                                                                        {
+                                                                                            "id":  21,
+                                                                                            "filter":  {
+                                                                                                           "name":  "Instagram",
+                                                                                                           "conditions":  [
+                                                                                                                              [
+                                                                                                                                  {
+                                                                                                                                      "a":  "{{25.platform}}",
+                                                                                                                                      "b":  "instagram",
+                                                                                                                                      "o":  "text:equal"
+                                                                                                                                  }
+                                                                                                                              ]
+                                                                                                                          ]
+                                                                                                       },
+                                                                                            "mapper":  null,
+                                                                                            "module":  "builtin:BasicRouter",
+                                                                                            "routes":  [
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  22,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Photo",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.content_type}}",
+                                                                                                                                                                          "b":  "photo",
+                                                                                                                                                                          "o":  "text:equal"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "caption":  "{{25.caption}} {{25.hashtags}}",
+                                                                                                                                               "accountId":  "17841472300266327",
+                                                                                                                                               "image_url":  "https://soulful-content-engine.onrender.com{{25.image_url}}"
+                                                                                                                                           },
+                                                                                                                                "module":  "instagram-business:CreatePostPhoto",
+                                                                                                                                "version":  1,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -960,
+                                                                                                                                                                  "y":  -1597,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Instagram for Business (Facebook login) - Create a photo post\u0027 [module ID 22] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  23,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Reel",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.content_type}}",
+                                                                                                                                                                          "b":  "reel",
+                                                                                                                                                                          "o":  "text:equal"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "caption":  "{{25.caption}} {{25.hashtags}}",
+                                                                                                                                               "accountId":  "17841475646830372",
+                                                                                                                                               "video_url":  "https://soulful-content-engine.onrender.com{{25.image_url}}",
+                                                                                                                                               "share_to_feed":  false
+                                                                                                                                           },
+                                                                                                                                "module":  "instagram-business:CreateAReelPost",
+                                                                                                                                "version":  1,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -960,
+                                                                                                                                                                  "y":  -1297,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Instagram for Business (Facebook login) - Create a reel post\u0027 [module ID 23] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  24,
+                                                                                                                                "filter":  {
+                                                                                                                                               "name":  "Carousel",
+                                                                                                                                               "conditions":  [
+                                                                                                                                                                  [
+                                                                                                                                                                      {
+                                                                                                                                                                          "a":  "{{25.content_type}}",
+                                                                                                                                                                          "b":  "carousel",
+                                                                                                                                                                          "o":  "text:equal"
+                                                                                                                                                                      }
+                                                                                                                                                                  ]
+                                                                                                                                                              ]
+                                                                                                                                           },
+                                                                                                                                "mapper":  {
+                                                                                                                                               "files":  [
+                                                                                                                                                             {
+                                                                                                                                                                 "image_url":  "https://soulful-content-engine.onrender.com{{25.image_url}}",
+                                                                                                                                                                 "media_type":  "IMAGE"
+                                                                                                                                                             }
+                                                                                                                                                         ],
+                                                                                                                                               "caption":  "{{25.caption}} {{25.hashtags}}",
+                                                                                                                                               "accountId":  "17841475646830372"
+                                                                                                                                           },
+                                                                                                                                "module":  "instagram-business:CreateCarouselPhoto",
+                                                                                                                                "version":  1,
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -960,
+                                                                                                                                                                  "y":  -997,
+                                                                                                                                                                  "messages":  [
+                                                                                                                                                                                   {
+                                                                                                                                                                                       "message":  "\u0027Instagram for Business (Facebook login) - Create a carousel post\u0027 [module ID 24] references non-existing module [module ID 14].",
+                                                                                                                                                                                       "category":  "reference",
+                                                                                                                                                                                       "severity":  "error"
+                                                                                                                                                                                   }
+                                                                                                                                                                               ]
+                                                                                                                                                              }
+                                                                                                                                             },
+                                                                                                                                "parameters":  {
+                                                                                                                                                   "__IMTCONN__":  9628730
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "flow":  [
+                                                                                                                            {
+                                                                                                                                "id":  26,
+                                                                                                                                "module":  "placeholder:Placeholder",
+                                                                                                                                "metadata":  {
+                                                                                                                                                 "designer":  {
+                                                                                                                                                                  "x":  -960,
+                                                                                                                                                                  "y":  -697
+                                                                                                                                                              }
+                                                                                                                                             }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                           }
+                                                                                                       ],
+                                                                                            "version":  1,
+                                                                                            "metadata":  {
+                                                                                                             "designer":  {
+                                                                                                                              "x":  -1260,
+                                                                                                                              "y":  -1147
+                                                                                                                          }
+                                                                                                         }
+                                                                                        }
+                                                                                    ]
+                                                                       }
+                                                                   ],
+                                                        "version":  1,
+                                                        "metadata":  {
+                                                                         "designer":  {
+                                                                                          "x":  -2241,
+                                                                                          "y":  -899
+                                                                                      }
+                                                                     }
+                                                    }
+                                                ],
+                                       "name":  "test client",
+                                       "metadata":  {
+                                                        "instant":  true,
+                                                        "version":  1,
+                                                        "designer":  {
+                                                                         "orphans":  [
+
+                                                                                     ],
+                                                                         "samples":  {
+                                                                                         "25":  {
+                                                                                                    "test":  true,
+                                                                                                    "event":  "test_ping",
+                                                                                                    "platform":  "facebook",
+                                                                                                    "client_id":  2,
+                                                                                                    "idempotency_key":  "test:2:191d15ed48884d78933ff079004649ea",
+                                                                                                    "contract_version":  1
+                                                                                                }
+                                                                                     }
+                                                                     },
+                                                        "scenario":  {
+                                                                         "dlq":  false,
+                                                                         "slots":  null,
+                                                                         "dataloss":  false,
+                                                                         "maxErrors":  3,
+                                                                         "autoCommit":  true,
+                                                                         "roundtrips":  1,
+                                                                         "sequential":  false,
+                                                                         "confidential":  false,
+                                                                         "freshVariables":  false,
+                                                                         "autoCommitTriggerLast":  true
+                                                                     }
+                                                    }
+                                   },
+                     "scheduling":  {
+                                        "type":  "immediately",
+                                        "maximum_runs_per_minute":  100
+                                    },
+                     "concept":  false,
+                     "created":  "2026-08-08T12:32:42.494Z",
+                     "last_edit":  "2026-08-08T13:04:27.318Z",
+                     "metadata":  {
+                                      "input_spec":  [
+
+                                                     ],
+                                      "output_spec":  [
+
+                                                      ]
+                                  },
+                     "idSequence":  27
+                 }
+}
