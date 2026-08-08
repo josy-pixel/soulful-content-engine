@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 # Render mounts a persistent disk at /data — fall back to local file for dev
@@ -19,6 +20,27 @@ def get_db():
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn
+
+
+@contextmanager
+def write_db():
+    """A write connection that is ALWAYS closed, and rolled back on failure.
+
+    The plain `conn = get_db() ... conn.close()` pattern leaks the connection if
+    anything in between raises — and a leaked connection holds the write lock
+    until the garbage collector happens to reach it, so the NEXT write fails with
+    "database is locked". Any write path that can raise (a FK violation, the
+    soft-delete write guard) must go through this instead.
+    """
+    conn = get_db()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _raise_if_deleted(conn, table, row_id):
@@ -474,14 +496,12 @@ def create_client(data):
 
 
 def update_client(client_id, data):
-    conn = get_db()
-    _raise_if_deleted(conn, 'clients', client_id)   # write guard
-    conn.execute(
-        'UPDATE clients SET name=?,description=?,contact_email=?,logo_color=? WHERE id=?',
-        (data['name'], data.get('description', ''), data.get('contact_email', ''), data.get('logo_color', '#6366f1'), client_id)
-    )
-    conn.commit()
-    conn.close()
+    with write_db() as conn:                            # guard raises -> must not leak
+        _raise_if_deleted(conn, 'clients', client_id)   # write guard
+        conn.execute(
+            'UPDATE clients SET name=?,description=?,contact_email=?,logo_color=? WHERE id=?',
+            (data['name'], data.get('description', ''), data.get('contact_email', ''), data.get('logo_color', '#6366f1'), client_id)
+        )
 
 
 def get_brand_voice(client_id, platform):
@@ -740,16 +760,14 @@ def create_post(data):
 
 
 def update_post(post_id, data):
-    conn = get_db()
-    _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
-    conn.execute('''
-        UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,content_type=?,hook=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
-        WHERE id=?
-    ''', (data['topic'], data['caption'], data.get('hashtags', ''), data.get('image_url', ''),
-          data.get('content_type', 'photo'), data.get('hook', ''),
-          data.get('scheduled_date') or None, data.get('notes', ''), post_id))
-    conn.commit()
-    conn.close()
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        conn.execute('''
+            UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,content_type=?,hook=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        ''', (data['topic'], data['caption'], data.get('hashtags', ''), data.get('image_url', ''),
+              data.get('content_type', 'photo'), data.get('hook', ''),
+              data.get('scheduled_date') or None, data.get('notes', ''), post_id))
 
 
 def update_post_status(post_id, new_status, notes='', changed_by='user', posted_url=None):
@@ -780,23 +798,27 @@ def update_post_status(post_id, new_status, notes='', changed_by='user', posted_
 
 
 def set_post_error(post_id, error_message):
-    conn = get_db()
-    _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
-    conn.execute(
-        'UPDATE content_posts SET error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-        (error_message, post_id)
-    )
-    conn.commit()
-    conn.close()
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        conn.execute(
+            'UPDATE content_posts SET error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (error_message, post_id)
+        )
 
 
 def delete_post(post_id):
-    conn = get_db()
-    conn.execute('DELETE FROM approval_history WHERE post_id=?', (post_id,))
-    conn.execute('DELETE FROM performance_metrics WHERE post_id=?', (post_id,))
-    conn.execute('DELETE FROM content_posts WHERE id=?', (post_id,))
-    conn.commit()
-    conn.close()
+    """Hard delete. Children first, parent last — post_media holds a FOREIGN KEY
+    to content_posts and foreign_keys is ON, so leaving it behind made deleting
+    any post with attached media fail on a FK violation.
+
+    Detaching media does NOT delete the media itself: the file stays in the
+    client's gallery, where it can be attached to another post.
+    """
+    with write_db() as conn:
+        conn.execute('DELETE FROM post_media WHERE post_id=?', (post_id,))
+        conn.execute('DELETE FROM approval_history WHERE post_id=?', (post_id,))
+        conn.execute('DELETE FROM performance_metrics WHERE post_id=?', (post_id,))
+        conn.execute('DELETE FROM content_posts WHERE id=?', (post_id,))
 
 
 def get_approval_history(post_id):
@@ -1255,22 +1277,18 @@ def get_client_voice(client_id):
 
 def update_client_voice(client_id, voice_document, sample_captions):
     """sample_captions: a list of strings (10–15 real captions)."""
-    conn = get_db()
-    _raise_if_deleted(conn, 'clients', client_id)   # write guard
-    conn.execute(
-        'UPDATE clients SET voice_document = ?, sample_captions = ? WHERE id = ?',
-        (voice_document or '', json.dumps(sample_captions or []), client_id),
-    )
-    conn.commit()
-    conn.close()
+    with write_db() as conn:                            # guard raises -> must not leak
+        _raise_if_deleted(conn, 'clients', client_id)   # write guard
+        conn.execute(
+            'UPDATE clients SET voice_document = ?, sample_captions = ? WHERE id = ?',
+            (voice_document or '', json.dumps(sample_captions or []), client_id),
+        )
 
 
 def set_post_voice_audit(post_id, score, audit_notes):
-    conn = get_db()
-    _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
-    conn.execute(
-        'UPDATE content_posts SET voice_score = ?, voice_audit = ? WHERE id = ?',
-        (score, audit_notes or '', post_id),
-    )
-    conn.commit()
-    conn.close()
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        conn.execute(
+            'UPDATE content_posts SET voice_score = ?, voice_audit = ? WHERE id = ?',
+            (score, audit_notes or '', post_id),
+        )
