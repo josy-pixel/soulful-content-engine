@@ -256,6 +256,25 @@ def test_users_page_renders_the_role_picker(client, data):
     assert 'value="admin"' in body
 
 
+def test_users_page_lists_admins_and_clients_separately(client, data):
+    """Both lists render, each user appears under its own heading."""
+    second = db.create_user("second-admin@t.co", generate_password_hash("pw"), role="admin")
+    login_as(client, data["admin"])
+    body = client.get("/users").get_data(as_text=True)
+
+    assert 'Admins — your team' in body
+    assert 'Client users' in body
+
+    admin_section = body.index('Admins — your team')
+    client_section = body.index('>\n      Client users')
+    assert admin_section < client_section
+
+    # every admin sits above the client-users heading; the client user sits below
+    for email in ("admin@t.co", "second-admin@t.co"):
+        assert admin_section < body.index(email) < client_section, email
+    assert body.index("holly@t.co") > client_section
+
+
 # ── lockout guards ──
 
 def test_cannot_deactivate_the_last_admin(client, data):

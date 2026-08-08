@@ -70,68 +70,118 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="card-header fw-semibold">All users</div>
+{# Admins and client users are different jobs — a team member with keys to every
+   client vs. a single client who sees only their own. One mixed table hid that,
+   so they get one list each. The row markup is shared via this macro. #}
+{% set active_admins = users | selectattr('role', 'equalto', 'admin') | selectattr('is_active') | list | length %}
+
+{% macro user_row(u, show_client) %}
+  {% set pending = (not u.is_active) and u.invite_token_hash and (not u.last_login_at) %}
+  {% set is_me = u.id == current_user.id %}
+  {% set last_admin = u.role == 'admin' and u.is_active and active_admins <= 1 %}
+  <tr>
+    <td data-label="Email">
+      {{ u.email }}{% if is_me %} <span class="text-muted small">(you)</span>{% endif %}
+    </td>
+    {% if show_client %}
+    <td data-label="Client">{{ u.client_name or '—' }}</td>
+    {% endif %}
+    <td data-label="Last login">
+      <small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small>
+    </td>
+    <td data-label="Status">
+      {% if u.is_active %}<span class="badge bg-success">Active</span>
+      {% elif pending %}<span class="badge bg-warning text-dark">Invited — not yet accepted</span>
+      {% else %}<span class="badge bg-danger">Deactivated</span>{% endif %}
+    </td>
+    <td data-label="Actions" class="text-nowrap">
+      <form method="post" action="{{ url_for('users_reset', user_id=u.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-sm btn-outline-secondary">
+          {% if pending %}Re-issue link{% else %}Reset password{% endif %}
+        </button>
+      </form>
+      {% if u.is_active %}
+        {% if is_me %}
+          <span class="text-muted small ms-1">—</span>
+        {% elif last_admin %}
+          <span class="text-muted small ms-1" title="Invite another admin first">Last admin</span>
+        {% else %}
+        <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-danger"
+                  {% if u.role == 'admin' %}onclick="return confirm('Deactivate this admin? They lose access to every client.')"{% endif %}>
+            Deactivate
+          </button>
+        </form>
+        {% endif %}
+      {% else %}
+      <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-sm btn-outline-success">Reactivate</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+{% endmacro %}
+
+{% set admin_users = users | selectattr('role', 'equalto', 'admin') | list %}
+{% set client_users = users | rejectattr('role', 'equalto', 'admin') | list %}
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">
+      <i class="bi bi-shield-lock me-1 text-danger"></i>
+      Admins — your team
+    </span>
+    <span class="badge bg-secondary">{{ admin_users | length }}</span>
+  </div>
+  <div class="card-body pb-0">
+    <p class="small text-muted mb-0">
+      Full access to every client, plus Settings, Reports and Users. Keep this list short.
+    </p>
+  </div>
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead>
-        <tr><th>Email</th><th>Role</th><th>Client</th><th>Last login</th><th>Status</th><th></th></tr>
+        <tr><th>Email</th><th>Last login</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
-        {% set active_admins = users | selectattr('role', 'equalto', 'admin') | selectattr('is_active') | list | length %}
-        {% for u in users %}
-        {% set pending = (not u.is_active) and u.invite_token_hash and (not u.last_login_at) %}
-        {% set is_me = u.id == current_user.id %}
-        {% set last_admin = u.role == 'admin' and u.is_active and active_admins <= 1 %}
-        <tr>
-          <td data-label="Email">
-            {{ u.email }}{% if is_me %} <span class="text-muted small">(you)</span>{% endif %}
-          </td>
-          <td data-label="Role">
-            <span class="badge text-capitalize {{ 'bg-danger' if u.role == 'admin' else 'bg-secondary' }}">{{ u.role }}</span>
-          </td>
-          <td data-label="Client">{{ u.client_name or '—' }}</td>
-          <td data-label="Last login">
-            <small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small>
-          </td>
-          <td data-label="Status">
-            {% if u.is_active %}<span class="badge bg-success">Active</span>
-            {% elif pending %}<span class="badge bg-warning text-dark">Invited — not yet accepted</span>
-            {% else %}<span class="badge bg-danger">Deactivated</span>{% endif %}
-          </td>
-          <td data-label="Actions" class="text-nowrap">
-            <form method="post" action="{{ url_for('users_reset', user_id=u.id) }}" class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-secondary">
-                {% if pending %}Re-issue link{% else %}Reset password{% endif %}
-              </button>
-            </form>
-            {% if u.is_active %}
-              {% if is_me %}
-                <span class="text-muted small ms-1">—</span>
-              {% elif last_admin %}
-                <span class="text-muted small ms-1" title="Promote another admin first">Last admin</span>
-              {% else %}
-              <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="btn btn-sm btn-outline-danger"
-                        {% if u.role == 'admin' %}onclick="return confirm('Deactivate this admin? They lose access to every client.')"{% endif %}>
-                  Deactivate
-                </button>
-              </form>
-              {% endif %}
-            {% else %}
-            <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-success">Reactivate</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
+        {% for u in admin_users %}{{ user_row(u, false) }}{% endfor %}
       </tbody>
     </table>
   </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">
+      <i class="bi bi-person me-1"></i>
+      Client users
+    </span>
+    <span class="badge bg-secondary">{{ client_users | length }}</span>
+  </div>
+  <div class="card-body pb-0">
+    <p class="small text-muted mb-0">
+      Each one sees only their own client's content — nothing else.
+    </p>
+  </div>
+  {% if client_users %}
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr><th>Email</th><th>Client</th><th>Last login</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for u in client_users %}{{ user_row(u, true) }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body pt-3">
+    <p class="text-muted mb-0">No client users yet — invite one above.</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
