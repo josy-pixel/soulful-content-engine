@@ -1136,21 +1136,45 @@ def get_users():
     return [dict(r) for r in rows]
 
 
-def create_pending_client_user(email, client_id, token_hash, expires_at):
-    """Invite a client user: created inactive with no usable password until the
-    invite is consumed. role is always 'client' and MUST have a client_id."""
+def create_pending_user(email, role, client_id, token_hash, expires_at):
+    """Invite a user: created inactive with no usable password until the invite
+    is consumed. Same tenancy invariant as create_user() — a 'client' user MUST
+    be bound to a client, anything else MUST NOT be."""
+    if role == 'client' and client_id is None:
+        raise ValueError("a 'client' user must be bound to a client_id")
+    if role != 'client' and client_id is not None:
+        raise ValueError("only a 'client' user may have a client_id")
     conn = get_db()
     c = conn.cursor()
     c.execute(
         '''INSERT INTO users (email, password_hash, role, client_id,
                               invite_token_hash, invite_expires_at, is_active)
-           VALUES (?, '', 'client', ?, ?, ?, 0)''',
-        (email, client_id, token_hash, expires_at),
+           VALUES (?, '', ?, ?, ?, ?, 0)''',
+        (email, role, client_id, token_hash, expires_at),
     )
     conn.commit()
     new_id = c.lastrowid
     conn.close()
     return new_id
+
+
+def create_pending_client_user(email, client_id, token_hash, expires_at):
+    """Back-compat shim for the client-only invite path."""
+    return create_pending_user(email, 'client', client_id, token_hash, expires_at)
+
+
+def count_active_admins(exclude_user_id=None):
+    """How many admins could still log in. Guards the last-admin lockout: an
+    invited-but-not-yet-accepted admin has is_active=0 and does NOT count."""
+    conn = get_db()
+    sql = "SELECT COUNT(*) FROM users WHERE role='admin' AND is_active=1"
+    params = []
+    if exclude_user_id is not None:
+        sql += ' AND id != ?'
+        params.append(exclude_user_id)
+    n = conn.execute(sql, params).fetchone()[0]
+    conn.close()
+    return n
 
 
 def set_user_invite(user_id, token_hash, expires_at):
