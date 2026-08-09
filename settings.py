@@ -2,6 +2,7 @@
 not per route, so a new page cannot be added unprotected by accident."""
 from flask import (Blueprint, render_template, request, redirect, url_for, flash,
                    jsonify, abort)
+from flask_babel import gettext as _
 from flask_login import current_user
 
 import database as db
@@ -48,11 +49,11 @@ def webhooks_save():
     platforms = [p for p in request.form.getlist('platforms') if p in WEBHOOK_PLATFORMS]
 
     if not client_id or not db.get_client(client_id):
-        flash('Pick a valid client.', 'error'); return redirect(url_for('settings.webhooks_page'))
+        flash(_('Pick a valid client.'), 'error'); return redirect(url_for('settings.webhooks_page'))
     if not url:
-        flash('Webhook URL is required.', 'error'); return redirect(url_for('settings.webhooks_page'))
+        flash(_('Webhook URL is required.'), 'error'); return redirect(url_for('settings.webhooks_page'))
     if not platforms:
-        flash('Enable at least one platform.', 'error'); return redirect(url_for('settings.webhooks_page'))
+        flash(_('Enable at least one platform.'), 'error'); return redirect(url_for('settings.webhooks_page'))
 
     existing = db.get_client_webhook(client_id)
     secret_changed = bool(secret)
@@ -60,7 +61,7 @@ def webhooks_save():
         if existing:
             secret = existing['webhook_secret']          # keep current
         else:
-            flash('A secret is required for a new webhook.', 'error')
+            flash(_('A secret is required for a new webhook.'), 'error')
             return redirect(url_for('settings.webhooks_page'))
     try:
         db.upsert_client_webhook(client_id, url, secret, ','.join(platforms))
@@ -70,7 +71,7 @@ def webhooks_save():
     db.add_audit(current_user.id, current_user.role, client_id, 'webhook', client_id, 'config',
                  metadata={'platforms': platforms, 'secret_changed': secret_changed},  # never the secret
                  request_ip=request.remote_addr)
-    flash('Webhook saved — status reset to untested. Send a test ping to verify it.', 'success')
+    flash(_('Webhook saved — status reset to untested. Send a test ping to verify it.'), 'success')
     return redirect(url_for('settings.webhooks_page'))
 
 
@@ -85,7 +86,7 @@ def webhooks_disable(client_id):
     db.set_client_webhook_enabled(client_id, False)
     db.add_audit(current_user.id, current_user.role, client_id, 'webhook', client_id, 'disable',
                  request_ip=request.remote_addr)
-    flash('Webhook disabled — dispatch will refuse for this client.', 'success')
+    flash(_('Webhook disabled — dispatch will refuse for this client.'), 'success')
     return redirect(url_for('settings.webhooks_page'))
 
 
@@ -94,7 +95,7 @@ def webhooks_enable(client_id):
     db.set_client_webhook_enabled(client_id, True)
     db.add_audit(current_user.id, current_user.role, client_id, 'webhook', client_id, 'enable',
                  request_ip=request.remote_addr)
-    flash('Webhook re-enabled — status reset to untested, re-test it.', 'success')
+    flash(_('Webhook re-enabled — status reset to untested, re-test it.'), 'success')
     return redirect(url_for('settings.webhooks_page'))
 
 
@@ -103,7 +104,7 @@ def webhooks_delete(client_id):
     db.delete_client_webhook(client_id)
     db.add_audit(current_user.id, current_user.role, client_id, 'webhook', client_id, 'delete',
                  request_ip=request.remote_addr)
-    flash('Webhook removed.', 'success')
+    flash(_('Webhook removed.'), 'success')
     return redirect(url_for('settings.webhooks_page'))
 
 

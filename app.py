@@ -16,7 +16,7 @@ import security
 from security import (current_scope, enforce_client_id, require_content_access,
                      require_client_access, scoped_posts, scoped_clients, roles_required)
 from flask import abort, g, session
-from flask_babel import Babel
+from flask_babel import Babel, gettext as _, lazy_gettext as _l
 from flask_login import login_user, current_user
 import i18n
 from werkzeug.security import generate_password_hash
@@ -120,6 +120,22 @@ STATUS_COLORS = {
     'posted':       'success',
     'error':        'danger',
 }
+# Human labels for the workflow statuses. The stored value is the English key and
+# never changes — only the label is translated. Defined once here rather than
+# .title()-ing the key at each call site, because "Needs Review" has one agreed
+# Hebrew term and deriving it per template would let the wording drift.
+# lazy_gettext because this is evaluated at import time, before any request has
+# a locale; the string resolves when it is rendered.
+STATUS_LABELS = {
+    'raw':          _l('Raw'),
+    'branded':      _l('Branded'),
+    'draft':        _l('Draft'),
+    'needs_review': _l('Needs Review'),
+    'approved':     _l('Approved'),
+    'scheduled':    _l('Scheduled'),
+    'posted':       _l('Posted'),
+    'error':        _l('Error'),
+}
 
 
 _db_ready = False
@@ -210,10 +226,10 @@ def client_new():
             'logo_color': request.form.get('logo_color', '#6366f1'),
         }
         if not data['name']:
-            flash('Client name is required.', 'error')
+            flash(_('Client name is required.'), 'error')
             return render_template('client_form.html', client=None)
         new_id = db.create_client(data)
-        flash(f"Client '{data['name']}' created successfully.", 'success')
+        flash(_("Client '%(name)s' created successfully.", name=data['name']), 'success')
         return redirect(url_for('client_detail', client_id=new_id))
     return render_template('client_form.html', client=None)
 
@@ -223,7 +239,7 @@ def client_new():
 def client_detail(client_id):
     client = db.get_client(client_id)
     if not client:
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('clients'))
     voices = db.get_all_brand_voices(client_id)
     posts = db.get_posts(client_id=client_id, limit=10)
@@ -237,7 +253,7 @@ def client_detail(client_id):
 def client_edit(client_id):
     client = db.get_client(client_id)
     if not client:
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('clients'))
     if request.method == 'POST':
         data = {
@@ -252,7 +268,7 @@ def client_edit(client_id):
         raw_samples = request.form.get('sample_captions', '')
         sample_captions = [c.strip() for c in raw_samples.split('\n\n') if c.strip()]
         db.update_client_voice(client_id, voice_document, sample_captions)
-        flash('Client updated.', 'success')
+        flash(_('Client updated.'), 'success')
         return redirect(url_for('client_detail', client_id=client_id))
     voice_document, sample_captions = db.get_client_voice(client_id)
     return render_template('client_form.html', client=client,
@@ -267,19 +283,20 @@ def client_delete(client_id):
     their webhook is removed — but nothing is destroyed, so it is reversible."""
     client = db.get_client(client_id)
     if not client:
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('clients'))
     try:
         impact = db.soft_delete_client(client_id, current_user.id, current_user.role,
                                        request_ip=request.remote_addr)
     except ValueError:
-        flash('That client is already deleted.', 'error')
+        flash(_('That client is already deleted.'), 'error')
         return redirect(url_for('clients'))
     if impact is None:
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('clients'))
-    flash(f"'{client['name']}' moved to deleted clients — {impact['posts']} posts and "
-          f"{impact['users']} logins came with it. Nothing was destroyed; you can restore it.",
+    flash(_("'%(name)s' moved to deleted clients — %(posts)d posts and %(users)d "
+            "logins came with it. Nothing was destroyed; you can restore it.",
+            name=client['name'], posts=impact['posts'], users=impact['users']),
           'success')
     return redirect(url_for('clients'))
 
@@ -291,14 +308,15 @@ def client_restore(client_id):
         ok = db.restore_client(client_id, current_user.id, current_user.role,
                                request_ip=request.remote_addr)
     except ValueError:
-        flash('That client is not deleted.', 'error')
+        flash(_('That client is not deleted.'), 'error')
         return redirect(url_for('clients'))
     if not ok:
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('clients'))
     client = db.get_client(client_id)
-    flash(f"'{client['name']}' restored. Their logins and their webhook are still "
-          f"off — re-enable them deliberately when you are ready to publish again.",
+    flash(_("'%(name)s' restored. Their logins and their webhook are still off — "
+            "re-enable them deliberately when you are ready to publish again.",
+            name=client['name']),
           'success')
     return redirect(url_for('clients'))
 
@@ -336,7 +354,7 @@ def serve_media(client_id, filename):
 def client_gallery(client_id):
     client = db.get_client(client_id)
     if not client:
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('clients'))
     media = db.get_client_media(client_id)
     for m in media:
@@ -580,12 +598,12 @@ def content_new():
             'notes': request.form.get('notes', '').strip(),
         }
         if not data['topic'] or not data['caption']:
-            flash('Topic and caption are required.', 'error')
+            flash(_('Topic and caption are required.'), 'error')
             return render_template('content_form.html', post=None, clients=all_clients,
                                    platforms=PLATFORMS, statuses=STATUSES,
                                    content_types=CONTENT_TYPES, preselect={})
         post_id = db.create_post(data)
-        flash('Post created successfully.', 'success')
+        flash(_('Post created successfully.'), 'success')
         return redirect(url_for('content_detail', post_id=post_id))
     preselect = {
         'client_id': request.args.get('client_id', ''),
@@ -601,7 +619,7 @@ def content_new():
 def content_detail(post_id):
     post = db.get_post(post_id)
     if not post:
-        flash('Post not found.', 'error')
+        flash(_('Post not found.'), 'error')
         return redirect(url_for('content_list'))
     history = db.get_approval_history(post_id)
     metrics = db.get_performance(post_id)
@@ -637,7 +655,7 @@ def content_edit(post_id):
             'notes': request.form.get('notes', '').strip(),
         }
         db.update_post(post_id, data)
-        flash('Post updated.', 'success')
+        flash(_('Post updated.'), 'success')
         return redirect(url_for('content_detail', post_id=post_id))
     return render_template('content_form.html', post=post, clients=all_clients,
                            platforms=PLATFORMS, statuses=STATUSES,
@@ -650,19 +668,22 @@ def content_status(post_id):
     new_status = request.form.get('status')
     notes = request.form.get('notes', '')
     if new_status not in STATUSES:
-        flash('Invalid status.', 'error')
+        flash(_('Invalid status.'), 'error')
         return redirect(url_for('content_detail', post_id=post_id))
     db.update_post_status(post_id, new_status, notes)
-    flash(f'Status updated to "{new_status.replace("_", " ").title()}".', 'success')
+    flash(_('Status updated to "%(status)s".',
+            status=STATUS_LABELS.get(new_status, new_status)), 'success')
 
     if new_status == 'approved':
         post = db.get_post(post_id)
         ok, msg = webhooks.dispatch_post(post, current_user.id, current_user.role, request.remote_addr)
         if ok:
-            flash(msg, 'success')
+            # msg comes from the dispatch layer, which is machine-facing and out
+            # of scope for translation — it is shown verbatim, on purpose.
+            flash(msg, 'success')   # i18n-ok: machine-facing dispatch detail
         else:
             db.set_post_error(post_id, msg)   # persist the failure — never leave it silently "sent"
-            flash(f'Dispatch failed: {msg}', 'warning')
+            flash(_('Dispatch failed: %(reason)s', reason=msg), 'warning')
 
     return redirect(url_for('content_detail', post_id=post_id))
 
@@ -721,7 +742,7 @@ def content_delete(post_id):
     if current_scope() is not None and post.get('status') not in ('draft', 'needs_review'):
         abort(403)
     db.delete_post(post_id)
-    flash('Post deleted.', 'success')
+    flash(_('Post deleted.'), 'success')
     return redirect(url_for('content_list'))
 
 
@@ -1027,19 +1048,19 @@ def users_invite():
     # Allowlist, never the raw form value: this route mints privileges.
     role = request.form.get('role', 'client').strip().lower()
     if role not in ('admin', 'client'):
-        flash('Unknown role.', 'error')
+        flash(_('Unknown role.'), 'error')
         return redirect(url_for('users'))
     client_id = request.form.get('client_id', type=int)
     if role == 'admin':
         client_id = None            # an admin is org-wide, never client-scoped
     if not email or (role == 'client' and not client_id):
-        flash('Email is required, and a client user must be assigned to a client.', 'error')
+        flash(_('Email is required, and a client user must be assigned to a client.'), 'error')
         return redirect(url_for('users'))
     if db.get_user_by_email(email):
-        flash('A user with that email already exists.', 'error')
+        flash(_('A user with that email already exists.'), 'error')
         return redirect(url_for('users'))
     if role == 'client' and not db.get_client(client_id):
-        flash('Client not found.', 'error')
+        flash(_('Client not found.'), 'error')
         return redirect(url_for('users'))
     token = secrets.token_urlsafe(32)
     expires = (datetime.now() + timedelta(hours=72)).isoformat()
@@ -1059,20 +1080,20 @@ def users_invite():
 def users_deactivate(user_id):
     u = db.get_user_by_id(user_id)
     if not u:
-        flash('User not found.', 'error')
+        flash(_('User not found.'), 'error')
         return redirect(url_for('users'))
     # Two locks that can't be left to the UI: you can't shut yourself out, and
     # the last admin standing can't be removed (nobody could get back in).
     if user_id == current_user.id:
-        flash('You cannot deactivate your own account.', 'error')
+        flash(_('You cannot deactivate your own account.'), 'error')
         return redirect(url_for('users'))
     if u['role'] == 'admin' and db.count_active_admins(exclude_user_id=user_id) == 0:
-        flash('This is the last active admin — promote another admin first.', 'error')
+        flash(_('This is the last active admin — promote another admin first.'), 'error')
         return redirect(url_for('users'))
     db.set_user_active(user_id, False)
     db.add_audit(current_user.id, current_user.role, u['client_id'], 'user', user_id,
                  'deactivate', reason=f"deactivated {u['email']}")
-    flash('User deactivated. Their login is blocked; audit history is kept.', 'success')
+    flash(_('User deactivated. Their login is blocked; audit history is kept.'), 'success')
     return redirect(url_for('users'))
 
 
@@ -1080,7 +1101,7 @@ def users_deactivate(user_id):
 @roles_required('admin')
 def users_activate(user_id):
     db.set_user_active(user_id, True)
-    flash('User reactivated.', 'success')
+    flash(_('User reactivated.'), 'success')
     return redirect(url_for('users'))
 
 
@@ -1089,7 +1110,7 @@ def users_activate(user_id):
 def users_reset(user_id):
     u = db.get_user_by_id(user_id)
     if not u:
-        flash('User not found.', 'error')
+        flash(_('User not found.'), 'error')
         return redirect(url_for('users'))
     token = secrets.token_urlsafe(32)
     expires = (datetime.now() + timedelta(hours=72)).isoformat()
@@ -1103,7 +1124,7 @@ def users_reset(user_id):
 def accept_invite(token):
     """Public: consume a single-use invite, set a password (min 12), log in.
     Expired / used / unknown tokens all get the same generic rejection."""
-    generic = 'This invite link is invalid or has expired.'
+    generic = _('This invite link is invalid or has expired.')
     row = db.get_user_by_invite_hash(_hash_token(token))
     if not row:
         flash(generic, 'danger')
@@ -1121,15 +1142,15 @@ def accept_invite(token):
         pw = request.form.get('password', '')
         confirm = request.form.get('confirm', '')
         if len(pw) < 12:
-            flash('Password must be at least 12 characters.', 'danger')
+            flash(_('Password must be at least 12 characters.'), 'danger')
         elif pw != confirm:
-            flash('Passwords do not match.', 'danger')
+            flash(_('Passwords do not match.'), 'danger')
         else:
             db.consume_invite(row['id'], generate_password_hash(pw))
             fresh = db.get_user_by_id(row['id'])
             login_user(auth.User(fresh))
             db.update_last_login(fresh['id'])
-            flash('Welcome! Your account is ready.', 'success')
+            flash(_('Welcome! Your account is ready.'), 'success')
             return redirect(url_for('dashboard'))
 
     return render_template('invite.html', token=token, email=row['email'])

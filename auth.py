@@ -19,6 +19,8 @@ from flask_login import (LoginManager, UserMixin, login_user, logout_user,
                          login_required, current_user)
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from flask_babel import gettext as _
+
 import database as db
 
 login_manager = LoginManager()
@@ -199,7 +201,7 @@ def init_auth(app):
         # A session that went inactive mid-life (deactivated by an admin) is bounced.
         if not getattr(current_user, 'is_active', True):
             logout_user()
-            flash('Your account has been deactivated.', 'danger')
+            flash(_('Your account has been deactivated.'), 'danger')
             return redirect(url_for('login'))
 
     # Global CSRF: every state-changing request must carry the session token,
@@ -232,25 +234,25 @@ def init_auth(app):
 
         if request.method == 'POST':
             if not _csrf_ok(request.form.get('csrf_token', '')):
-                flash('Your session expired. Please try again.', 'danger')
+                flash(_('Your session expired. Please try again.'), 'danger')
                 return redirect(url_for('setup_admin'))
             email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '')
             confirm = request.form.get('confirm', '')
             if not _setup_token_ok(request.form.get('setup_token', '')):
-                flash('Invalid setup code.', 'danger')
+                flash(_('Invalid setup code.'), 'danger')
             elif not email or not password:
-                flash('Email and password are required.', 'danger')
+                flash(_('Email and password are required.'), 'danger')
             elif len(password) < 8:
-                flash('Password must be at least 8 characters.', 'danger')
+                flash(_('Password must be at least 8 characters.'), 'danger')
             elif password != confirm:
-                flash('Passwords do not match.', 'danger')
+                flash(_('Passwords do not match.'), 'danger')
             elif db.any_users():
                 return redirect(url_for('login'))
             else:
                 db.create_user(email, generate_password_hash(password), role='admin')
                 session.pop('_csrf_token', None)
-                flash('Admin account created. Please sign in.', 'success')
+                flash(_('Admin account created. Please sign in.'), 'success')
                 return redirect(url_for('login'))
 
         return render_template('setup.html', csrf_token=_csrf_token())
@@ -267,12 +269,12 @@ def init_auth(app):
             password = request.form.get('password', '')
 
             if not _csrf_ok(request.form.get('csrf_token', '')):
-                flash('Your session expired. Please try again.', 'danger')
+                flash(_('Your session expired. Please try again.'), 'danger')
                 return redirect(url_for('login'))
 
             if _is_locked(email):
-                flash(f'Too many failed attempts. Try again in '
-                      f'{_lock_minutes_left(email)} minute(s).', 'danger')
+                flash(_('Too many failed attempts. Try again in %(minutes)d minute(s).',
+                        minutes=_lock_minutes_left(email)), 'danger')
                 return render_template('login.html', csrf_token=_csrf_token())
 
             row = db.get_user_by_email(email)
@@ -282,7 +284,7 @@ def init_auth(app):
                 user = User(row)
                 if not user.is_active:
                     _record_failure(email)
-                    flash('This account is deactivated. Contact an administrator.', 'danger')
+                    flash(_('This account is deactivated. Contact an administrator.'), 'danger')
                     return render_template('login.html', csrf_token=_csrf_token())
                 _clear_attempts(email)
                 session.pop('_csrf_token', None)
@@ -294,7 +296,7 @@ def init_auth(app):
                 return redirect(url_for('dashboard'))
 
             _record_failure(email)
-            flash('Incorrect email or password.', 'danger')
+            flash(_('Incorrect email or password.'), 'danger')
 
         return render_template('login.html', csrf_token=_csrf_token())
 
@@ -302,5 +304,5 @@ def init_auth(app):
     @login_required
     def logout():
         logout_user()
-        flash('You have been signed out.', 'success')
+        flash(_('You have been signed out.'), 'success')
         return redirect(url_for('login'))

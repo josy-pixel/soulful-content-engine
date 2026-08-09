@@ -1,0 +1,246 @@
+# Translations template for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-08-09 23:14+0300\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app.py:130
+msgid "Raw"
+msgstr ""
+
+#: app.py:131
+msgid "Branded"
+msgstr ""
+
+#: app.py:132
+msgid "Draft"
+msgstr ""
+
+#: app.py:133
+msgid "Needs Review"
+msgstr ""
+
+#: app.py:134
+msgid "Approved"
+msgstr ""
+
+#: app.py:135
+msgid "Scheduled"
+msgstr ""
+
+#: app.py:136
+msgid "Posted"
+msgstr ""
+
+#: app.py:137
+msgid "Error"
+msgstr ""
+
+#: app.py:229
+msgid "Client name is required."
+msgstr ""
+
+#: app.py:232
+#, python-format
+msgid "Client '%(name)s' created successfully."
+msgstr ""
+
+#: app.py:242 app.py:256 app.py:286 app.py:295 app.py:314 app.py:357
+#: app.py:1063
+msgid "Client not found."
+msgstr ""
+
+#: app.py:271
+msgid "Client updated."
+msgstr ""
+
+#: app.py:292
+msgid "That client is already deleted."
+msgstr ""
+
+#: app.py:297
+#, python-format
+msgid ""
+"'%(name)s' moved to deleted clients — %(posts)d posts and %(users)d "
+"logins came with it. Nothing was destroyed; you can restore it."
+msgstr ""
+
+#: app.py:311
+msgid "That client is not deleted."
+msgstr ""
+
+#: app.py:317
+#, python-format
+msgid ""
+"'%(name)s' restored. Their logins and their webhook are still off — re-"
+"enable them deliberately when you are ready to publish again."
+msgstr ""
+
+#: app.py:601
+msgid "Topic and caption are required."
+msgstr ""
+
+#: app.py:606
+msgid "Post created successfully."
+msgstr ""
+
+#: app.py:622
+msgid "Post not found."
+msgstr ""
+
+#: app.py:658
+msgid "Post updated."
+msgstr ""
+
+#: app.py:671
+msgid "Invalid status."
+msgstr ""
+
+#: app.py:674
+#, python-format
+msgid "Status updated to \"%(status)s\"."
+msgstr ""
+
+#: app.py:686
+#, python-format
+msgid "Dispatch failed: %(reason)s"
+msgstr ""
+
+#: app.py:745
+msgid "Post deleted."
+msgstr ""
+
+#: app.py:1051
+msgid "Unknown role."
+msgstr ""
+
+#: app.py:1057
+msgid "Email is required, and a client user must be assigned to a client."
+msgstr ""
+
+#: app.py:1060
+msgid "A user with that email already exists."
+msgstr ""
+
+#: app.py:1083 app.py:1113
+msgid "User not found."
+msgstr ""
+
+#: app.py:1088
+msgid "You cannot deactivate your own account."
+msgstr ""
+
+#: app.py:1091
+msgid "This is the last active admin — promote another admin first."
+msgstr ""
+
+#: app.py:1096
+msgid "User deactivated. Their login is blocked; audit history is kept."
+msgstr ""
+
+#: app.py:1104
+msgid "User reactivated."
+msgstr ""
+
+#: app.py:1127
+msgid "This invite link is invalid or has expired."
+msgstr ""
+
+#: app.py:1145
+msgid "Password must be at least 12 characters."
+msgstr ""
+
+#: app.py:1147 auth.py:249
+msgid "Passwords do not match."
+msgstr ""
+
+#: app.py:1153
+msgid "Welcome! Your account is ready."
+msgstr ""
+
+#: auth.py:204
+msgid "Your account has been deactivated."
+msgstr ""
+
+#: auth.py:237 auth.py:272
+msgid "Your session expired. Please try again."
+msgstr ""
+
+#: auth.py:243
+msgid "Invalid setup code."
+msgstr ""
+
+#: auth.py:245
+msgid "Email and password are required."
+msgstr ""
+
+#: auth.py:247
+msgid "Password must be at least 8 characters."
+msgstr ""
+
+#: auth.py:255
+msgid "Admin account created. Please sign in."
+msgstr ""
+
+#: auth.py:276
+#, python-format
+msgid "Too many failed attempts. Try again in %(minutes)d minute(s)."
+msgstr ""
+
+#: auth.py:287
+msgid "This account is deactivated. Contact an administrator."
+msgstr ""
+
+#: auth.py:299
+msgid "Incorrect email or password."
+msgstr ""
+
+#: auth.py:307
+msgid "You have been signed out."
+msgstr ""
+
+#: settings.py:52
+msgid "Pick a valid client."
+msgstr ""
+
+#: settings.py:54
+msgid "Webhook URL is required."
+msgstr ""
+
+#: settings.py:56
+msgid "Enable at least one platform."
+msgstr ""
+
+#: settings.py:64
+msgid "A secret is required for a new webhook."
+msgstr ""
+
+#: settings.py:74
+msgid "Webhook saved — status reset to untested. Send a test ping to verify it."
+msgstr ""
+
+#: settings.py:89
+msgid "Webhook disabled — dispatch will refuse for this client."
+msgstr ""
+
+#: settings.py:98
+msgid "Webhook re-enabled — status reset to untested, re-test it."
+msgstr ""
+
+#: settings.py:107
+msgid "Webhook removed."
+msgstr ""
+
