@@ -126,6 +126,12 @@ class User(UserMixin):
         self.client_id = row['client_id'] if 'client_id' in keys else None
         raw_active = row['is_active'] if 'is_active' in keys else 1
         self._active = raw_active in (1, '1', True)
+        # Interface language. Read defensively like the columns above: a session
+        # held across the deploy that adds the column would otherwise carry a row
+        # without it. i18n.get_locale() falls through to the session when this is
+        # absent, so the attribute staying unset is a supported state.
+        if 'language' in keys:
+            self.language = row['language']
 
     @property
     def is_active(self):

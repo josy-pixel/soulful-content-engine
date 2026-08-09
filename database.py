@@ -6,6 +6,11 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
+# The single source of truth for which languages exist. Imported, never copied —
+# a second list here would drift from the resolver's the first time a locale is
+# added. i18n never imports database, so there is no cycle.
+import i18n
+
 # Render mounts a persistent disk at /data — fall back to local file for dev
 DB_PATH = os.environ.get('DB_PATH', 'soulful_content.db')
 
@@ -288,6 +293,12 @@ def init_db():
         "ALTER TABLE users ADD COLUMN invite_expires_at TEXT",     # ISO8601
         "ALTER TABLE users ADD COLUMN last_login_at TEXT",         # ISO8601
         "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+        # ── Interface language (i18n) ──
+        # Allowed values are NOT a CHECK constraint: per project convention the
+        # constraint lives in code (set_user_language), because SQLite cannot add
+        # a CHECK to an existing table and a second list would drift from
+        # i18n.LOCALES the first time a language is added.
+        "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en'",
         # ── Deletion, trash & lifecycle (Stage 2) — additive only ──
         "ALTER TABLE content_posts ADD COLUMN deleted_at TEXT",
         "ALTER TABLE content_posts ADD COLUMN deleted_by INTEGER",
@@ -1346,6 +1357,42 @@ def consume_invite(user_id, password_hash):
     )
     conn.commit()
     conn.close()
+
+
+def get_user_language(user_id):
+    """The user's interface language, always a value this build can render.
+
+    A row written before the column existed, or one holding a language that has
+    since been removed from the build, returns the default rather than something
+    unrenderable — the caller never has to defend against it.
+    """
+    conn = get_db()
+    row = conn.execute('SELECT language FROM users WHERE id=?', (user_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return None                       # no such user — distinct from "no preference"
+    return i18n.normalise(row['language'])
+
+
+def set_user_language(user_id, language):
+    """Store a user's interface language.
+
+    The allowed set is read from i18n.LOCALES — the same table the locale
+    resolver and the switcher use. There is deliberately no second list here:
+    two lists would disagree the first time a language is added, and the one in
+    the database layer is the one nobody would remember to update.
+
+    Raises ValueError on a language this build cannot render, so a bad value is
+    refused at the door instead of being stored and silently coerced on read.
+    """
+    if not i18n.supported(language):
+        raise ValueError(
+            'unsupported language %r; this build renders %s'
+            % (language, ', '.join(sorted(i18n.LOCALES)))
+        )
+    with write_db() as conn:
+        conn.execute('UPDATE users SET language=? WHERE id=?', (language, user_id))
+    return language
 
 
 def set_user_active(user_id, active):

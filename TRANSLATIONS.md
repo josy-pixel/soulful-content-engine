@@ -68,8 +68,30 @@ Reports translated / fuzzy / untranslated counts per catalog.
 babel.cfg                       what pybabel scans
 messages.pot                    extracted source strings (committed)
 translations/he/LC_MESSAGES/messages.po    Hebrew catalog (committed, edited)
-translations/he/LC_MESSAGES/messages.mo    compiled (see Stage 7 decision)
+translations/he/LC_MESSAGES/messages.mo    compiled — COMMITTED, see below
 ```
+
+## Deployment: the `.mo` files are committed to git
+
+**Decision:** compiled catalogs are committed, not built during deploy.
+
+Render's build command is `pip install -r requirements.txt`. Adding a
+`pybabel compile` step there would put the catalog behind a build-time
+instruction that lives outside this repo, in the Render dashboard — and if that
+step were ever dropped or reordered, the failure mode is the worst kind:
+**a missing `.mo` does not error, it silently serves English.** Nobody gets a
+red build; the Hebrew simply stops, and the first report comes from a user.
+
+Committing the `.mo` makes the artifact that ships the same artifact that was
+reviewed, and needs no change to the deploy pipeline.
+
+The cost of this choice is the opposite risk — editing a `.po` and forgetting to
+recompile, which ships a stale translation just as silently. That is covered by
+a CI test asserting every committed `.mo` matches its `.po`, so the mistake
+fails the build instead of reaching production.
+
+**Therefore: after editing any `.po`, run `pybabel compile -d translations` and
+commit the `.mo` in the same commit.**
 
 ## Rules for translatable strings
 
