@@ -315,7 +315,7 @@
                        style="width:36px;height:36px;background:{{ post.logo_color }};font-size:.85rem">{{ post.client_name[0] }}</div>
                   <div>
                     <div class="fw-bold" style="font-size:.85rem">{{ post.client_name|lower|replace(' ','_') }}</div>
-                    <div class="text-muted" style="font-size:.7rem">Sponsored</div>
+                    <div class="text-muted" style="font-size:.7rem">{{ _('Sponsored') }}</div>
                   </div>
                   <i class="bi bi-three-dots ms-auto text-dark"></i>
                 </div>
@@ -333,7 +333,7 @@
                   {% else %}
                     <div class="text-center text-muted p-4">
                       <i class="bi bi-image display-4 opacity-25 d-block mb-2"></i>
-                      <small>No media attached</small>
+                      <small>{{ _('No media attached') }}</small>
                     </div>
                   {% endif %}
                 </div>
@@ -347,7 +347,7 @@
                   <span class="fw-bold">{{ post.client_name|lower|replace(' ','_') }}</span>
                   <span class="ms-1" id="ig-caption-text">{{ post.caption[:200] }}{% if post.caption|length > 200 %}… <span class="text-primary" style="cursor:pointer">more</span>{% endif %}</span>
                   <div class="text-primary mt-1" style="font-size:.78rem">{{ post.hashtags[:100] if post.hashtags else '' }}</div>
-                  <div class="text-muted mt-1" style="font-size:.72rem">View all comments</div>
+                  <div class="text-muted mt-1" style="font-size:.72rem">{{ _('View all comments') }}</div>
                 </div>
               </div>
             </div>
@@ -361,12 +361,12 @@
                   <div>
                     <div class="fw-bold" style="font-size:.88rem">{{ post.client_name }}</div>
                     <div class="text-muted d-flex align-items-center gap-1" style="font-size:.72rem">
-                      <span>Sponsored</span> · <i class="bi bi-globe2"></i>
+                      <span>{{ _('Sponsored') }}</span> · <i class="bi bi-globe2"></i>
                     </div>
                   </div>
                   <i class="bi bi-three-dots ms-auto text-muted"></i>
                 </div>
-                <div class="px-3 pb-2" style="font-size:.85rem">{{ post.caption[:300] }}{% if post.caption|length > 300 %}… <span class="text-primary" style="cursor:pointer">See more</span>{% endif %}</div>
+                <div class="px-3 pb-2" style="font-size:.85rem">{{ post.caption[:300] }}{% if post.caption|length > 300 %}… <span class="text-primary" style="cursor:pointer">{{ _('See more') }}</span>{% endif %}</div>
                 {% if post_media or post.image_url %}
                 <div style="background:#f0f0f0;{% if not post_media and not post.image_url %}display:none{% endif %}">
                   {% if post_media %}
@@ -473,7 +473,7 @@
                     <div class="rounded-circle d-flex align-items-center justify-content-center text-white" style="width:28px;height:28px;background:{{ post.logo_color }};font-size:.7rem">{{ post.client_name[0] }}</div>
                     <div>
                       <div style="font-size:.78rem;font-weight:600">{{ post.client_name }}</div>
-                      <div class="text-muted" style="font-size:.7rem">Sponsored · 1.2M views</div>
+                      <div class="text-muted" style="font-size:.7rem">{{ _('Sponsored') }} · 1.2M {{ _('views') }}</div>
                     </div>
                   </div>
                 </div>
@@ -641,7 +641,9 @@ if (retestBtn) {
         headers: {'Content-Type': 'application/json'},
       });
       const data = await res.json();
-      result.textContent = data.ok ? result.dataset.ok : '✗ ' + data.error;
+      // The cross is a symbol, and data.error is a machine message from the
+      // dispatch layer that is deliberately not translated.
+      result.textContent = data.ok ? result.dataset.ok : '✗ ' + data.error;  // i18n-ok: glyph + machine error
       result.className = 'small ms-1 ' + (data.ok ? 'text-success' : 'text-danger');
     } catch (e) {
       result.textContent = result.dataset.failed;

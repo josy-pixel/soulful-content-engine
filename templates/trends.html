@@ -3,7 +3,7 @@
 {% block page_title %}Trends Intelligence{% endblock %}
 {% block topbar_actions %}
   <button class="btn btn-primary btn-sm" id="generateBtn" data-platform="{{ filter_platform }}">
-    <i class="bi bi-stars me-1"></i> Generate This Week's Trends
+    <i class="bi bi-stars me-1"></i> {{ _("Generate This Week's Trends") }}
   </button>
 {% endblock %}
 
@@ -16,7 +16,7 @@
   <div class="d-flex flex-wrap gap-2 align-items-center">
     <a href="{{ url_for('trends') }}"
        class="btn btn-sm {% if not filter_platform %}btn-dark{% else %}btn-outline-secondary{% endif %}">
-      All
+      {{ _('All') }}
     </a>
     {% for p in platforms %}
     <a href="{{ url_for('trends', platform=p) }}"
@@ -31,7 +31,7 @@
 <div id="generatingBanner" class="alert alert-info d-none">
   <div class="d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status"></div>
-    <span>Generating trends with Claude AI — this takes a few seconds…</span>
+    <span>{{ _('Generating trends with Claude AI — this takes a few seconds…') }}</span>
   </div>
 </div>
 
@@ -57,7 +57,7 @@
         <span class="badge bg-{{ platform_colors.get(t.platform,'secondary') }}">{{ t.platform|capitalize }}</span>
         <a href="{{ url_for('content_new') }}?platform={{ t.platform }}"
            class="btn btn-sm btn-outline-primary">
-          <i class="bi bi-plus-lg"></i> Use
+          <i class="bi bi-plus-lg"></i> {{ _('Use') }}
         </a>
       </div>
     </div>
@@ -67,14 +67,20 @@
 {% else %}
 <div class="text-center py-5 text-muted">
   <i class="bi bi-stars display-3 d-block mb-3 opacity-25"></i>
-  <h5>No trends yet</h5>
-  <p>Click <strong>Generate This Week's Trends</strong> to pull AI-powered content ideas.</p>
+  <h5>{{ _('No trends yet') }}</h5>
+  <p>{% trans %}Click <strong>Generate This Week's Trends</strong> to pull AI-powered content ideas.{% endtrans %}</p>
 </div>
 {% endif %}
 {% endblock %}
 
+{#- Page string bag: see the JavaScript section of TRANSLATIONS.md. -#}
+<div id="jsStrings" hidden
+     data-error="{{ _('Error: %(msg)s') }}"
+     data-unknown-error="{{ _('Unknown error') }}"></div>
+
 {% block scripts %}
 <script>
+const T = document.getElementById('jsStrings').dataset;
 document.getElementById('generateBtn').addEventListener('click', async function () {
   const platform = this.dataset.platform || '';
   const banner   = document.getElementById('generatingBanner');
@@ -96,7 +102,8 @@ document.getElementById('generateBtn').addEventListener('click', async function 
         ? '/trends?platform=' + platform
         : '/trends';
     } else {
-      banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>Error: ' + (data.error || 'Unknown error');
+      banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>' +
+        T.error.replace('%(msg)s', data.error || T.unknownError);
       banner.classList.replace('alert-info', 'alert-danger');
       this.disabled = false;
     }

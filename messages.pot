@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-09 23:59+0300\n"
+"POT-Creation-Date: 2026-08-10 00:36+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -41,7 +41,7 @@ msgstr ""
 msgid "Scheduled"
 msgstr ""
 
-#: app.py:136
+#: app.py:136 templates/performance.html:70
 msgid "Posted"
 msgstr ""
 
@@ -65,7 +65,7 @@ msgstr ""
 msgid "Story"
 msgstr ""
 
-#: app.py:147
+#: app.py:147 templates/performance.html:67
 msgid "Post"
 msgstr ""
 
@@ -282,12 +282,206 @@ msgstr ""
 msgid "Back to dashboard"
 msgstr ""
 
-#: templates/client_detail.html:21
-msgid "Configure"
+#: templates/base.html:42 templates/dashboard.html:2 templates/dashboard.html:3
+msgid "Dashboard"
 msgstr ""
 
-#: templates/client_detail.html:27
+#: templates/base.html:46 templates/clients.html:2 templates/clients.html:3
+msgid "Clients"
+msgstr ""
+
+#: templates/base.html:50
+msgid "Caption Generator"
+msgstr ""
+
+#: templates/base.html:53 templates/content_list.html:2
+#: templates/content_list.html:3
+msgid "Content Library"
+msgstr ""
+
+#: templates/base.html:56
+msgid "Scheduling"
+msgstr ""
+
+#: templates/base.html:59
+msgid "Performance"
+msgstr ""
+
+#: templates/base.html:62
+msgid "Trends"
+msgstr ""
+
+#: templates/base.html:66
+msgid "Reports"
+msgstr ""
+
+#: templates/base.html:71 templates/users.html:2 templates/users.html:3
+msgid "Users"
+msgstr ""
+
+#: templates/base.html:74 templates/client_detail.html:27
 msgid "Settings"
+msgstr ""
+
+#: templates/base.html:82
+msgid "Sign out"
+msgstr ""
+
+#: templates/base.html:85 templates/login.html:47 templates/setup.html:56
+msgid "Powered by Claude AI"
+msgstr ""
+
+#: templates/caption_generator.html:14
+msgid "Generate with Claude AI"
+msgstr ""
+
+#: templates/caption_generator.html:17 templates/content_form.html:16
+msgid "Client *"
+msgstr ""
+
+#: templates/caption_generator.html:19 templates/content_form.html:18
+msgid "Select client…"
+msgstr ""
+
+#: templates/caption_generator.html:27 templates/content_form.html:28
+msgid "Platform *"
+msgstr ""
+
+#: templates/caption_generator.html:40
+msgid "Topic / Content Idea *"
+msgstr ""
+
+#: templates/caption_generator.html:41 templates/content_form.html:60
+msgid "e.g. Morning mindfulness routine"
+msgstr ""
+
+#: templates/caption_generator.html:45
+msgid "Extra Context <small class=\"text-muted\">(optional)</small>"
+msgstr ""
+
+#: templates/caption_generator.html:47
+msgid "Key points, tone notes, specific call-to-action…"
+msgstr ""
+
+#: templates/caption_generator.html:51 templates/content_list.html:89
+msgid "Generate Caption"
+msgstr ""
+
+#: templates/caption_generator.html:61
+msgid "Generated Caption"
+msgstr ""
+
+#: templates/caption_generator.html:64
+msgid "Regenerate"
+msgstr ""
+
+#: templates/caption_generator.html:67 templates/report.html:49
+#: templates/users.html:44
+msgid "Copy"
+msgstr ""
+
+#: templates/caption_generator.html:76
+msgid "Your generated caption will appear here."
+msgstr ""
+
+#: templates/caption_generator.html:77
+msgid "Select a client, platform, and topic, then click Generate."
+msgstr ""
+
+#: templates/caption_generator.html:83
+msgid "Claude is crafting your caption…"
+msgstr ""
+
+#: templates/caption_generator.html:96
+msgid "Engine debug"
+msgstr ""
+
+#: templates/caption_generator.html:99
+msgid "Full system prompt sent ("
+msgstr ""
+
+#: templates/caption_generator.html:99
+msgid "chars) — verify the voice document is whole"
+msgstr ""
+
+#: templates/caption_generator.html:104 templates/content_form.html:70
+msgid "Hashtags"
+msgstr ""
+
+#: templates/caption_generator.html:109
+msgid "Save to Content Library"
+msgstr ""
+
+#: templates/caption_generator.html:113
+msgid "Save as Draft"
+msgstr ""
+
+#: templates/caption_generator.html:114
+msgid "Mark as Needs Review"
+msgstr ""
+
+#: templates/caption_generator.html:115
+msgid "Mark as Approved"
+msgstr ""
+
+#: templates/caption_generator.html:120
+msgid "Schedule date (optional)"
+msgstr ""
+
+#: templates/caption_generator.html:124
+msgid "Save Post"
+msgstr ""
+
+#: templates/caption_generator.html:142
+msgid "Please select a client, platform, and enter a topic."
+msgstr ""
+
+#: templates/caption_generator.html:143 templates/report.html:76
+#: templates/trends.html:78
+#, python-format
+msgid "Error: %(msg)s"
+msgstr ""
+
+#: templates/caption_generator.html:144
+#, python-format
+msgid "Voice %(score)s/10"
+msgstr ""
+
+#: templates/caption_generator.html:145
+#, python-format
+msgid "%(num)s passes"
+msgstr ""
+
+#: templates/caption_generator.html:146
+#, python-format
+msgid ""
+"Scored after %(num)s voice passes. The score always describes the caption"
+" shown."
+msgstr ""
+
+#: templates/caption_generator.html:147
+msgid "Scored on the first pass — no rewrite was needed."
+msgstr ""
+
+#: templates/caption_generator.html:148
+#, python-format
+msgid "This client has no %(settings)s set, so the voice document governs it."
+msgstr ""
+
+#: templates/caption_generator.html:149
+msgid "Request failed. Check your network and API key."
+msgstr ""
+
+#: templates/caption_generator.html:150
+msgid "Caption is empty."
+msgstr ""
+
+#: templates/caption_generator.html:151
+msgid "Saving…"
+msgstr ""
+
+#: templates/client_detail.html:21
+msgid "Configure"
 msgstr ""
 
 #: templates/client_detail.html:48
@@ -367,12 +561,13 @@ msgid "Topic"
 msgstr ""
 
 #: templates/client_detail.html:156 templates/client_detail.html:161
+#: templates/performance.html:69
 msgid "Platform"
 msgstr ""
 
 #: templates/client_detail.html:156 templates/client_detail.html:162
-#: templates/content_form.html:105 templates/users.html:111
-#: templates/users.html:168 templates/users.html:194
+#: templates/content_form.html:105 templates/settings/webhooks.html:58
+#: templates/users.html:111 templates/users.html:168 templates/users.html:194
 msgid "Status"
 msgstr ""
 
@@ -381,6 +576,7 @@ msgid "Date"
 msgstr ""
 
 #: templates/client_detail.html:164 templates/content_list.html:77
+#: templates/performance.html:118
 msgid "View"
 msgstr ""
 
@@ -388,8 +584,148 @@ msgstr ""
 msgid "No posts yet for this client."
 msgstr ""
 
-#: templates/clients.html:2 templates/clients.html:3
-msgid "Clients"
+#: templates/client_form.html:13
+msgid "Client Name *"
+msgstr ""
+
+#: templates/client_form.html:17
+msgid "Description"
+msgstr ""
+
+#: templates/client_form.html:21
+msgid "Contact Email"
+msgstr ""
+
+#: templates/client_form.html:25
+msgid "Brand Colour"
+msgstr ""
+
+#: templates/client_form.html:29
+msgid "Used for client avatar and accents."
+msgstr ""
+
+#: templates/client_form.html:34
+msgid "Brand Voice"
+msgstr ""
+
+#: templates/client_form.html:35
+msgid "This is injected in full into every caption — the more real, the better."
+msgstr ""
+
+#: templates/client_form.html:37
+msgid "Voice document"
+msgstr ""
+
+#: templates/client_form.html:39
+msgid "Paste the full brand-voice document. No length limit — do not summarise."
+msgstr ""
+
+#: templates/client_form.html:42
+msgid "Sample captions"
+msgstr ""
+
+#: templates/client_form.html:42
+msgid "(10–15 real ones)"
+msgstr ""
+
+#: templates/client_form.html:44
+msgid ""
+"Paste real captions this client wrote. Separate each caption with a blank"
+" line."
+msgstr ""
+
+#: templates/client_form.html:45
+msgid "Separate each caption with a blank line."
+msgstr ""
+
+#: templates/client_form.html:52 templates/content_form.html:131
+#: templates/content_form.html:133 templates/performance.html:158
+msgid "Cancel"
+msgstr ""
+
+#: templates/client_gallery.html:6
+msgid "Back to Client"
+msgstr ""
+
+#: templates/client_gallery.html:9
+msgid "Upload Media"
+msgstr ""
+
+#: templates/client_gallery.html:19
+msgid "Drag & drop images or videos here"
+msgstr ""
+
+#: templates/client_gallery.html:20
+msgid ""
+"or click <strong>Upload Media</strong> — JPG, PNG, GIF, WEBP, MP4, MOV "
+"(max 200 MB each)"
+msgstr ""
+
+#: templates/client_gallery.html:27
+msgid "Uploading…"
+msgstr ""
+
+#: templates/client_gallery.html:36
+msgid "Filter:"
+msgstr ""
+
+#: templates/client_gallery.html:39
+msgid "Images"
+msgstr ""
+
+#: templates/client_gallery.html:42
+msgid "Videos"
+msgstr ""
+
+#: templates/client_gallery.html:45
+msgid "Search by name or hint…"
+msgstr ""
+
+#: templates/client_gallery.html:69
+msgid "Preview"
+msgstr ""
+
+#: templates/client_gallery.html:72 templates/content_detail.html:14
+msgid "Delete"
+msgstr ""
+
+#: templates/client_gallery.html:81
+msgid "Caption hint / description…"
+msgstr ""
+
+#: templates/client_gallery.html:97
+msgid "No media yet"
+msgstr ""
+
+#: templates/client_gallery.html:107
+msgid "Media Preview"
+msgstr ""
+
+#: templates/client_gallery.html:119
+#, python-format
+msgid "Uploading %(num)s file(s)…"
+msgstr ""
+
+#: templates/client_gallery.html:120
+#, python-format
+msgid "Uploaded %(num)s file(s). Refreshing…"
+msgstr ""
+
+#: templates/client_gallery.html:121
+#, python-format
+msgid "Upload failed: %(msg)s"
+msgstr ""
+
+#: templates/client_gallery.html:122 templates/trends.html:79
+msgid "Unknown error"
+msgstr ""
+
+#: templates/client_gallery.html:123
+msgid "Network error during upload."
+msgstr ""
+
+#: templates/client_gallery.html:124
+msgid "Delete this media? This cannot be undone."
 msgstr ""
 
 #: templates/clients.html:6
@@ -472,7 +808,9 @@ msgid ""
 "turn those back on deliberately."
 msgstr ""
 
-#: templates/clients.html:98 templates/clients.html:104 templates/users.html:70
+#: templates/clients.html:98 templates/clients.html:104
+#: templates/performance.html:68 templates/settings/webhooks.html:15
+#: templates/settings/webhooks.html:58 templates/users.html:70
 #: templates/users.html:106 templates/users.html:194
 msgid "Client"
 msgstr ""
@@ -503,10 +841,6 @@ msgstr ""
 
 #: templates/content_detail.html:12
 msgid "Delete this post?"
-msgstr ""
-
-#: templates/content_detail.html:14
-msgid "Delete"
 msgstr ""
 
 #: templates/content_detail.html:25
@@ -568,7 +902,7 @@ msgstr ""
 msgid "Attach from Gallery"
 msgstr ""
 
-#: templates/content_detail.html:137
+#: templates/content_detail.html:137 templates/settings/webhooks.html:85
 msgid "Remove"
 msgstr ""
 
@@ -600,15 +934,15 @@ msgstr ""
 msgid "Add Metrics"
 msgstr ""
 
-#: templates/content_detail.html:174
+#: templates/content_detail.html:174 templates/performance.html:71
 msgid "Likes"
 msgstr ""
 
-#: templates/content_detail.html:174
+#: templates/content_detail.html:174 templates/performance.html:72
 msgid "Comments"
 msgstr ""
 
-#: templates/content_detail.html:174
+#: templates/content_detail.html:174 templates/performance.html:73
 msgid "Shares"
 msgstr ""
 
@@ -620,7 +954,7 @@ msgstr ""
 msgid "Views"
 msgstr ""
 
-#: templates/content_detail.html:174
+#: templates/content_detail.html:174 templates/performance.html:74
 msgid "Reach"
 msgstr ""
 
@@ -695,16 +1029,25 @@ msgstr ""
 msgid "Post Preview"
 msgstr ""
 
-#: templates/content_form.html:16
-msgid "Client *"
+#: templates/content_detail.html:318 templates/content_detail.html:364
+#: templates/content_detail.html:476
+msgid "Sponsored"
 msgstr ""
 
-#: templates/content_form.html:18
-msgid "Select client…"
+#: templates/content_detail.html:336
+msgid "No media attached"
 msgstr ""
 
-#: templates/content_form.html:28
-msgid "Platform *"
+#: templates/content_detail.html:350
+msgid "View all comments"
+msgstr ""
+
+#: templates/content_detail.html:369
+msgid "See more"
+msgstr ""
+
+#: templates/content_detail.html:476
+msgid "views"
 msgstr ""
 
 #: templates/content_form.html:30
@@ -719,20 +1062,12 @@ msgstr ""
 msgid "Topic / Title *"
 msgstr ""
 
-#: templates/content_form.html:60
-msgid "e.g. Morning mindfulness routine"
-msgstr ""
-
 #: templates/content_form.html:64
 msgid "Caption *"
 msgstr ""
 
 #: templates/content_form.html:66
 msgid "Your caption text…"
-msgstr ""
-
-#: templates/content_form.html:70
-msgid "Hashtags"
 msgstr ""
 
 #: templates/content_form.html:72
@@ -766,6 +1101,7 @@ msgid "Loading gallery…"
 msgstr ""
 
 #: templates/content_form.html:97 templates/content_list.html:44
+#: templates/performance.html:30
 msgid "Clear"
 msgstr ""
 
@@ -781,23 +1117,15 @@ msgstr ""
 msgid "Notes for the team…"
 msgstr ""
 
-#: templates/content_form.html:131 templates/content_form.html:133
-msgid "Cancel"
-msgstr ""
-
-#: templates/content_list.html:2 templates/content_list.html:3
-msgid "Content Library"
-msgstr ""
-
 #: templates/content_list.html:6
 msgid "New Post"
 msgstr ""
 
-#: templates/content_list.html:20
+#: templates/content_list.html:20 templates/performance.html:14
 msgid "All Clients"
 msgstr ""
 
-#: templates/content_list.html:28
+#: templates/content_list.html:28 templates/performance.html:22
 msgid "All Platforms"
 msgstr ""
 
@@ -805,7 +1133,7 @@ msgstr ""
 msgid "All Statuses"
 msgstr ""
 
-#: templates/content_list.html:43
+#: templates/content_list.html:43 templates/performance.html:29
 msgid "Filter"
 msgstr ""
 
@@ -829,16 +1157,8 @@ msgstr ""
 msgid "Try adjusting your filters or create a new post."
 msgstr ""
 
-#: templates/content_list.html:89
-msgid "Generate Caption"
-msgstr ""
-
 #: templates/content_list.html:90
 msgid "Manual Post"
-msgstr ""
-
-#: templates/dashboard.html:2 templates/dashboard.html:3
-msgid "Dashboard"
 msgstr ""
 
 #: templates/dashboard.html:19
@@ -908,7 +1228,7 @@ msgstr ""
 msgid "At least 12 characters."
 msgstr ""
 
-#: templates/invite.html:45
+#: templates/invite.html:45 templates/setup.html:48
 msgid "Confirm password"
 msgstr ""
 
@@ -920,21 +1240,147 @@ msgstr ""
 msgid "Sign in"
 msgstr ""
 
-#: templates/login.html:35 templates/users.html:57 templates/users.html:102
-#: templates/users.html:168 templates/users.html:194
+#: templates/login.html:35 templates/setup.html:40 templates/users.html:57
+#: templates/users.html:102 templates/users.html:168 templates/users.html:194
 msgid "Email"
 msgstr ""
 
-#: templates/login.html:39
+#: templates/login.html:39 templates/setup.html:44
 msgid "Password"
 msgstr ""
 
-#: templates/login.html:47
-msgid "Powered by Claude AI"
+#: templates/performance.html:61
+msgid "Post Performance"
 msgstr ""
 
-#: templates/users.html:2 templates/users.html:3
-msgid "Users"
+#: templates/performance.html:75
+msgid "Eng.%"
+msgstr ""
+
+#: templates/performance.html:114
+msgid "+ Add Metrics"
+msgstr ""
+
+#: templates/performance.html:129
+msgid "No posted content yet"
+msgstr ""
+
+#: templates/performance.html:130
+msgid "Mark posts as \"Posted\" to track their performance metrics here."
+msgstr ""
+
+#: templates/performance.html:139
+msgid "Add Metrics —"
+msgstr ""
+
+#: templates/performance.html:152
+msgid "Notes"
+msgstr ""
+
+#: templates/performance.html:159
+msgid "Save Metrics"
+msgstr ""
+
+#: templates/report.html:11
+msgid "Report Settings"
+msgstr ""
+
+#: templates/report.html:14
+msgid "Start Date"
+msgstr ""
+
+#: templates/report.html:18
+msgid "End Date"
+msgstr ""
+
+#: templates/report.html:23
+msgid "Last 7 days"
+msgstr ""
+
+#: templates/report.html:24
+msgid "Last 30 days"
+msgstr ""
+
+#: templates/report.html:28
+msgid "Generate Report"
+msgstr ""
+
+#: templates/report.html:35
+msgid "Period Stats"
+msgstr ""
+
+#: templates/report.html:46
+msgid "Report"
+msgstr ""
+
+#: templates/report.html:52
+msgid "Print"
+msgstr ""
+
+#: templates/report.html:59
+msgid ""
+"Select a date range and click Generate to create your AI-powered weekly "
+"report."
+msgstr ""
+
+#: templates/report.html:63
+msgid "Claude is analysing your content and generating insights…"
+msgstr ""
+
+#: templates/report.html:75
+msgid "Please select a date range."
+msgstr ""
+
+#: templates/report.html:77
+msgid "Request failed. Check your connection."
+msgstr ""
+
+#: templates/setup.html:6
+msgid "First-time setup — Soulful Content Engine"
+msgstr ""
+
+#: templates/setup.html:24
+msgid "Create your admin account"
+msgstr ""
+
+#: templates/setup.html:25
+msgid ""
+"This one-time setup runs only until the first account is created. Do it "
+"now."
+msgstr ""
+
+#: templates/setup.html:36
+msgid "Setup code"
+msgstr ""
+
+#: templates/setup.html:44
+msgid "(min 8 characters)"
+msgstr ""
+
+#: templates/trends.html:6
+msgid "Generate This Week's Trends"
+msgstr ""
+
+#: templates/trends.html:19
+msgid "All"
+msgstr ""
+
+#: templates/trends.html:34
+msgid "Generating trends with Claude AI — this takes a few seconds…"
+msgstr ""
+
+#: templates/trends.html:60
+msgid "Use"
+msgstr ""
+
+#: templates/trends.html:70
+msgid "No trends yet"
+msgstr ""
+
+#: templates/trends.html:71
+msgid ""
+"Click <strong>Generate This Week's Trends</strong> to pull AI-powered "
+"content ideas."
 msgstr ""
 
 #: templates/users.html:18
@@ -962,10 +1408,6 @@ msgstr ""
 msgid ""
 "Whoever opens this link gets <strong>full admin access to every "
 "client</strong> — send it only over a channel you trust."
-msgstr ""
-
-#: templates/users.html:44
-msgid "Copy"
 msgstr ""
 
 #: templates/users.html:52
@@ -1072,5 +1514,105 @@ msgstr ""
 
 #: templates/users.html:203
 msgid "No client users yet — invite one above."
+msgstr ""
+
+#: templates/settings/webhooks.html:10
+msgid "Add / edit a client webhook"
+msgstr ""
+
+#: templates/settings/webhooks.html:17
+msgid "Choose…"
+msgstr ""
+
+#: templates/settings/webhooks.html:24
+msgid "Webhook URL"
+msgstr ""
+
+#: templates/settings/webhooks.html:26
+msgid "https://hook.eu1.make.com/…"
+msgstr ""
+
+#: templates/settings/webhooks.html:27
+msgid ""
+"Each client needs its own scenario URL — a URL already used by another "
+"client is rejected."
+msgstr ""
+
+#: templates/settings/webhooks.html:30
+msgid "Secret (sent as <code>X-Secret</code>)"
+msgstr ""
+
+#: templates/settings/webhooks.html:33
+msgid "leave blank to keep current"
+msgstr ""
+
+#: templates/settings/webhooks.html:35
+msgid "Show/hide what you're typing"
+msgstr ""
+
+#: templates/settings/webhooks.html:37
+msgid ""
+"Stored masked (shown only as …last4). Changing it resets status to "
+"untested."
+msgstr ""
+
+#: templates/settings/webhooks.html:40 templates/settings/webhooks.html:58
+msgid "Platforms"
+msgstr ""
+
+#: templates/settings/webhooks.html:48
+msgid "Save webhook"
+msgstr ""
+
+#: templates/settings/webhooks.html:54
+msgid "All clients"
+msgstr ""
+
+#: templates/settings/webhooks.html:58
+msgid "Secret"
+msgstr ""
+
+#: templates/settings/webhooks.html:58
+msgid "Last success"
+msgstr ""
+
+#: templates/settings/webhooks.html:66
+msgid "Not configured"
+msgstr ""
+
+#: templates/settings/webhooks.html:75
+msgid "Send test ping"
+msgstr ""
+
+#: templates/settings/webhooks.html:78
+msgid "Enable"
+msgstr ""
+
+#: templates/settings/webhooks.html:81
+msgid "Disable"
+msgstr ""
+
+#: templates/settings/webhooks.html:93
+msgid ""
+"Not verified yet — <strong>send a test ping</strong> before publishing "
+"real content."
+msgstr ""
+
+#: templates/settings/webhooks.html:94
+#, python-format
+msgid "<strong>Insecure:</strong> <bdi>%(err)s</bdi>"
+msgstr ""
+
+#: templates/settings/webhooks.html:95
+#, python-format
+msgid "<strong>Last test failed:</strong> <bdi>%(err)s</bdi>"
+msgstr ""
+
+#: templates/settings/webhooks.html:110
+msgid "Pinging with the correct AND a deliberately wrong secret…"
+msgstr ""
+
+#: templates/settings/webhooks.html:111
+msgid "Request failed"
 msgstr ""
 

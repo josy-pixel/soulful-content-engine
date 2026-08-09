@@ -3,10 +3,10 @@
 {% block page_title %}{{ client.name }} — Media Gallery{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('client_detail', client_id=client.id) }}" class="btn btn-outline-secondary btn-sm me-2">
-    <i class="bi bi-arrow-left"></i> Back to Client
+    <i class="bi bi-arrow-left"></i> {{ _('Back to Client') }}
   </a>
   <button class="btn btn-primary btn-sm" id="uploadBtn">
-    <i class="bi bi-cloud-upload me-1"></i> Upload Media
+    <i class="bi bi-cloud-upload me-1"></i> {{ _('Upload Media') }}
   </button>
 {% endblock %}
 
@@ -16,15 +16,15 @@
 <!-- Upload drop zone -->
 <div id="dropZone" class="border-2 border-dashed rounded-3 p-5 text-center mb-4 text-muted" style="border-color:#dee2e6;cursor:pointer;transition:all .2s">
   <i class="bi bi-cloud-upload display-4 d-block mb-2 opacity-50"></i>
-  <p class="mb-1 fw-semibold">Drag & drop images or videos here</p>
-  <p class="small mb-0">or click <strong>Upload Media</strong> — JPG, PNG, GIF, WEBP, MP4, MOV (max 200 MB each)</p>
+  <p class="mb-1 fw-semibold">{{ _('Drag & drop images or videos here') }}</p>
+  <p class="small mb-0">{% trans %}or click <strong>Upload Media</strong> — JPG, PNG, GIF, WEBP, MP4, MOV (max 200 MB each){% endtrans %}</p>
 </div>
 
 <!-- Upload progress -->
 <div id="uploadProgress" class="d-none mb-4">
   <div class="d-flex align-items-center gap-2 mb-2">
     <div class="spinner-border spinner-border-sm text-primary"></div>
-    <span id="uploadStatusText">Uploading…</span>
+    <span id="uploadStatusText">{{ _('Uploading…') }}</span>
   </div>
   <div class="progress" style="height:6px">
     <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:0%"></div>
@@ -33,16 +33,16 @@
 
 <!-- Filter bar -->
 <div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
-  <span class="fw-semibold me-1">Filter:</span>
+  <span class="fw-semibold me-1">{{ _('Filter:') }}</span>
   <button class="btn btn-sm btn-dark filter-btn active" data-type="all">All ({{ media|length }})</button>
   <button class="btn btn-sm btn-outline-secondary filter-btn" data-type="image">
-    <i class="bi bi-image me-1"></i>Images
+    <i class="bi bi-image me-1"></i>{{ _('Images') }}
   </button>
   <button class="btn btn-sm btn-outline-secondary filter-btn" data-type="video">
-    <i class="bi bi-camera-video me-1"></i>Videos
+    <i class="bi bi-camera-video me-1"></i>{{ _('Videos') }}
   </button>
   <div class="ms-auto">
-    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search by name or hint…" style="width:220px">
+    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="{{ _('Search by name or hint…') }}" style="width:220px">
   </div>
 </div>
 
@@ -66,10 +66,10 @@
         {% endif %}
         <!-- Actions overlay -->
         <div class="gallery-overlay position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center gap-2 opacity-0" style="background:rgba(0,0,0,.5);transition:opacity .2s">
-          <button class="btn btn-sm btn-light preview-btn" title="Preview" data-id="{{ m.id }}" data-url="{{ m.url }}" data-type="{{ m.media_type }}" data-name="{{ m.original_name }}">
+          <button class="btn btn-sm btn-light preview-btn" title="{{ _('Preview') }}" data-id="{{ m.id }}" data-url="{{ m.url }}" data-type="{{ m.media_type }}" data-name="{{ m.original_name }}">
             <i class="bi bi-eye"></i>
           </button>
-          <button class="btn btn-sm btn-danger delete-btn" title="Delete" data-id="{{ m.id }}">
+          <button class="btn btn-sm btn-danger delete-btn" title="{{ _('Delete') }}" data-id="{{ m.id }}">
             <i class="bi bi-trash"></i>
           </button>
         </div>
@@ -78,7 +78,7 @@
       <div class="card-body p-2">
         <p class="small text-truncate mb-1 fw-semibold" title="{{ m.original_name }}">{{ m.original_name }}</p>
         <input type="text" class="form-control form-control-sm caption-hint-input mb-1"
-               placeholder="Caption hint / description…"
+               placeholder="{{ _('Caption hint / description…') }}"
                value="{{ m.caption_hint }}" data-id="{{ m.id }}">
         <div class="d-flex justify-content-between align-items-center mt-1">
           <span class="badge {% if m.media_type == 'video' %}bg-primary{% else %}bg-success{% endif %} bg-opacity-75">
@@ -94,7 +94,7 @@
 {% else %}
 <div class="text-center py-5 text-muted" id="emptyState">
   <i class="bi bi-images display-3 d-block mb-3 opacity-25"></i>
-  <h5>No media yet</h5>
+  <h5>{{ _('No media yet') }}</h5>
   <p>Upload images and videos to build {{ client.name }}'s private gallery.</p>
 </div>
 {% endif %}
@@ -104,7 +104,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header border-0 pb-0">
-        <h6 class="modal-title" id="previewModalLabel">Media Preview</h6>
+        <h6 class="modal-title" id="previewModalLabel">{{ _('Media Preview') }}</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body text-center p-3" id="previewModalBody">
@@ -114,8 +114,18 @@
 </div>
 {% endblock %}
 
+{#- Page string bag: see the JavaScript section of TRANSLATIONS.md. -#}
+<div id="jsStrings" hidden
+     data-uploading="{{ _('Uploading %(num)s file(s)…') }}"
+     data-uploaded="{{ _('Uploaded %(num)s file(s). Refreshing…') }}"
+     data-upload-failed="{{ _('Upload failed: %(msg)s') }}"
+     data-unknown-error="{{ _('Unknown error') }}"
+     data-network-error="{{ _('Network error during upload.') }}"
+     data-confirm-delete="{{ _('Delete this media? This cannot be undone.') }}"></div>
+
 {% block scripts %}
 <script>
+const T = document.getElementById('jsStrings').dataset;
 const CLIENT_ID = {{ client.id }};
 const dropZone  = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -140,7 +150,7 @@ async function uploadFiles(files) {
   const statusText = document.getElementById('uploadStatusText');
   progress.classList.remove('d-none');
   bar.style.width = '30%';
-  statusText.textContent = `Uploading ${files.length} file(s)…`;
+  statusText.textContent = T.uploading.replace('%(num)s', files.length);
 
   const fd = new FormData();
   for (const f of files) fd.append('files', f);
@@ -151,14 +161,15 @@ async function uploadFiles(files) {
     const data = await res.json();
     bar.style.width = '100%';
     if (data.ok && data.uploaded.length) {
-      statusText.textContent = `Uploaded ${data.uploaded.length} file(s). Refreshing…`;
+      statusText.textContent = T.uploaded.replace('%(num)s', data.uploaded.length);
       setTimeout(() => window.location.reload(), 800);
     } else {
-      statusText.textContent = 'Upload failed: ' + (data.errors?.join(', ') || 'Unknown error');
+      statusText.textContent = T.uploadFailed.replace('%(msg)s',
+        data.errors?.join(', ') || T.unknownError);
       bar.classList.add('bg-danger');
     }
   } catch (e) {
-    statusText.textContent = 'Network error during upload.';
+    statusText.textContent = T.networkError;
     bar.classList.add('bg-danger');
   }
 }
@@ -185,7 +196,7 @@ document.querySelectorAll('.preview-btn').forEach(btn => {
 // ── Delete ───────────────────────────────────────────────────────────────────
 document.querySelectorAll('.delete-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
-    if (!confirm('Delete this media? This cannot be undone.')) return;
+    if (!confirm(T.confirmDelete)) return;
     const id = btn.dataset.id;
     const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
     const data = await res.json();

@@ -10,46 +10,46 @@
         <form method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-3">
-            <label class="form-label fw-semibold">Client Name *</label>
+            <label class="form-label fw-semibold">{{ _('Client Name *') }}</label>
             <input type="text" name="name" class="form-control" value="{{ client.name if client else '' }}" required>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Description</label>
+            <label class="form-label fw-semibold">{{ _('Description') }}</label>
             <textarea name="description" class="form-control" rows="3">{{ client.description if client else '' }}</textarea>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Contact Email</label>
+            <label class="form-label fw-semibold">{{ _('Contact Email') }}</label>
             <input type="email" name="contact_email" class="form-control" value="{{ client.contact_email if client else '' }}">
           </div>
           <div class="mb-4">
-            <label class="form-label fw-semibold">Brand Colour</label>
+            <label class="form-label fw-semibold">{{ _('Brand Colour') }}</label>
             <div class="d-flex align-items-center gap-3">
               <input type="color" name="logo_color" class="form-control form-control-color"
                      value="{{ client.logo_color if client else '#6366f1' }}" style="width:60px;height:40px">
-              <small class="text-muted">Used for client avatar and accents.</small>
+              <small class="text-muted">{{ _('Used for client avatar and accents.') }}</small>
             </div>
           </div>
           {% if client %}
           <hr class="my-4">
-          <h6 class="fw-bold text-primary mb-1"><i class="bi bi-soundwave"></i> Brand Voice</h6>
-          <p class="text-muted small mb-3">This is injected in full into every caption — the more real, the better.</p>
+          <h6 class="fw-bold text-primary mb-1"><i class="bi bi-soundwave"></i> {{ _('Brand Voice') }}</h6>
+          <p class="text-muted small mb-3">{{ _('This is injected in full into every caption — the more real, the better.') }}</p>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Voice document</label>
+            <label class="form-label fw-semibold">{{ _('Voice document') }}</label>
             <textarea name="voice_document" class="form-control" rows="10"
-                      placeholder="Paste the full brand-voice document. No length limit — do not summarise.">{{ voice_document or '' }}</textarea>
+                      placeholder="{{ _('Paste the full brand-voice document. No length limit — do not summarise.') }}">{{ voice_document or '' }}</textarea>
           </div>
           <div class="mb-4">
-            <label class="form-label fw-semibold">Sample captions <span class="text-muted">(10–15 real ones)</span></label>
+            <label class="form-label fw-semibold">{{ _('Sample captions') }} <span class="text-muted">{{ _('(10–15 real ones)') }}</span></label>
             <textarea name="sample_captions" class="form-control" rows="10"
-                      placeholder="Paste real captions this client wrote. Separate each caption with a blank line.">{{ sample_captions_text or '' }}</textarea>
-            <small class="text-muted">Separate each caption with a blank line.</small>
+                      placeholder="{{ _('Paste real captions this client wrote. Separate each caption with a blank line.') }}">{{ sample_captions_text or '' }}</textarea>
+            <small class="text-muted">{{ _('Separate each caption with a blank line.') }}</small>
           </div>
           {% endif %}
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary">
               <i class="bi bi-check-lg"></i> {{ 'Save Changes' if client else 'Create Client' }}
             </button>
-            <a href="{{ url_for('clients') }}" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{{ url_for('clients') }}" class="btn btn-outline-secondary">{{ _('Cancel') }}</a>
           </div>
         </form>
       </div>

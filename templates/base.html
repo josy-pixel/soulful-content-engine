@@ -39,39 +39,39 @@
   <nav class="sidebar-nav">
     {% set is_client = current_user.is_authenticated and current_user.role == 'client' %}
     <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
-      <i class="bi bi-grid-1x2-fill"></i> Dashboard
+      <i class="bi bi-grid-1x2-fill"></i> {{ _('Dashboard') }}
     </a>
     {% if not is_client %}
     <a href="{{ url_for('clients') }}" class="nav-link {% if 'client' in (request.endpoint or '') %}active{% endif %}">
-      <i class="bi bi-people-fill"></i> Clients
+      <i class="bi bi-people-fill"></i> {{ _('Clients') }}
     </a>
     {% endif %}
     <a href="{{ url_for('caption_generator') }}" class="nav-link {% if request.endpoint == 'caption_generator' %}active{% endif %}">
-      <i class="bi bi-magic"></i> Caption Generator
+      <i class="bi bi-magic"></i> {{ _('Caption Generator') }}
     </a>
     <a href="{{ url_for('content_list') }}" class="nav-link {% if 'content' in (request.endpoint or '') %}active{% endif %}">
-      <i class="bi bi-collection-fill"></i> Content Library
+      <i class="bi bi-collection-fill"></i> {{ _('Content Library') }}
     </a>
     <a href="{{ url_for('scheduling') }}" class="nav-link {% if request.endpoint == 'scheduling' %}active{% endif %}">
-      <i class="bi bi-calendar3"></i> Scheduling
+      <i class="bi bi-calendar3"></i> {{ _('Scheduling') }}
     </a>
     <a href="{{ url_for('performance') }}" class="nav-link {% if request.endpoint == 'performance' %}active{% endif %}">
-      <i class="bi bi-graph-up-arrow"></i> Performance
+      <i class="bi bi-graph-up-arrow"></i> {{ _('Performance') }}
     </a>
     <a href="{{ url_for('trends') }}" class="nav-link {% if request.endpoint == 'trends' %}active{% endif %}">
-      <i class="bi bi-stars"></i> Trends
+      <i class="bi bi-stars"></i> {{ _('Trends') }}
     </a>
     {% if not is_client %}
     <a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint == 'report' %}active{% endif %}">
-      <i class="bi bi-file-earmark-bar-graph-fill"></i> Reports
+      <i class="bi bi-file-earmark-bar-graph-fill"></i> {{ _('Reports') }}
     </a>
     {% endif %}
     {% if current_user.is_authenticated and current_user.role == 'admin' %}
     <a href="{{ url_for('users') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('users') %}active{% endif %}">
-      <i class="bi bi-person-badge-fill"></i> Users
+      <i class="bi bi-person-badge-fill"></i> {{ _('Users') }}
     </a>
     <a href="{{ url_for('settings.webhooks_page') }}" class="nav-link {% if request.blueprint == 'settings' %}active{% endif %}">
-      <i class="bi bi-gear-fill"></i> Settings
+      <i class="bi bi-gear-fill"></i> {{ _('Settings') }}
     </a>
     {% endif %}
   </nav>
@@ -79,10 +79,10 @@
   <div class="sidebar-footer">
     {% if current_user.is_authenticated %}
     <a href="{{ url_for('logout') }}" class="nav-link">
-      <i class="bi bi-box-arrow-right"></i> Sign out
+      <i class="bi bi-box-arrow-right"></i> {{ _('Sign out') }}
     </a>
     {% endif %}
-    <small class="text-muted d-block mt-2">Powered by Claude AI</small>
+    <small class="text-muted d-block mt-2">{{ _('Powered by Claude AI') }}</small>
   </div>
 </div>
 

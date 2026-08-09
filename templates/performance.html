@@ -11,7 +11,7 @@
     <form method="GET" class="row g-2 align-items-end">
       <div class="col-auto">
         <select name="client_id" class="form-select form-select-sm">
-          <option value="">All Clients</option>
+          <option value="">{{ _('All Clients') }}</option>
           {% for c in clients %}
           <option value="{{ c.id }}" {% if filter_client==c.id %}selected{% endif %}>{{ c.name }}</option>
           {% endfor %}
@@ -19,15 +19,15 @@
       </div>
       <div class="col-auto">
         <select name="platform" class="form-select form-select-sm">
-          <option value="">All Platforms</option>
+          <option value="">{{ _('All Platforms') }}</option>
           {% for p in platforms %}
           <option value="{{ p }}" {% if filter_platform==p %}selected{% endif %}>{{ p|capitalize }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="col-auto">
-        <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
-        <a href="{{ url_for('performance') }}" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+        <button type="submit" class="btn btn-sm btn-outline-primary">{{ _('Filter') }}</button>
+        <a href="{{ url_for('performance') }}" class="btn btn-sm btn-outline-secondary ms-1">{{ _('Clear') }}</a>
       </div>
     </form>
   </div>
@@ -58,21 +58,21 @@
 
 <!-- Posts table -->
 <div class="card">
-  <div class="card-header"><i class="bi bi-table me-2"></i>Post Performance</div>
+  <div class="card-header"><i class="bi bi-table me-2"></i>{{ _('Post Performance') }}</div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead>
           <tr>
-            <th>Post</th>
-            <th>Client</th>
-            <th>Platform</th>
-            <th>Posted</th>
-            <th class="text-center">Likes</th>
-            <th class="text-center">Comments</th>
-            <th class="text-center">Shares</th>
-            <th class="text-center">Reach</th>
-            <th class="text-center">Eng.%</th>
+            <th>{{ _('Post') }}</th>
+            <th>{{ _('Client') }}</th>
+            <th>{{ _('Platform') }}</th>
+            <th>{{ _('Posted') }}</th>
+            <th class="text-center">{{ _('Likes') }}</th>
+            <th class="text-center">{{ _('Comments') }}</th>
+            <th class="text-center">{{ _('Shares') }}</th>
+            <th class="text-center">{{ _('Reach') }}</th>
+            <th class="text-center">{{ _('Eng.%') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -111,11 +111,11 @@
             <td colspan="5" class="text-center text-muted small">
               <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
                       data-bs-target="#perfModal" data-postid="{{ p.id }}" data-posttopic="{{ p.topic }}">
-                + Add Metrics
+                {{ _('+ Add Metrics') }}
               </button>
             </td>
             {% endif %}
-            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-primary">{{ _('View') }}</a></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -126,8 +126,8 @@
 {% else %}
 <div class="empty-state">
   <i class="bi bi-graph-up-arrow display-4 text-muted"></i>
-  <h5 class="mt-3">No posted content yet</h5>
-  <p class="text-muted">Mark posts as "Posted" to track their performance metrics here.</p>
+  <h5 class="mt-3">{{ _('No posted content yet') }}</h5>
+  <p class="text-muted">{{ _('Mark posts as "Posted" to track their performance metrics here.') }}</p>
 </div>
 {% endif %}
 
@@ -136,7 +136,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Add Metrics — <span id="modalPostTopic"></span></h5>
+        <h5 class="modal-title">{{ _('Add Metrics —') }} <span id="modalPostTopic"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -149,14 +149,14 @@
           </div>
           {% endfor %}
           <div class="col-12">
-            <label class="form-label fw-semibold small">Notes</label>
+            <label class="form-label fw-semibold small">{{ _('Notes') }}</label>
             <textarea id="pm_notes" class="form-control form-control-sm" rows="2"></textarea>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary" id="savePerfBtn">Save Metrics</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Cancel') }}</button>
+        <button class="btn btn-primary" id="savePerfBtn">{{ _('Save Metrics') }}</button>
       </div>
     </div>
   </div>

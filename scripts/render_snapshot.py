@@ -76,6 +76,11 @@ def _fixture():
     # lists), so they are pinned for the same reason.
     conn.execute("UPDATE content_posts SET created_at='2026-01-01 09:00:00', updated_at='2026-01-01 09:00:00', posted_date='2026-01-02 10:00'")  # raw-query-ok: snapshot fixture pins rendered timestamps
     conn.execute("UPDATE approval_history SET changed_at='2026-01-01 09:00:00'")
+    # get_users() orders by created_at DESC and the fixture users are created
+    # within the same second, so their row order flips between runs. Distinct
+    # timestamps make the ordering deterministic — otherwise the users page
+    # shows a diff on every capture and the signal is lost in it.
+    conn.execute("UPDATE users SET created_at = '2026-01-01 09:00:0' || id")
     conn.commit()
     conn.close()
 
@@ -115,7 +120,14 @@ def capture(label):
                       'dashboard': '/',
                       'content_detail': f'/content/{post_id}',
                       'content_form': f'/content/{post_id}/edit',
-                      'client_detail': f'/clients/{client_id}'}.items():
+                      'client_detail': f'/clients/{client_id}',
+                      'scheduling': '/scheduling',
+                      'performance': '/performance',
+                      'trends': '/trends',
+                      'report': '/report',
+                      'caption_generator': '/caption-generator',
+                      'client_gallery': f'/clients/{client_id}/gallery',
+                      'settings_webhooks': '/settings/webhooks'}.items():
         _write(label, name, c.get(url))
 
     # 403 renders only for an authenticated user who lacks the role, so it needs

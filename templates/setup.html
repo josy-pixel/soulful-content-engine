@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>First-time setup — Soulful Content Engine</title>
+  <title>{{ _('First-time setup — Soulful Content Engine') }}</title>
   {% include '_stylesheets.html' %}
   <link href="{{ url_for('static', filename='css/mobile.css') }}" rel="stylesheet" />
   <style>
@@ -21,8 +21,8 @@
 
     <div class="card shadow-sm">
       <div class="card-body p-4">
-        <h5 class="card-title mb-1">Create your admin account</h5>
-        <p class="text-muted small mb-3">This one-time setup runs only until the first account is created. Do it now.</p>
+        <h5 class="card-title mb-1">{{ _('Create your admin account') }}</h5>
+        <p class="text-muted small mb-3">{{ _('This one-time setup runs only until the first account is created. Do it now.') }}</p>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% for category, message in messages %}
@@ -33,19 +33,19 @@
         <form method="POST" action="{{ url_for('setup_admin') }}" autocomplete="off">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-3">
-            <label class="form-label small">Setup code</label>
+            <label class="form-label small">{{ _('Setup code') }}</label>
             <input type="text" name="setup_token" class="form-control" required autofocus autocomplete="off">
           </div>
           <div class="mb-3">
-            <label class="form-label small">Email</label>
+            <label class="form-label small">{{ _('Email') }}</label>
             <input type="email" name="email" class="form-control" required>
           </div>
           <div class="mb-3">
-            <label class="form-label small">Password <span class="text-muted">(min 8 characters)</span></label>
+            <label class="form-label small">{{ _('Password') }} <span class="text-muted">{{ _('(min 8 characters)') }}</span></label>
             <input type="password" name="password" class="form-control" minlength="8" required>
           </div>
           <div class="mb-3">
-            <label class="form-label small">Confirm password</label>
+            <label class="form-label small">{{ _('Confirm password') }}</label>
             <input type="password" name="confirm" class="form-control" minlength="8" required>
           </div>
           <button type="submit" class="btn btn-primary w-100">Create admin &amp; continue</button>
@@ -53,7 +53,7 @@
       </div>
     </div>
 
-    <p class="text-center text-muted mt-3"><small>Powered by Claude AI</small></p>
+    <p class="text-center text-muted mt-3"><small>{{ _('Powered by Claude AI') }}</small></p>
   </div>
 </body>
 </html>
