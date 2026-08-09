@@ -16,7 +16,9 @@ import security
 from security import (current_scope, enforce_client_id, require_content_access,
                      require_client_access, scoped_posts, scoped_clients, roles_required)
 from flask import abort, g, session
+from flask_babel import Babel
 from flask_login import login_user, current_user
+import i18n
 from werkzeug.security import generate_password_hash
 import hashlib
 
@@ -51,6 +53,16 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=bool(os.environ.get('RENDER')),
 )
+
+# ── Interface language ────────────────────────────────────────────────────────
+# i18n.get_locale is the single decision point (stored preference → session →
+# default). BABEL_DEFAULT_LOCALE is the language the source strings are written
+# in, so English needs no catalog and renders straight from the source text.
+app.config.update(
+    BABEL_DEFAULT_LOCALE=i18n.DEFAULT_LOCALE,
+    BABEL_TRANSLATION_DIRECTORIES='translations',
+)
+babel = Babel(app, locale_selector=i18n.get_locale)
 
 # Media upload config
 UPLOAD_PATH = os.environ.get('UPLOAD_PATH', os.path.join('static', 'uploads'))
@@ -148,6 +160,19 @@ def inject_user_scope():
        getattr(current_user, 'role', None) == 'client':
         cc = db.get_client(current_user.client_id)
     return {'current_client': cc}
+
+
+@app.context_processor
+def inject_locale():
+    """Language facts every template needs: the active code, its direction, and
+    the list to build a switcher from. Computed via i18n so the resolution order
+    is never re-implemented in a template."""
+    code = i18n.get_locale()
+    return {
+        'locale': code,
+        'text_direction': i18n.text_direction(code),
+        'available_locales': i18n.LOCALES,
+    }
 
 
 @app.route('/')

@@ -1,0 +1,2 @@
+Catalogs are created by `pybabel init` (see TRANSLATIONS.md).
+This file keeps the directory present in git before the first catalog exists.
