@@ -3,11 +3,27 @@
 Every generation injects the client's ENTIRE voice document (never truncated,
 never summarised), all of their real sample captions, brand-voice notes, banned
 words, and the weekly direction. A second voice-audit call scores the draft 1-10
-against the voice document and rewrites anything below the threshold.
+against that same context and rewrites anything below the threshold.
 
-The stable prefix (voice document + samples + brand notes + platform rules) is
-marked with cache_control so every post in a batch after the first reads it from
-cache at ~10% of input cost. The volatile per-post topic goes in the user turn.
+Three rules this module exists to hold:
+
+1. The voice document is AUTHORITATIVE. Where the per-client settings rows
+   (emoji usage, caption length, platform conventions) disagree with it, the
+   document wins. Previously an unset emoji_usage silently defaulted to
+   "3-5 emojis", so a document that banned emoji still produced emoji — and the
+   auditor then marked the caption down for it. Regenerating could never fix
+   that, because the contradiction was baked into the instructions.
+
+2. The auditor judges against the SAME rulebook the writer was given. It used
+   to receive only the document and samples, so it penalised banned words and
+   emoji policy it had to infer.
+
+3. The score always describes the caption actually returned. The old code
+   returned the rewrite paired with the ORIGINAL draft's score, so the badge
+   could only ever read 8+ when no rewrite had happened at all.
+
+The rulebook is the cached prefix for both the writer and the auditor, so every
+post after the first in a batch reads it back at ~10% of input cost.
 """
 import os
 import json
@@ -53,12 +69,20 @@ def _json_list(raw):
         return []
 
 
-def _voice_system_text(client_name, voice_document, sample_captions, brand_voice, weekly_direction=''):
-    """The full, stable voice context. This is the cached prefix — it must be
-    identical for every post in a batch so the cache is reused."""
-    keywords = _json_list((brand_voice or {}).get('keywords'))
-    banned = _json_list((brand_voice or {}).get('avoid_words'))
-    platform = (brand_voice or {}).get('platform', 'general')
+def build_rulebook(client_name, voice_document, sample_captions, brand_voice,
+                   weekly_direction=''):
+    """The single source of voice truth, shared by the writer and the auditor.
+
+    Returns (rulebook_text, deferred) where `deferred` names the settings that
+    were withheld because the voice document governs them instead — surfaced so
+    a silent override is never invisible.
+    """
+    bv = brand_voice or {}
+    keywords = _json_list(bv.get('keywords'))
+    banned = _json_list(bv.get('avoid_words'))
+    platform = bv.get('platform', 'general')
+    has_doc = bool(voice_document)
+    deferred = []
 
     parts = [
         f"You write social media captions AS {client_name} — in their own voice, "
@@ -66,7 +90,14 @@ def _voice_system_text(client_name, voice_document, sample_captions, brand_voice
         f"be able to tell a tool wrote it.",
     ]
 
-    if voice_document:
+    if has_doc:
+        parts.append(
+            "\n=== PRECEDENCE ===\n"
+            "The BRAND VOICE DOCUMENT below is authoritative. Where anything else "
+            "in this prompt — voice notes, platform conventions, length guidance, "
+            "emoji guidance — disagrees with the document, follow the DOCUMENT and "
+            "ignore the conflicting instruction."
+        )
         parts.append(
             "\n=== BRAND VOICE DOCUMENT (authoritative — follow it exactly, "
             "in full) ===\n" + voice_document
@@ -79,8 +110,6 @@ def _voice_system_text(client_name, voice_document, sample_captions, brand_voice
             "punctuation, and emoji habits) ===\n" + joined
         )
 
-    # Brand-voice notes (secondary to the document, but useful)
-    bv = brand_voice or {}
     notes = []
     if bv.get('tone'):
         notes.append(f"- Tone: {bv['tone']}")
@@ -100,22 +129,42 @@ def _voice_system_text(client_name, voice_document, sample_captions, brand_voice
         parts.append("\n=== THIS WEEK'S CREATIVE DIRECTION ===\n" + weekly_direction)
 
     parts.append("\n=== PLATFORM ===\n" + PLATFORM_GUIDES.get(platform, PLATFORM_GUIDES['general']))
-    parts.append("LENGTH: " + LENGTH_GUIDE.get(bv.get('caption_length', 'medium'), LENGTH_GUIDE['medium']))
-    parts.append("EMOJI: " + EMOJI_GUIDE.get(bv.get('emoji_usage', 'moderate'), EMOJI_GUIDE['moderate']))
-    parts.append("\nReturn ONLY the caption text — no labels, no preamble, no quotes.")
 
-    return "\n".join(parts)
+    # Length and emoji: only stated when the client actually set them. An unset
+    # value used to fall through to a hardcoded default that could contradict the
+    # document outright — the emoji case is exactly how this bug was found.
+    length = (bv.get('caption_length') or '').strip()
+    emoji = (bv.get('emoji_usage') or '').strip()
+
+    if length in LENGTH_GUIDE:
+        parts.append("LENGTH: " + LENGTH_GUIDE[length]
+                     + (" (the voice document overrides this)" if has_doc else ""))
+    elif has_doc:
+        deferred.append('caption_length')
+    else:
+        parts.append("LENGTH: " + LENGTH_GUIDE['medium'])
+
+    if emoji in EMOJI_GUIDE:
+        parts.append("EMOJI: " + EMOJI_GUIDE[emoji]
+                     + (" (the voice document overrides this)" if has_doc else ""))
+    elif has_doc:
+        deferred.append('emoji_usage')
+    else:
+        parts.append("EMOJI: " + EMOJI_GUIDE['moderate'])
+
+    return "\n".join(parts), deferred
 
 
 def generate_caption(client_name, brand_voice, topic, voice_document='',
                      sample_captions=None, weekly_direction='', extra_context=''):
-    """Returns (caption, error, usage, system_text). Injects the full voice
-    context, cached."""
+    """Returns (caption, error, usage, system_text, deferred)."""
     client = _client()
-    system_text = _voice_system_text(client_name, voice_document, sample_captions or [],
-                                     brand_voice, weekly_direction)
+    rulebook, deferred = build_rulebook(client_name, voice_document,
+                                        sample_captions or [], brand_voice,
+                                        weekly_direction)
+    system_text = rulebook + "\n\nReturn ONLY the caption text — no labels, no preamble, no quotes."
     if not client:
-        return None, 'ANTHROPIC_API_KEY not set.', None, system_text
+        return None, 'ANTHROPIC_API_KEY not set.', None, system_text, deferred
 
     user_message = f"Write a caption for this post: {topic}"
     if extra_context:
@@ -129,38 +178,40 @@ def generate_caption(client_name, brand_voice, topic, voice_document='',
                      'cache_control': {'type': 'ephemeral'}}],
             messages=[{'role': 'user', 'content': user_message}],
         )
-        return resp.content[0].text.strip(), None, _usage(resp, 'caption'), system_text
+        return resp.content[0].text.strip(), None, _usage(resp, 'caption'), system_text, deferred
     except anthropic.APIError as e:
-        return None, f'Claude API error: {str(e)}', None, system_text
+        return None, f'Claude API error: {str(e)}', None, system_text, deferred
 
 
-def audit_caption(client_name, voice_document, sample_captions, caption):
-    """Second pass. Scores the draft 1-10 against the voice document and rewrites
-    anything below config.VOICE_AUDIT_THRESHOLD. Returns
-    (final_caption, score, notes, error)."""
+def audit_caption(client_name, rulebook, caption):
+    """Score one caption against the rulebook. Judgement only — the caller
+    decides what to keep, so a score is never paired with different text.
+
+    Returns (score, notes, rewritten, error, usage).
+    """
     client = _client()
     if not client:
-        return caption, None, '', 'ANTHROPIC_API_KEY not set.', None
+        return None, '', None, 'ANTHROPIC_API_KEY not set.', None
 
-    ctx = []
-    if voice_document:
-        ctx.append("VOICE DOCUMENT:\n" + voice_document)
-    if sample_captions:
-        ctx.append("REAL CAPTIONS:\n" + "\n".join(f"- {c}" for c in sample_captions))
-    context = "\n\n".join(ctx) if ctx else "(no voice document provided)"
+    # The rulebook goes in the cached system block, not the user turn: it is the
+    # same on every post in a batch, and it is far too big to pay for each time.
+    system_text = (
+        "You are a strict brand-voice auditor. You judge captions against the "
+        "rulebook below — the SAME rulebook the writer was given, so you must "
+        "not invent rules it does not contain, and must not penalise anything it "
+        "permits.\n\n" + rulebook + "\n\nReturn only valid JSON."
+    )
 
     prompt = (
-        f"You are a voice-fidelity auditor for {client_name}.\n\n"
-        f"{context}\n\n"
-        f"DRAFT CAPTION TO AUDIT:\n{caption}\n\n"
-        f"Score the draft from 1 to 10 on how faithfully it matches this person's "
-        f"voice — signature phrases, punctuation habits, sentence rhythm, banned "
-        f"words, and overall tone. If the score is below {config.VOICE_AUDIT_THRESHOLD}, "
-        f"rewrite it so it scores at least {config.VOICE_AUDIT_THRESHOLD}, keeping the "
-        f"same message.\n\n"
+        f"DRAFT CAPTION TO AUDIT (for {client_name}):\n{caption}\n\n"
+        f"Score it from 1 to 10 on how faithfully it matches this person's voice "
+        f"— signature phrases, punctuation habits, sentence rhythm, banned words, "
+        f"and overall tone — judged against the rulebook above. If the score is "
+        f"below {config.VOICE_AUDIT_THRESHOLD}, rewrite it so it scores at least "
+        f"{config.VOICE_AUDIT_THRESHOLD}, keeping the same message.\n\n"
         f"Return ONLY a JSON object, no other text:\n"
         f'{{"score": <1-10>, "notes": "<what matched and what you fixed>", '
-        f'"rewritten": "<the improved caption, or null if the draft already scores '
+        f'"rewritten": "<the improved caption, or null if it already scores '
         f'{config.VOICE_AUDIT_THRESHOLD}+>"}}'
     )
 
@@ -168,8 +219,7 @@ def audit_caption(client_name, voice_document, sample_captions, caption):
         resp = client.messages.create(
             model=config.AUDIT_MODEL,
             max_tokens=1500,
-            system=[{'type': 'text',
-                     'text': 'You are a strict brand-voice auditor. Return only valid JSON.',
+            system=[{'type': 'text', 'text': system_text,
                      'cache_control': {'type': 'ephemeral'}}],
             messages=[{'role': 'user', 'content': prompt}],
         )
@@ -181,12 +231,12 @@ def audit_caption(client_name, voice_document, sample_captions, caption):
         score = int(data.get('score', 0))
         notes = str(data.get('notes', ''))
         rewritten = data.get('rewritten')
-        final = rewritten.strip() if (rewritten and score < config.VOICE_AUDIT_THRESHOLD) else caption
-        return final, score, notes, None, u
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
-        return caption, None, '', f'Audit parse error: {str(e)}', None
+        rewritten = rewritten.strip() if isinstance(rewritten, str) and rewritten.strip() else None
+        return score, notes, rewritten, None, u
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+        return None, '', None, f'Audit parse error: {str(e)}', None
     except anthropic.APIError as e:
-        return caption, None, '', f'Claude API error: {str(e)}', None
+        return None, '', None, f'Claude API error: {str(e)}', None
 
 
 def generate_hashtags(client_name, brand_voice, topic, caption):
@@ -213,32 +263,73 @@ def generate_hashtags(client_name, brand_voice, topic, caption):
         return ''
 
 
+def audit_to_threshold(client_name, rulebook, caption):
+    """Audit, rewrite, and RE-audit until the text clears the threshold or the
+    attempt budget runs out.
+
+    The invariant: the score returned always describes the caption returned. A
+    rewrite is only adopted when there is still an audit left to score it with —
+    otherwise the last rewrite would go out unscored, which is the bug this
+    replaces. Returns (caption, score, notes, error, usages, attempts).
+    """
+    current = caption
+    score = None
+    notes = ''
+    usages = []
+    attempts = []
+    budget = max(1, config.VOICE_MAX_AUDITS)
+
+    for i in range(budget):
+        s, n, rewritten, err, u = audit_caption(client_name, rulebook, current)
+        if err:
+            return current, score, notes, err, usages, attempts
+        if u:
+            usages.append(u)
+        score, notes = s, n                      # always describes `current`
+        attempts.append({'attempt': i + 1, 'score': s, 'rewritten': bool(rewritten)})
+        if s is not None and s >= config.VOICE_AUDIT_THRESHOLD:
+            break
+        if not rewritten:
+            break                                # auditor offered no improvement
+        if i == budget - 1:
+            break                                # no audit left to score a rewrite
+        current = rewritten
+
+    return current, score, notes, None, usages, attempts
+
+
 def generate_post(client_name, brand_voice, topic, voice_document='',
                   sample_captions=None, weekly_direction='', extra_context='', debug=False):
-    """Full pipeline: caption -> voice audit -> hashtags.
-    Returns a dict with caption, voice_score, voice_audit, hashtags, error.
-    When debug, also returns 'usage' (per-call token counts, incl. cache hits)
-    and 'system_prompt' (the full injected prompt) for verification."""
+    """Full pipeline: caption -> voice audit (with re-scoring) -> hashtags.
+
+    Returns a dict with caption, voice_score, voice_audit, voice_attempts,
+    voice_deferred_settings, hashtags, error. When debug, also returns per-call
+    token usage and the full system prompt.
+    """
     sample_captions = sample_captions or []
-    caption, err, cap_usage, system_text = generate_caption(
+    caption, err, cap_usage, system_text, deferred = generate_caption(
         client_name, brand_voice, topic, voice_document,
         sample_captions, weekly_direction, extra_context)
     if err:
         return {'error': err}
 
-    final, score, notes, aerr, audit_usage = audit_caption(
-        client_name, voice_document, sample_captions, caption)
+    rulebook, _ = build_rulebook(client_name, voice_document, sample_captions,
+                                 brand_voice, weekly_direction)
+    final, score, notes, aerr, audit_usages, attempts = audit_to_threshold(
+        client_name, rulebook, caption)
     hashtags = generate_hashtags(client_name, brand_voice, topic, final)
 
     result = {
         'caption': final,
         'voice_score': score,
         'voice_audit': notes if not aerr else f'(audit skipped: {aerr})',
+        'voice_attempts': attempts,
+        'voice_deferred_settings': deferred,
         'hashtags': hashtags,
         'error': None,
     }
     if debug:
-        result['usage'] = {'caption': cap_usage, 'audit': audit_usage}
+        result['usage'] = {'caption': cap_usage, 'audit': audit_usages}
         result['system_prompt'] = system_text
         result['system_prompt_chars'] = len(system_text)
         result['voice_document_chars'] = len(voice_document or '')

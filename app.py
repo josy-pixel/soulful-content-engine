@@ -439,6 +439,10 @@ def api_generate_caption():
         'hashtags': result['hashtags'],
         'voice_score': result.get('voice_score'),
         'voice_audit': result.get('voice_audit', ''),
+        # The score belongs to the caption below it. These two say how it got
+        # there, so a low score is never a mystery.
+        'voice_attempts': result.get('voice_attempts', []),
+        'voice_deferred_settings': result.get('voice_deferred_settings', []),
     }
     if config.DEBUG_ENGINE:   # hidden unless DEBUG_ENGINE=1 (admin-only page anyway)
         payload['debug'] = {
