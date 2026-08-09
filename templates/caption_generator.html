@@ -96,7 +96,7 @@
             <div class="fw-bold mb-1"><i class="bi bi-bug"></i> {{ _('Engine debug') }}</div>
             <div id="debugUsage" class="mb-2" style="font-family:monospace"></div>
             <details>
-              <summary>{{ _('Full system prompt sent (') }}<span id="debugPromptChars"></span> {{ _('chars) — verify the voice document is whole') }}</summary>
+              <summary>{% trans %}Full system prompt sent (<span id="debugPromptChars"></span> chars) — verify the voice document is whole{% endtrans %}</summary>
               <pre id="debugPrompt" style="white-space:pre-wrap;max-height:320px;overflow:auto;color:#9feaff;margin-top:6px"></pre>
             </details>
           </div>

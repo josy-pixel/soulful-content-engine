@@ -39,7 +39,7 @@
                       placeholder="{{ _('Paste the full brand-voice document. No length limit — do not summarise.') }}">{{ voice_document or '' }}</textarea>
           </div>
           <div class="mb-4">
-            <label class="form-label fw-semibold">{{ _('Sample captions') }} <span class="text-muted">{{ _('(10–15 real ones)') }}</span></label>
+            <label class="form-label fw-semibold">{% trans %}Sample captions <span class="text-muted">(10–15 real ones)</span>{% endtrans %}</label>
             <textarea name="sample_captions" class="form-control" rows="10"
                       placeholder="{{ _('Paste real captions this client wrote. Separate each caption with a blank line.') }}">{{ sample_captions_text or '' }}</textarea>
             <small class="text-muted">{{ _('Separate each caption with a blank line.') }}</small>
