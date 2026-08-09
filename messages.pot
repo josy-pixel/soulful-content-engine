@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-09 23:14+0300\n"
+"POT-Creation-Date: 2026-08-09 23:25+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -242,5 +242,132 @@ msgstr ""
 
 #: settings.py:107
 msgid "Webhook removed."
+msgstr ""
+
+#: templates/clients.html:2 templates/clients.html:3
+msgid "Clients"
+msgstr ""
+
+#: templates/clients.html:6
+msgid "New Client"
+msgstr ""
+
+#: templates/clients.html:20
+msgid "No description yet."
+msgstr ""
+
+#: templates/clients.html:45
+#, python-format
+msgid "Delete %(name)s?"
+msgstr ""
+
+#: templates/clients.html:47
+msgid "This also removes:"
+msgstr ""
+
+#: templates/clients.html:48
+#, python-format
+msgid "%(num)d post (%(posted)d already published)"
+msgid_plural "%(num)d posts (%(posted)d already published)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/clients.html:49
+#, python-format
+msgid "%(num)d login"
+msgid_plural "%(num)d logins"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/clients.html:50
+#, python-format
+msgid "%(num)d media file"
+msgid_plural "%(num)d media files"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/clients.html:51
+msgid "their Make webhook"
+msgstr ""
+
+#: templates/clients.html:53
+msgid ""
+"Nothing is destroyed — you can restore it. Posts already live on Facebook"
+" stay live."
+msgstr ""
+
+#: templates/clients.html:58
+msgid "Delete client"
+msgstr ""
+
+#: templates/clients.html:71
+msgid "No clients yet"
+msgstr ""
+
+#: templates/clients.html:72
+msgid "Add your first client to get started."
+msgstr ""
+
+#: templates/clients.html:73
+msgid "Add Client"
+msgstr ""
+
+#: templates/clients.html:83
+msgid "Deleted clients"
+msgstr ""
+
+#: templates/clients.html:92
+msgid ""
+"Removed from the app, not destroyed. Their content and media are "
+"untouched and come back with them."
+msgstr ""
+
+#: templates/clients.html:93
+msgid ""
+"Their logins and their Make webhook stay switched off after a restore — "
+"turn those back on deliberately."
+msgstr ""
+
+#: templates/clients.html:98 templates/clients.html:104
+msgid "Client"
+msgstr ""
+
+#: templates/clients.html:98 templates/clients.html:108
+msgid "Deleted"
+msgstr ""
+
+#: templates/clients.html:109
+msgid "Actions"
+msgstr ""
+
+#: templates/clients.html:113
+msgid "Restore"
+msgstr ""
+
+#: templates/invite.html:6 templates/invite.html:18
+msgid "Set your password"
+msgstr ""
+
+#: templates/invite.html:26
+#, python-format
+msgid ""
+"Welcome, <strong><bdi>%(email)s</bdi></strong>. Choose a password to "
+"activate your account."
+msgstr ""
+
+#: templates/invite.html:40
+msgid "New password"
+msgstr ""
+
+#: templates/invite.html:42
+msgid "At least 12 characters."
+msgstr ""
+
+#: templates/invite.html:45
+msgid "Confirm password"
+msgstr ""
+
+#: templates/invite.html:48
+msgid "Activate account"
 msgstr ""
 

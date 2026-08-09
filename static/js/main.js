@@ -46,3 +46,15 @@ document.querySelectorAll('.alert-dismissible').forEach(alert => {
     bsAlert.close();
   }, 4000);
 });
+
+// Confirm dialogs read their text from data-confirm, rendered server-side.
+// Building the sentence in JS meant concatenating English fragments, which no
+// translator can reorder — and it forced a quote-escaping hack on any value
+// interpolated into it. One delegated handler covers every form that opts in.
+document.addEventListener('submit', function (e) {
+  const form = e.target.closest('form[data-confirm]');
+  if (!form) return;
+  if (!window.confirm(form.getAttribute('data-confirm'))) {
+    e.preventDefault();
+  }
+}, true);

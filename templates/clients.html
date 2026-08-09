@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Clients — Soulful Content Engine{% endblock %}
-{% block page_title %}Clients{% endblock %}
+{% block title %}{{ _('Clients') }} — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ _('Clients') }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('client_new') }}" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-lg"></i> New Client
+    <i class="bi bi-plus-lg"></i> {{ _('New Client') }}
   </a>
 {% endblock %}
 
@@ -17,7 +17,7 @@
       </div>
       <div class="card-body">
         <h5 class="card-title">{{ client.name }}</h5>
-        <p class="card-text text-muted small">{{ client.description or 'No description yet.' }}</p>
+        <p class="card-text text-muted small">{{ client.description or _('No description yet.') }}</p>
         {% if client.contact_email %}
         <p class="small text-muted"><i class="bi bi-envelope me-1"></i>{{ client.contact_email }}</p>
         {% endif %}
@@ -33,14 +33,29 @@
           </a>
           {% if current_user.role == 'admin' %}
           {% set im = impacts.get(client.id, {}) %}
+          {#- The confirm text was assembled in JavaScript by concatenating English
+              fragments around four interpolated counts and a conditional clause.
+              No translator can work with that: a frame sentence like
+              "Goes with it: N posts, P logins, Q files" cannot keep its word
+              order across languages, and there is no way to ngettext on four
+              axes at once. Each count is now its own complete phrase with its
+              own plural rule, and the message is built here rather than in JS,
+              which also retires the client.name quote-escaping hack. -#}
+          {%- set confirm_text %}
+{{ _('Delete %(name)s?', name=client.name) }}
+
+{{ _('This also removes:') }}
+• {{ ngettext('%(num)d post (%(posted)d already published)', '%(num)d posts (%(posted)d already published)', im.get('posts', 0), posted=im.get('posted', 0)) }}
+• {{ ngettext('%(num)d login', '%(num)d logins', im.get('users', 0)) }}
+• {{ ngettext('%(num)d media file', '%(num)d media files', im.get('media', 0)) }}
+{% if im.get('has_webhook') %}• {{ _('their Make webhook') }}
+{% endif %}
+{{ _('Nothing is destroyed — you can restore it. Posts already live on Facebook stay live.') }}
+          {% endset -%}
           <form method="post" action="{{ url_for('client_delete', client_id=client.id) }}" class="d-inline"
-                onsubmit="return confirm(
-                  'Delete {{ client.name|replace("'", "\\'") }}?\n\n' +
-                  'Goes with it: {{ im.get('posts', 0) }} posts ({{ im.get('posted', 0) }} already published), ' +
-                  '{{ im.get('users', 0) }} logins, {{ im.get('media', 0) }} media files{{ ", and their Make webhook" if im.get('has_webhook') else "" }}.\n\n' +
-                  'Nothing is destroyed — you can restore it. Posts already live on Facebook stay live.')">
+                data-confirm="{{ confirm_text | trim }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-outline-danger btn-sm" title="Delete client">
+            <button class="btn btn-outline-danger btn-sm" title="{{ _('Delete client') }}">
               <i class="bi bi-trash3"></i>
             </button>
           </form>
@@ -53,9 +68,9 @@
   <div class="col-12">
     <div class="empty-state">
       <i class="bi bi-people display-4 text-muted"></i>
-      <h5 class="mt-3">No clients yet</h5>
-      <p class="text-muted">Add your first client to get started.</p>
-      <a href="{{ url_for('client_new') }}" class="btn btn-primary">Add Client</a>
+      <h5 class="mt-3">{{ _('No clients yet') }}</h5>
+      <p class="text-muted">{{ _('Add your first client to get started.') }}</p>
+      <a href="{{ url_for('client_new') }}" class="btn btn-primary">{{ _('Add Client') }}</a>
     </div>
   </div>
   {% endfor %}
@@ -65,33 +80,37 @@
 <div class="card mt-5">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold">
-      <i class="bi bi-trash3 me-1 text-muted"></i> Deleted clients
+      <i class="bi bi-trash3 me-1 text-muted"></i> {{ _('Deleted clients') }}
     </span>
     <span class="badge bg-secondary">{{ deleted_clients | length }}</span>
   </div>
   <div class="card-body pb-0">
+    {#- Two whole sentences, not one paragraph split across lines: the source
+        newlines and indentation would otherwise land inside the msgid and the
+        translator would have to reproduce them exactly. -#}
     <p class="small text-muted mb-0">
-      Removed from the app, not destroyed. Their content and media are untouched and
-      come back with them. Their logins and their Make webhook stay switched off after
-      a restore — turn those back on deliberately.
+      {{ _('Removed from the app, not destroyed. Their content and media are untouched and come back with them.') }}
+      {{ _('Their logins and their Make webhook stay switched off after a restore — turn those back on deliberately.') }}
     </p>
   </div>
   <div class="table-responsive">
     <table class="table table-hover mb-0">
-      <thead><tr><th>Client</th><th>Deleted</th><th></th></tr></thead>
+      <thead><tr><th>{{ _('Client') }}</th><th>{{ _('Deleted') }}</th><th></th></tr></thead>
       <tbody>
         {% for c in deleted_clients %}
         <tr>
-          <td data-label="Client">
+          {#- data-label is not a hook, it is the visible column heading on mobile
+              (mobile.css renders these tables as cards), so it is translated. -#}
+          <td data-label="{{ _('Client') }}">
             <span class="badge me-2" style="background:{{ c.logo_color }}">&nbsp;</span>
             {{ c.name }}
           </td>
-          <td data-label="Deleted"><small class="text-muted">{{ (c.deleted_at or '')[:16] }}</small></td>
-          <td data-label="Actions" class="text-nowrap">
+          <td data-label="{{ _('Deleted') }}"><small class="text-muted">{{ (c.deleted_at or '')[:16] }}</small></td>
+          <td data-label="{{ _('Actions') }}" class="text-nowrap">
             <form method="post" action="{{ url_for('client_restore', client_id=c.id) }}" class="d-inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-success">
-                <i class="bi bi-arrow-counterclockwise"></i> Restore
+                <i class="bi bi-arrow-counterclockwise"></i> {{ _('Restore') }}
               </button>
             </form>
           </td>
