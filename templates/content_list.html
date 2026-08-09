@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Content Library — Soulful Content Engine{% endblock %}
-{% block page_title %}Content Library{% endblock %}
+{% block title %}{{ _('Content Library') }} — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ _('Content Library') }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('content_new') }}" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-lg"></i> New Post
+    <i class="bi bi-plus-lg"></i> {{ _('New Post') }}
   </a>
 {% endblock %}
 
@@ -17,7 +17,7 @@
     <form method="GET" class="row g-2 align-items-end">
       <div class="col-auto">
         <select name="client_id" class="form-select form-select-sm">
-          <option value="">All Clients</option>
+          <option value="">{{ _('All Clients') }}</option>
           {% for c in clients %}
           <option value="{{ c.id }}" {% if filter_client==c.id %}selected{% endif %}>{{ c.name }}</option>
           {% endfor %}
@@ -25,7 +25,7 @@
       </div>
       <div class="col-auto">
         <select name="platform" class="form-select form-select-sm">
-          <option value="">All Platforms</option>
+          <option value="">{{ _('All Platforms') }}</option>
           {% for p in platforms %}
           <option value="{{ p }}" {% if filter_platform==p %}selected{% endif %}>{{ p|capitalize }}</option>
           {% endfor %}
@@ -33,17 +33,17 @@
       </div>
       <div class="col-auto">
         <select name="status" class="form-select form-select-sm">
-          <option value="">All Statuses</option>
+          <option value="">{{ _('All Statuses') }}</option>
           {% for s in statuses %}
-          <option value="{{ s }}" {% if filter_status==s %}selected{% endif %}>{{ s.replace('_',' ')|capitalize }}</option>
+          <option value="{{ s }}" {% if filter_status==s %}selected{% endif %}>{{ status_labels.get(s, s) }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="col-auto">
-        <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
-        <a href="{{ url_for('content_list') }}" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+        <button type="submit" class="btn btn-sm btn-outline-primary">{{ _('Filter') }}</button>
+        <a href="{{ url_for('content_list') }}" class="btn btn-sm btn-outline-secondary ms-1">{{ _('Clear') }}</a>
       </div>
-      <div class="col-auto ms-auto text-muted small">{{ posts|length }} post{% if posts|length != 1 %}s{% endif %}</div>
+      <div class="col-auto ms-auto text-muted small">{{ ngettext('%(num)d post', '%(num)d posts', posts|length) }}</div>
     </form>
   </div>
 </div>
@@ -59,10 +59,10 @@
           <span class="fw-semibold small">{{ post.client_name }}</span>
           <span class="ms-auto d-flex flex-column align-items-end gap-1">
             <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} platform-icon platform-{{ post.platform }}"></i>
-            {% if post.content_type %}<span class="badge bg-light text-dark border" style="font-size:.65rem">{{ post.content_type|capitalize }}</span>{% endif %}
+            {% if post.content_type %}<span class="badge bg-light text-dark border" style="font-size:.65rem">{{ content_type_labels.get(post.content_type, post.content_type) }}</span>{% endif %}
           </span>
         </div>
-        <span class="badge bg-{{ status_colors.get(post.status,'secondary') }} mb-2">{{ post.status.replace('_',' ') }}</span>
+        <span class="badge bg-{{ status_colors.get(post.status,'secondary') }} mb-2">{{ status_labels.get(post.status, post.status) }}</span>
         <h6 class="mb-1">{{ post.topic }}</h6>
         <p class="text-muted small caption-preview">{{ post.caption }}</p>
       </div>
@@ -70,11 +70,11 @@
         {% if post.scheduled_date %}
         <small class="text-muted"><i class="bi bi-calendar3 me-1"></i>{{ post.scheduled_date[:10] }}</small>
         {% elif post.posted_date %}
-        <small class="text-success"><i class="bi bi-check-circle me-1"></i>Posted {{ post.posted_date[:10] }}</small>
+        <small class="text-success"><i class="bi bi-check-circle me-1"></i>{{ _('Posted %(date)s', date=post.posted_date[:10]) }}</small>
         {% else %}
         <small class="text-muted">{{ post.updated_at[:10] }}</small>
         {% endif %}
-        <a href="{{ url_for('content_detail', post_id=post.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+        <a href="{{ url_for('content_detail', post_id=post.id) }}" class="btn btn-sm btn-outline-primary">{{ _('View') }}</a>
       </div>
     </div>
   </div>
@@ -83,11 +83,11 @@
 {% else %}
 <div class="empty-state">
   <i class="bi bi-collection display-4 text-muted"></i>
-  <h5 class="mt-3">No posts found</h5>
-  <p class="text-muted">Try adjusting your filters or create a new post.</p>
+  <h5 class="mt-3">{{ _('No posts found') }}</h5>
+  <p class="text-muted">{{ _('Try adjusting your filters or create a new post.') }}</p>
   <div class="d-flex gap-2 justify-content-center">
-    <a href="{{ url_for('caption_generator') }}" class="btn btn-primary"><i class="bi bi-magic"></i> Generate Caption</a>
-    <a href="{{ url_for('content_new') }}" class="btn btn-outline-secondary">Manual Post</a>
+    <a href="{{ url_for('caption_generator') }}" class="btn btn-primary"><i class="bi bi-magic"></i> {{ _('Generate Caption') }}</a>
+    <a href="{{ url_for('content_new') }}" class="btn btn-outline-secondary">{{ _('Manual Post') }}</a>
   </div>
 </div>
 {% endif %}

@@ -80,28 +80,40 @@ def _fixture():
     thash = hashlib.sha256(token.encode('utf-8')).hexdigest()
     exp = (datetime.now() + timedelta(hours=72)).isoformat()
     db.create_pending_user('invitee@t.co', 'client', live, thash, exp)
-    return admin, token
+    # An ACTIVE client user, for the 403 page. The invited one above is
+    # is_active=0 until the invite is consumed, so the login guard bounces it
+    # with a 302 and the 403 template never renders.
+    portal = db.create_user('portal@t.co', generate_password_hash('pw'),
+                            role='client', client_id=live)
+    return admin, token, portal
 
 
 def capture(label):
-    admin, token = _fixture()
+    admin, token, portal = _fixture()
     flask_app.app.config['TESTING'] = True
     c = flask_app.app.test_client()
 
-    pages = {'invite': f'/invite/{token}'}          # pre-auth, no session
     os.makedirs(os.path.join(OUT, label), exist_ok=True)
-    for name, url in pages.items():
-        r = c.get(url)
-        _write(label, name, r)
+
+    # pre-auth pages, no session
+    for name, url in {'invite': f'/invite/{token}', 'login': '/login'}.items():
+        _write(label, name, c.get(url))
 
     with c.session_transaction() as s:
         s['_user_id'] = str(admin)
         s['_fresh'] = True
         s['_csrf_token'] = 'snapshot-csrf'
 
-    for name, url in {'clients': '/clients'}.items():
-        r = c.get(url)
-        _write(label, name, r)
+    for name, url in {'clients': '/clients', 'users': '/users',
+                      'content_list': '/content'}.items():
+        _write(label, name, c.get(url))
+
+    # 403 renders only for an authenticated user who lacks the role, so it needs
+    # a client-user session hitting an admin-only page.
+
+    with c.session_transaction() as s:
+        s['_user_id'] = str(portal)
+    _write(label, 'forbidden', c.get('/users'))
 
     print(f'captured "{label}" -> {os.path.join(OUT, label)}')
 

@@ -136,6 +136,16 @@ STATUS_LABELS = {
     'posted':       _l('Posted'),
     'error':        _l('Error'),
 }
+# Same reasoning for the content types. Templates used to derive these with
+# |capitalize on the stored key, which produces English no matter the locale.
+# Platform names (Instagram, Facebook, TikTok…) are brands and stay untranslated.
+CONTENT_TYPE_LABELS = {
+    'photo': _l('Photo'),
+    'video': _l('Video'),
+    'reel':  _l('Reel'),
+    'story': _l('Story'),
+    'post':  _l('Post'),
+}
 
 
 _db_ready = False
@@ -188,6 +198,11 @@ def inject_locale():
         'locale': code,
         'text_direction': i18n.text_direction(code),
         'available_locales': i18n.LOCALES,
+        # Exposed globally rather than passed per route: several templates render
+        # a status or content-type label, and every route that forgot to pass it
+        # would silently fall back to the untranslated English key.
+        'status_labels': STATUS_LABELS,
+        'content_type_labels': CONTENT_TYPE_LABELS,
     }
 
 

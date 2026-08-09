@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Users — Soulful Content Engine{% endblock %}
-{% block page_title %}Users{% endblock %}
+{% block title %}{{ _('Users') }} — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ _('Users') }}{% endblock %}
 
 {% block content %}
 {% if new_invite %}
@@ -8,27 +8,40 @@
   <div class="card-body">
     <div class="d-flex align-items-center gap-2 mb-2">
       <i class="bi bi-link-45deg fs-4 text-warning"></i>
+      {#- One whole sentence per branch, not "Password-reset link" / "Invite link"
+          wrapped separately and glued to a shared " for <strong>…". The heading
+          reads differently in Hebrew depending on which noun leads, and a
+          translator cannot restructure across an {% if %}. The address is
+          <bdi>-isolated per the convention in TRANSLATIONS.md. -#}
       <h2 class="h6 mb-0">
-        {% if new_invite.kind == 'reset' %}Password-reset link{% else %}Invite link{% endif %}
-        for <strong>{{ new_invite.email }}</strong>
+        {% if new_invite.kind == 'reset' %}
+          {%- trans email=new_invite.email -%}
+          Password-reset link for <strong><bdi>{{ email }}</bdi></strong>
+          {%- endtrans -%}
+        {% else %}
+          {%- trans email=new_invite.email -%}
+          Invite link for <strong><bdi>{{ email }}</bdi></strong>
+          {%- endtrans -%}
+        {% endif %}
         {% if new_invite.role == 'admin' %}
-          <span class="badge bg-danger ms-1">Admin</span>
+          <span class="badge bg-danger ms-1">{{ _('Admin') }}</span>
         {% endif %}
       </h2>
     </div>
     <div class="alert alert-warning py-2 small mb-2">
       <i class="bi bi-exclamation-triangle-fill me-1"></i>
-      <strong>Shown once.</strong> The app does <strong>not</strong> email it — copy it now and
-      send it to the person yourself (WhatsApp, DM, email). Valid 72 hours, single use.
+      {#- This is the paragraph the reverted mechanical pass shattered into
+          "The app does" / "not" / unwrapped remainder. Kept whole, with the
+          emphasis inside the translatable string so it can move. -#}
+      {% trans %}<strong>Shown once.</strong> The app does <strong>not</strong> email it — copy it now and send it to the person yourself (WhatsApp, DM, email). Valid 72 hours, single use.{% endtrans %}
       {% if new_invite.role == 'admin' %}
-        Whoever opens this link gets <strong>full admin access to every client</strong> —
-        send it only over a channel you trust.
+        {% trans %}Whoever opens this link gets <strong>full admin access to every client</strong> — send it only over a channel you trust.{% endtrans %}
       {% endif %}
     </div>
     <div class="input-group">
       <input type="text" class="form-control" id="inviteUrl" value="{{ new_invite.url }}" readonly>
       <button class="btn btn-primary" type="button" id="copyInviteBtn">
-        <i class="bi bi-clipboard"></i> Copy
+        <i class="bi bi-clipboard"></i> {{ _('Copy') }}
       </button>
     </div>
   </div>
@@ -36,36 +49,40 @@
 {% endif %}
 
 <div class="card mb-4">
-  <div class="card-header fw-semibold">Invite a user</div>
+  <div class="card-header fw-semibold">{{ _('Invite a user') }}</div>
   <div class="card-body">
     <form method="post" action="{{ url_for('users_invite') }}" class="row g-2 align-items-end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="col-sm-4">
-        <label class="form-label">Email</label>
+        <label class="form-label">{{ _('Email') }}</label>
+        {#- The placeholder is an example address, not prose — left as-is so a
+            catalog cannot turn it into something that is not a valid email. -#}
         <input name="email" type="email" class="form-control" required placeholder="name@company.com">
       </div>
       <div class="col-sm-3">
-        <label class="form-label">Role</label>
+        <label class="form-label">{{ _('Role') }}</label>
         <select name="role" id="inviteRole" class="form-select" required>
-          <option value="client" selected>Client — their own client only</option>
-          <option value="admin">Admin — full access, all clients</option>
+          <option value="client" selected>{{ _('Client — their own client only') }}</option>
+          <option value="admin">{{ _('Admin — full access, all clients') }}</option>
         </select>
       </div>
       <div class="col-sm-3" id="inviteClientWrap">
-        <label class="form-label">Client</label>
+        <label class="form-label">{{ _('Client') }}</label>
         <select name="client_id" id="inviteClient" class="form-select" required>
-          <option value="">Choose client…</option>
+          <option value="">{{ _('Choose client…') }}</option>
           {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
       </div>
       <div class="col-sm-2">
-        <button class="btn btn-primary w-100">Generate link</button>
+        <button class="btn btn-primary w-100">{{ _('Generate link') }}</button>
       </div>
     </form>
+    {#- Two sentences, each whole. Written on one source line each so the msgid
+        does not carry the template's newlines and indentation, which a
+        translator would otherwise have to reproduce exactly. -#}
     <small class="text-muted d-block mt-2">
-      A single-use link (valid 72h) is shown once after you submit. Copy it and
-      send it to the person yourself — the app never emails it. An admin invite
-      grants full access to every client, so only send it to someone on your team.
+      {{ _('A single-use link (valid 72h) is shown once after you submit. Copy it and send it to the person yourself — the app never emails it.') }}
+      {{ _('An admin invite grants full access to every client, so only send it to someone on your team.') }}
     </small>
   </div>
 </div>
@@ -80,45 +97,49 @@
   {% set is_me = u.id == current_user.id %}
   {% set last_admin = u.role == 'admin' and u.is_active and active_admins <= 1 %}
   <tr>
-    <td data-label="Email">
-      {{ u.email }}{% if is_me %} <span class="text-muted small">(you)</span>{% endif %}
+    {#- data-label is the visible column heading on mobile (mobile.css stacks
+        these tables into cards), so it is content and gets translated. -#}
+    <td data-label="{{ _('Email') }}">
+      <bdi>{{ u.email }}</bdi>{% if is_me %} <span class="text-muted small">{{ _('(you)') }}</span>{% endif %}
     </td>
     {% if show_client %}
-    <td data-label="Client">{{ u.client_name or '—' }}</td>
+    <td data-label="{{ _('Client') }}">{{ u.client_name or '—' }}</td>
     {% endif %}
-    <td data-label="Last login">
+    <td data-label="{{ _('Last login') }}">
       <small class="text-muted">{{ (u.last_login_at or '—')[:16] }}</small>
     </td>
-    <td data-label="Status">
-      {% if u.is_active %}<span class="badge bg-success">Active</span>
-      {% elif pending %}<span class="badge bg-warning text-dark">Invited — not yet accepted</span>
-      {% else %}<span class="badge bg-danger">Deactivated</span>{% endif %}
+    <td data-label="{{ _('Status') }}">
+      {% if u.is_active %}<span class="badge bg-success">{{ _('Active') }}</span>
+      {% elif pending %}<span class="badge bg-warning text-dark">{{ _('Invited — not yet accepted') }}</span>
+      {% else %}<span class="badge bg-danger">{{ _('Deactivated') }}</span>{% endif %}
     </td>
-    <td data-label="Actions" class="text-nowrap">
+    <td data-label="{{ _('Actions') }}" class="text-nowrap">
       <form method="post" action="{{ url_for('users_reset', user_id=u.id) }}" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="btn btn-sm btn-outline-secondary">
-          {% if pending %}Re-issue link{% else %}Reset password{% endif %}
+          {% if pending %}{{ _('Re-issue link') }}{% else %}{{ _('Reset password') }}{% endif %}
         </button>
       </form>
       {% if u.is_active %}
         {% if is_me %}
           <span class="text-muted small ms-1">—</span>
         {% elif last_admin %}
-          <span class="text-muted small ms-1" title="Invite another admin first">Last admin</span>
+          <span class="text-muted small ms-1" title="{{ _('Invite another admin first') }}">{{ _('Last admin') }}</span>
         {% else %}
-        <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline">
+        {#- Moved off an inline onclick onto the shared data-confirm handler
+            added in 3b, so the confirm text is a translatable string rather
+            than a literal inside a JavaScript attribute. -#}
+        <form method="post" action="{{ url_for('users_deactivate', user_id=u.id) }}" class="d-inline"{% if u.role == 'admin' %} data-confirm="{{ _('Deactivate this admin? They lose access to every client.') }}"{% endif %}>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn btn-sm btn-outline-danger"
-                  {% if u.role == 'admin' %}onclick="return confirm('Deactivate this admin? They lose access to every client.')"{% endif %}>
-            Deactivate
+          <button class="btn btn-sm btn-outline-danger">
+            {{ _('Deactivate') }}
           </button>
         </form>
         {% endif %}
       {% else %}
       <form method="post" action="{{ url_for('users_activate', user_id=u.id) }}" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="btn btn-sm btn-outline-success">Reactivate</button>
+        <button class="btn btn-sm btn-outline-success">{{ _('Reactivate') }}</button>
       </form>
       {% endif %}
     </td>
@@ -132,19 +153,19 @@
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold">
       <i class="bi bi-shield-lock me-1 text-danger"></i>
-      Admins — your team
+      {{ _('Admins — your team') }}
     </span>
     <span class="badge bg-secondary">{{ admin_users | length }}</span>
   </div>
   <div class="card-body pb-0">
     <p class="small text-muted mb-0">
-      Full access to every client, plus Settings, Reports and Users. Keep this list short.
+      {{ _('Full access to every client, plus Settings, Reports and Users. Keep this list short.') }}
     </p>
   </div>
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead>
-        <tr><th>Email</th><th>Last login</th><th>Status</th><th></th></tr>
+        <tr><th>{{ _('Email') }}</th><th>{{ _('Last login') }}</th><th>{{ _('Status') }}</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in admin_users %}{{ user_row(u, false) }}{% endfor %}
@@ -157,20 +178,20 @@
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold">
       <i class="bi bi-person me-1"></i>
-      Client users
+      {{ _('Client users') }}
     </span>
     <span class="badge bg-secondary">{{ client_users | length }}</span>
   </div>
   <div class="card-body pb-0">
     <p class="small text-muted mb-0">
-      Each one sees only their own client's content — nothing else.
+      {{ _("Each one sees only their own client's content — nothing else.") }}
     </p>
   </div>
   {% if client_users %}
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead>
-        <tr><th>Email</th><th>Client</th><th>Last login</th><th>Status</th><th></th></tr>
+        <tr><th>{{ _('Email') }}</th><th>{{ _('Client') }}</th><th>{{ _('Last login') }}</th><th>{{ _('Status') }}</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in client_users %}{{ user_row(u, true) }}{% endfor %}
@@ -179,7 +200,7 @@
   </div>
   {% else %}
   <div class="card-body pt-3">
-    <p class="text-muted mb-0">No client users yet — invite one above.</p>
+    <p class="text-muted mb-0">{{ _('No client users yet — invite one above.') }}</p>
   </div>
   {% endif %}
 </div>

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-09 23:25+0300\n"
+"POT-Creation-Date: 2026-08-09 23:37+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -49,125 +49,145 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: app.py:229
+#: app.py:143
+msgid "Photo"
+msgstr ""
+
+#: app.py:144
+msgid "Video"
+msgstr ""
+
+#: app.py:145
+msgid "Reel"
+msgstr ""
+
+#: app.py:146
+msgid "Story"
+msgstr ""
+
+#: app.py:147
+msgid "Post"
+msgstr ""
+
+#: app.py:244
 msgid "Client name is required."
 msgstr ""
 
-#: app.py:232
+#: app.py:247
 #, python-format
 msgid "Client '%(name)s' created successfully."
 msgstr ""
 
-#: app.py:242 app.py:256 app.py:286 app.py:295 app.py:314 app.py:357
-#: app.py:1063
+#: app.py:257 app.py:271 app.py:301 app.py:310 app.py:329 app.py:372
+#: app.py:1078
 msgid "Client not found."
 msgstr ""
 
-#: app.py:271
+#: app.py:286
 msgid "Client updated."
 msgstr ""
 
-#: app.py:292
+#: app.py:307
 msgid "That client is already deleted."
 msgstr ""
 
-#: app.py:297
+#: app.py:312
 #, python-format
 msgid ""
 "'%(name)s' moved to deleted clients — %(posts)d posts and %(users)d "
 "logins came with it. Nothing was destroyed; you can restore it."
 msgstr ""
 
-#: app.py:311
+#: app.py:326
 msgid "That client is not deleted."
 msgstr ""
 
-#: app.py:317
+#: app.py:332
 #, python-format
 msgid ""
 "'%(name)s' restored. Their logins and their webhook are still off — re-"
 "enable them deliberately when you are ready to publish again."
 msgstr ""
 
-#: app.py:601
+#: app.py:616
 msgid "Topic and caption are required."
 msgstr ""
 
-#: app.py:606
+#: app.py:621
 msgid "Post created successfully."
 msgstr ""
 
-#: app.py:622
+#: app.py:637
 msgid "Post not found."
 msgstr ""
 
-#: app.py:658
+#: app.py:673
 msgid "Post updated."
 msgstr ""
 
-#: app.py:671
+#: app.py:686
 msgid "Invalid status."
 msgstr ""
 
-#: app.py:674
+#: app.py:689
 #, python-format
 msgid "Status updated to \"%(status)s\"."
 msgstr ""
 
-#: app.py:686
+#: app.py:701
 #, python-format
 msgid "Dispatch failed: %(reason)s"
 msgstr ""
 
-#: app.py:745
+#: app.py:760
 msgid "Post deleted."
 msgstr ""
 
-#: app.py:1051
+#: app.py:1066
 msgid "Unknown role."
 msgstr ""
 
-#: app.py:1057
+#: app.py:1072
 msgid "Email is required, and a client user must be assigned to a client."
 msgstr ""
 
-#: app.py:1060
+#: app.py:1075
 msgid "A user with that email already exists."
 msgstr ""
 
-#: app.py:1083 app.py:1113
+#: app.py:1098 app.py:1128
 msgid "User not found."
 msgstr ""
 
-#: app.py:1088
+#: app.py:1103
 msgid "You cannot deactivate your own account."
 msgstr ""
 
-#: app.py:1091
+#: app.py:1106
 msgid "This is the last active admin — promote another admin first."
 msgstr ""
 
-#: app.py:1096
+#: app.py:1111
 msgid "User deactivated. Their login is blocked; audit history is kept."
 msgstr ""
 
-#: app.py:1104
+#: app.py:1119
 msgid "User reactivated."
 msgstr ""
 
-#: app.py:1127
+#: app.py:1142
 msgid "This invite link is invalid or has expired."
 msgstr ""
 
-#: app.py:1145
+#: app.py:1160
 msgid "Password must be at least 12 characters."
 msgstr ""
 
-#: app.py:1147 auth.py:249
+#: app.py:1162 auth.py:249
 msgid "Passwords do not match."
 msgstr ""
 
-#: app.py:1153
+#: app.py:1168
 msgid "Welcome! Your account is ready."
 msgstr ""
 
@@ -242,6 +262,24 @@ msgstr ""
 
 #: settings.py:107
 msgid "Webhook removed."
+msgstr ""
+
+#: templates/403.html:2 templates/403.html:3
+msgid "Access denied"
+msgstr ""
+
+#: templates/403.html:11
+msgid "You don't have access to this"
+msgstr ""
+
+#: templates/403.html:13
+msgid ""
+"Your account isn't permitted to view this page. If you believe this is a "
+"mistake, contact your Soulful admin."
+msgstr ""
+
+#: templates/403.html:16
+msgid "Back to dashboard"
 msgstr ""
 
 #: templates/clients.html:2 templates/clients.html:3
@@ -328,7 +366,8 @@ msgid ""
 "turn those back on deliberately."
 msgstr ""
 
-#: templates/clients.html:98 templates/clients.html:104
+#: templates/clients.html:98 templates/clients.html:104 templates/users.html:70
+#: templates/users.html:106 templates/users.html:194
 msgid "Client"
 msgstr ""
 
@@ -336,12 +375,72 @@ msgstr ""
 msgid "Deleted"
 msgstr ""
 
-#: templates/clients.html:109
+#: templates/clients.html:109 templates/users.html:116
 msgid "Actions"
 msgstr ""
 
 #: templates/clients.html:113
 msgid "Restore"
+msgstr ""
+
+#: templates/content_list.html:2 templates/content_list.html:3
+msgid "Content Library"
+msgstr ""
+
+#: templates/content_list.html:6
+msgid "New Post"
+msgstr ""
+
+#: templates/content_list.html:20
+msgid "All Clients"
+msgstr ""
+
+#: templates/content_list.html:28
+msgid "All Platforms"
+msgstr ""
+
+#: templates/content_list.html:36
+msgid "All Statuses"
+msgstr ""
+
+#: templates/content_list.html:43
+msgid "Filter"
+msgstr ""
+
+#: templates/content_list.html:44
+msgid "Clear"
+msgstr ""
+
+#: templates/content_list.html:46
+#, python-format
+msgid "%(num)d post"
+msgid_plural "%(num)d posts"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/content_list.html:73
+#, python-format
+msgid "Posted %(date)s"
+msgstr ""
+
+#: templates/content_list.html:77
+msgid "View"
+msgstr ""
+
+#: templates/content_list.html:86
+msgid "No posts found"
+msgstr ""
+
+#: templates/content_list.html:87
+msgid "Try adjusting your filters or create a new post."
+msgstr ""
+
+#: templates/content_list.html:89
+msgid "Generate Caption"
+msgstr ""
+
+#: templates/content_list.html:90
+msgid "Manual Post"
 msgstr ""
 
 #: templates/invite.html:6 templates/invite.html:18
@@ -369,5 +468,167 @@ msgstr ""
 
 #: templates/invite.html:48
 msgid "Activate account"
+msgstr ""
+
+#: templates/login.html:6 templates/login.html:24 templates/login.html:42
+msgid "Sign in"
+msgstr ""
+
+#: templates/login.html:35 templates/users.html:57 templates/users.html:102
+#: templates/users.html:168 templates/users.html:194
+msgid "Email"
+msgstr ""
+
+#: templates/login.html:39
+msgid "Password"
+msgstr ""
+
+#: templates/login.html:47
+msgid "Powered by Claude AI"
+msgstr ""
+
+#: templates/users.html:2 templates/users.html:3
+msgid "Users"
+msgstr ""
+
+#: templates/users.html:18
+#, python-format
+msgid "Password-reset link for <strong><bdi>%(email)s</bdi></strong>"
+msgstr ""
+
+#: templates/users.html:22
+#, python-format
+msgid "Invite link for <strong><bdi>%(email)s</bdi></strong>"
+msgstr ""
+
+#: templates/users.html:27
+msgid "Admin"
+msgstr ""
+
+#: templates/users.html:36
+msgid ""
+"<strong>Shown once.</strong> The app does <strong>not</strong> email it —"
+" copy it now and send it to the person yourself (WhatsApp, DM, email). "
+"Valid 72 hours, single use."
+msgstr ""
+
+#: templates/users.html:38
+msgid ""
+"Whoever opens this link gets <strong>full admin access to every "
+"client</strong> — send it only over a channel you trust."
+msgstr ""
+
+#: templates/users.html:44
+msgid "Copy"
+msgstr ""
+
+#: templates/users.html:52
+msgid "Invite a user"
+msgstr ""
+
+#: templates/users.html:63
+msgid "Role"
+msgstr ""
+
+#: templates/users.html:65
+msgid "Client — their own client only"
+msgstr ""
+
+#: templates/users.html:66
+msgid "Admin — full access, all clients"
+msgstr ""
+
+#: templates/users.html:72
+msgid "Choose client…"
+msgstr ""
+
+#: templates/users.html:77
+msgid "Generate link"
+msgstr ""
+
+#: templates/users.html:84
+msgid ""
+"A single-use link (valid 72h) is shown once after you submit. Copy it and"
+" send it to the person yourself — the app never emails it."
+msgstr ""
+
+#: templates/users.html:85
+msgid ""
+"An admin invite grants full access to every client, so only send it to "
+"someone on your team."
+msgstr ""
+
+#: templates/users.html:103
+msgid "(you)"
+msgstr ""
+
+#: templates/users.html:108 templates/users.html:168 templates/users.html:194
+msgid "Last login"
+msgstr ""
+
+#: templates/users.html:111 templates/users.html:168 templates/users.html:194
+msgid "Status"
+msgstr ""
+
+#: templates/users.html:112
+msgid "Active"
+msgstr ""
+
+#: templates/users.html:113
+msgid "Invited — not yet accepted"
+msgstr ""
+
+#: templates/users.html:114
+msgid "Deactivated"
+msgstr ""
+
+#: templates/users.html:120
+msgid "Re-issue link"
+msgstr ""
+
+#: templates/users.html:120
+msgid "Reset password"
+msgstr ""
+
+#: templates/users.html:127
+msgid "Invite another admin first"
+msgstr ""
+
+#: templates/users.html:127
+msgid "Last admin"
+msgstr ""
+
+#: templates/users.html:132
+msgid "Deactivate this admin? They lose access to every client."
+msgstr ""
+
+#: templates/users.html:135
+msgid "Deactivate"
+msgstr ""
+
+#: templates/users.html:142
+msgid "Reactivate"
+msgstr ""
+
+#: templates/users.html:156
+msgid "Admins — your team"
+msgstr ""
+
+#: templates/users.html:162
+msgid ""
+"Full access to every client, plus Settings, Reports and Users. Keep this "
+"list short."
+msgstr ""
+
+#: templates/users.html:181
+msgid "Client users"
+msgstr ""
+
+#: templates/users.html:187
+msgid "Each one sees only their own client's content — nothing else."
+msgstr ""
+
+#: templates/users.html:203
+msgid "No client users yet — invite one above."
 msgstr ""
 

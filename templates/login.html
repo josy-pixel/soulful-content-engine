@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Sign in — Soulful Content Engine</title>
+  <title>{{ _('Sign in') }} — Soulful Content Engine</title>
   {% include '_stylesheets.html' %}
   <link href="{{ url_for('static', filename='css/mobile.css') }}" rel="stylesheet" />
   <style>
@@ -21,7 +21,7 @@
 
     <div class="card shadow-sm">
       <div class="card-body p-4">
-        <h5 class="card-title mb-3">Sign in</h5>
+        <h5 class="card-title mb-3">{{ _('Sign in') }}</h5>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% for category, message in messages %}
@@ -32,19 +32,19 @@
         <form method="POST" action="{{ url_for('login') }}" autocomplete="off">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-3">
-            <label class="form-label small">Email</label>
+            <label class="form-label small">{{ _('Email') }}</label>
             <input type="email" name="email" class="form-control" required autofocus>
           </div>
           <div class="mb-3">
-            <label class="form-label small">Password</label>
+            <label class="form-label small">{{ _('Password') }}</label>
             <input type="password" name="password" class="form-control" required>
           </div>
-          <button type="submit" class="btn btn-primary w-100">Sign in</button>
+          <button type="submit" class="btn btn-primary w-100">{{ _('Sign in') }}</button>
         </form>
       </div>
     </div>
 
-    <p class="text-center text-muted mt-3"><small>Powered by Claude AI</small></p>
+    <p class="text-center text-muted mt-3"><small>{{ _('Powered by Claude AI') }}</small></p>
   </div>
 </body>
 </html>

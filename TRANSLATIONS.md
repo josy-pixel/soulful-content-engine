@@ -101,4 +101,28 @@ commit the `.mo` in the same commit.**
 - Never concatenate translated fragments. Word order differs by language, and
   in Hebrew the direction does too. One sentence, one string.
 - Do not translate: log messages, exception internals, webhook payload fields,
-  `X-Secret` values, machine-facing routes, or database values.
+  `X-Secret` values, machine-facing routes, or database values. The product name
+  "Soulful Content Engine" is not translated either.
+
+## Two conventions that are easy to miss in English review
+
+**Wrap Latin-script values in `<bdi>` when they sit inside sentence flow.**
+A client name, email, URL, handle or filename rendered mid-sentence in Hebrew
+drags the surrounding punctuation to the wrong end of the line — the trailing
+full stop of a sentence ends up before the value instead of after it. `<bdi>`
+isolates the run and the punctuation stays put:
+
+```
+{% trans email=email %}Welcome, <strong><bdi>{{ email }}</bdi></strong>. Choose a password.{% endtrans %}
+```
+
+This is invisible to anyone reviewing the page in English, which is why it has
+to be a rule rather than something spotted case by case. It applies to anything
+rendered into sentence flow later too — the media pipeline will eventually put
+filenames and URLs into these same templates.
+
+**`data-label` attributes are content, not hooks — translate them.**
+`mobile.css` renders the wide tables as stacked cards and uses `data-label` as
+the visible column heading. Left untranslated, mobile Hebrew shows English
+headings — the least-reviewed combination in the app, so the bug would live a
+long time.
