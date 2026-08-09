@@ -14,6 +14,12 @@ HASHTAG_MODEL = os.environ.get('HASHTAG_MODEL', 'claude-haiku-4-5')
 # Voice-audit: rewrite any draft scoring below this (out of 10).
 VOICE_AUDIT_THRESHOLD = int(os.environ.get('VOICE_AUDIT_THRESHOLD', '8'))
 
+# How many audit calls one caption may spend. A rewrite is only adopted when an
+# audit remains to score it, so this is also the cap on rewrites + 1: at 3, the
+# draft is scored, rewritten, rescored, rewritten, rescored. The returned score
+# always belongs to the returned text.
+VOICE_MAX_AUDITS = int(os.environ.get('VOICE_MAX_AUDITS', '3'))
+
 # Engine debug: when '1', generation returns the full system prompt and per-call
 # token usage so we can verify full voice injection and prompt caching. Hidden
 # in normal production (env unset). Token usage is logged to stdout regardless.

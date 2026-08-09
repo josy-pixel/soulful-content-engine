@@ -189,10 +189,26 @@ async function generate() {
     if (data.voice_score != null) {
       const s = data.voice_score;
       const cls = s >= 9 ? 'bg-success' : (s >= 8 ? 'bg-primary' : 'bg-warning text-dark');
+      const tries = (data.voice_attempts || []).length;
       scoreEl.className = 'badge ' + cls;
-      scoreEl.textContent = 'Voice ' + s + '/10';
+      // The score describes the caption shown. Say how many passes it took, so a
+      // number that stayed low reads as "the rewrites did not help", not as a
+      // stale score left over from a draft that was thrown away.
+      scoreEl.textContent = 'Voice ' + s + '/10' + (tries > 1 ? ' · ' + tries + ' passes' : '');
+      scoreEl.title = tries > 1
+        ? 'Scored after ' + tries + ' voice passes. The score always describes the caption shown.'
+        : 'Scored on the first pass — no rewrite was needed.';
       scoreEl.classList.remove('d-none');
-      if (data.voice_audit) { auditEl.textContent = data.voice_audit; auditEl.classList.remove('d-none'); }
+
+      let note = data.voice_audit || '';
+      const deferred = data.voice_deferred_settings || [];
+      if (deferred.length) {
+        // Silently dropping a setting is how the emoji contradiction hid for so
+        // long — if the document is overruling a setting, say so on screen.
+        note = 'This client has no ' + deferred.join(' or ').replace(/_/g, ' ') +
+               ' set, so the voice document governs it.\n\n' + note;
+      }
+      if (note) { auditEl.textContent = note; auditEl.classList.remove('d-none'); }
       else { auditEl.classList.add('d-none'); }
     } else {
       scoreEl.classList.add('d-none'); auditEl.classList.add('d-none');
@@ -201,10 +217,16 @@ async function generate() {
     const dbg = document.getElementById('debugPanel');
     if (data.debug) {
       const u = data.debug.usage || {};
-      const c = u.caption || {}, a = u.audit || {};
+      const c = u.caption || {};
+      // audit is now one entry per pass — cache_read > 0 from the 2nd on proves
+      // the rulebook is being read back from cache instead of re-sent.
+      const audits = Array.isArray(u.audit) ? u.audit : (u.audit ? [u.audit] : []);
       const fmt = (x) => x ? `input=${x.input} cache_write=${x.cache_write} cache_read=${x.cache_read} output=${x.output}` : '(n/a)';
+      const auditLines = audits.length
+        ? audits.map((a, i) => `audit ${i + 1} &nbsp;→ ${fmt(a)}`).join('<br>')
+        : 'audit &nbsp;&nbsp;&nbsp;→ (n/a)';
       document.getElementById('debugUsage').innerHTML =
-        `caption &nbsp;→ ${fmt(c)}<br>audit &nbsp;&nbsp;&nbsp;→ ${fmt(a)}<br>` +
+        `caption &nbsp;→ ${fmt(c)}<br>${auditLines}<br>` +
         `voice_document = ${data.debug.voice_document_chars} chars → full system_prompt = ${data.debug.system_prompt_chars} chars`;
       document.getElementById('debugPromptChars').textContent = data.debug.system_prompt_chars;
       document.getElementById('debugPrompt').textContent = data.debug.system_prompt;
