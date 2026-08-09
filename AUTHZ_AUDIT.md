@@ -42,6 +42,8 @@ user without the secret is rejected by `_check_secret`, so they cannot hit them.
 | `/report` | GET | admin/manager | **403** | `@roles_required('admin','manager')` (not in client sidebar) |
 | `/api/generate-report` | POST | admin/manager | **403** | `@roles_required('admin','manager')` |
 | `/trends` | GET | all | all | Trends is org-wide per the matrix — intentionally NOT scoped |
+| `/clients/<id>/delete` | POST | admin | **403** | `@roles_required('admin')`. Soft delete — scope is NOT an exception, a client user cannot delete their own client either. One transaction: sets `clients.deleted_at`, deactivates that client's users, soft-deletes their webhook. Posts are left untouched (already hidden via the `v_clients_active` join) so a restore returns the library intact. |
+| `/clients/<id>/restore` | POST | admin | **403** | `@roles_required('admin')`. Restores visibility only — users stay deactivated and the webhook stays removed, so a restore can never quietly reconnect a live Facebook page. |
 | `/users` | GET/POST | admin | 403 | `@roles_required('admin')` (built in step 3) |
 | `/users/invite` | POST | admin | 403 | `@roles_required('admin')`. Mints privileges: `role` is read from an **allowlist** (`admin`/`client`), defaulting to `client`. An `admin` invite forces `client_id = None` server-side, so a posted `client_id` can never scope an admin — and no path can escalate a client user, because the route rejects them before the handler runs. |
 | `/users/<id>/deactivate` | POST | admin | 403 | Two lockout guards **in the route, not the template**: you cannot deactivate yourself, and the last active admin cannot be deactivated (`db.count_active_admins`). An invited-not-yet-accepted admin has `is_active=0` and does not count as a survivor. |

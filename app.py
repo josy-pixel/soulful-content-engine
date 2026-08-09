@@ -166,7 +166,12 @@ def clients():
     if current_scope() is not None:
         return redirect(url_for('client_detail', client_id=current_scope()))
     all_clients = db.get_clients()
-    return render_template('clients.html', clients=all_clients)
+    # Deletion impact per client, so the confirm can say what it costs. Only an
+    # admin sees the trash — a client user never reaches this branch at all.
+    is_admin = getattr(current_user, 'role', None) == 'admin'
+    impacts = {c['id']: db.get_client_deletion_impact(c['id']) for c in all_clients} if is_admin else {}
+    return render_template('clients.html', clients=all_clients, impacts=impacts,
+                           deleted_clients=db.get_deleted_clients() if is_admin else [])
 
 
 @app.route('/clients/new', methods=['GET', 'POST'])
@@ -228,6 +233,49 @@ def client_edit(client_id):
     return render_template('client_form.html', client=client,
                            voice_document=voice_document,
                            sample_captions_text='\n\n'.join(sample_captions))
+
+
+@app.route('/clients/<int:client_id>/delete', methods=['POST'])
+@roles_required('admin')            # delete clients: admin only, never a client user
+def client_delete(client_id):
+    """Soft delete. The client leaves the app, their login stops working and
+    their webhook is removed — but nothing is destroyed, so it is reversible."""
+    client = db.get_client(client_id)
+    if not client:
+        flash('Client not found.', 'error')
+        return redirect(url_for('clients'))
+    try:
+        impact = db.soft_delete_client(client_id, current_user.id, current_user.role,
+                                       request_ip=request.remote_addr)
+    except ValueError:
+        flash('That client is already deleted.', 'error')
+        return redirect(url_for('clients'))
+    if impact is None:
+        flash('Client not found.', 'error')
+        return redirect(url_for('clients'))
+    flash(f"'{client['name']}' moved to deleted clients — {impact['posts']} posts and "
+          f"{impact['users']} logins came with it. Nothing was destroyed; you can restore it.",
+          'success')
+    return redirect(url_for('clients'))
+
+
+@app.route('/clients/<int:client_id>/restore', methods=['POST'])
+@roles_required('admin')
+def client_restore(client_id):
+    try:
+        ok = db.restore_client(client_id, current_user.id, current_user.role,
+                               request_ip=request.remote_addr)
+    except ValueError:
+        flash('That client is not deleted.', 'error')
+        return redirect(url_for('clients'))
+    if not ok:
+        flash('Client not found.', 'error')
+        return redirect(url_for('clients'))
+    client = db.get_client(client_id)
+    flash(f"'{client['name']}' restored. Their logins and their webhook are still "
+          f"off — re-enable them deliberately when you are ready to publish again.",
+          'success')
+    return redirect(url_for('clients'))
 
 
 # ── Media Gallery ─────────────────────────────────────────────────────────────

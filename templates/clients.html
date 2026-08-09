@@ -31,6 +31,20 @@
           <a href="{{ url_for('caption_generator', client_id=client.id) }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-magic"></i>
           </a>
+          {% if current_user.role == 'admin' %}
+          {% set im = impacts.get(client.id, {}) %}
+          <form method="post" action="{{ url_for('client_delete', client_id=client.id) }}" class="d-inline"
+                onsubmit="return confirm(
+                  'Delete {{ client.name|replace("'", "\\'") }}?\n\n' +
+                  'Goes with it: {{ im.get('posts', 0) }} posts ({{ im.get('posted', 0) }} already published), ' +
+                  '{{ im.get('users', 0) }} logins, {{ im.get('media', 0) }} media files{{ ", and their Make webhook" if im.get('has_webhook') else "" }}.\n\n' +
+                  'Nothing is destroyed — you can restore it. Posts already live on Facebook stay live.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-outline-danger btn-sm" title="Delete client">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </form>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -46,4 +60,46 @@
   </div>
   {% endfor %}
 </div>
+
+{% if deleted_clients %}
+<div class="card mt-5">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">
+      <i class="bi bi-trash3 me-1 text-muted"></i> Deleted clients
+    </span>
+    <span class="badge bg-secondary">{{ deleted_clients | length }}</span>
+  </div>
+  <div class="card-body pb-0">
+    <p class="small text-muted mb-0">
+      Removed from the app, not destroyed. Their content and media are untouched and
+      come back with them. Their logins and their Make webhook stay switched off after
+      a restore — turn those back on deliberately.
+    </p>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Client</th><th>Deleted</th><th></th></tr></thead>
+      <tbody>
+        {% for c in deleted_clients %}
+        <tr>
+          <td data-label="Client">
+            <span class="badge me-2" style="background:{{ c.logo_color }}">&nbsp;</span>
+            {{ c.name }}
+          </td>
+          <td data-label="Deleted"><small class="text-muted">{{ (c.deleted_at or '')[:16] }}</small></td>
+          <td data-label="Actions" class="text-nowrap">
+            <form method="post" action="{{ url_for('client_restore', client_id=c.id) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-success">
+                <i class="bi bi-arrow-counterclockwise"></i> Restore
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
