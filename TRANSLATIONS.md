@@ -121,6 +121,27 @@ to be a rule rather than something spotted case by case. It applies to anything
 rendered into sentence flow later too — the media pipeline will eventually put
 filenames and URLs into these same templates.
 
+**Strings inside JavaScript are rendered server-side into `data-*` attributes.**
+`pybabel` scans Python and Jinja; it does not reach a literal inside a `<script>`
+block, so an English string there is not merely untranslated — it is invisible
+to the whole workflow and will never appear in a catalog for anyone to notice.
+
+Put the text on the element that displays it and let the script read it:
+
+```html
+<span id="webhookTestResult"
+      data-sending="{{ _('Sending…') }}"
+      data-ok="{{ _('✓ Sent successfully') }}"></span>
+```
+```js
+result.textContent = result.dataset.sending;
+```
+
+The same applies to `confirm()` text — see `data-confirm` and the delegated
+handler in `main.js`. Values that are *data* rather than prose (a media URL, a
+filename passed to a preview function) stay in the script; only user-facing
+text moves.
+
 **`data-label` attributes are content, not hooks — translate them.**
 `mobile.css` renders the wide tables as stacked cards and uses `data-label` as
 the visible column heading. Left untranslated, mobile Hebrew shows English

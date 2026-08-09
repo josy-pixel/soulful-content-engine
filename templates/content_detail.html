@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block title %}{{ post.topic }} — Soulful Content Engine{% endblock %}
-{% block page_title %}Post Detail{% endblock %}
+{% block page_title %}{{ _('Post Detail') }}{% endblock %}
 {% block topbar_actions %}
   <button class="btn btn-outline-primary btn-sm me-2" id="previewPostBtn">
-    <i class="bi bi-eye me-1"></i> Preview Post
+    <i class="bi bi-eye me-1"></i> {{ _('Preview Post') }}
   </button>
   <a href="{{ url_for('content_edit', post_id=post.id) }}" class="btn btn-outline-secondary btn-sm me-2">
-    <i class="bi bi-pencil"></i> Edit
+    <i class="bi bi-pencil"></i> {{ _('Edit') }}
   </a>
   <form method="POST" action="{{ url_for('content_delete', post_id=post.id) }}" class="d-inline"
-        onsubmit="return confirm('Delete this post?')">
+        data-confirm="{{ _('Delete this post?') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i> Delete</button>
+    <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i> {{ _('Delete') }}</button>
   </form>
 {% endblock %}
 
@@ -22,7 +22,7 @@
 {% if post.error_message %}
 <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
   <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-  <div><strong>Publishing Error:</strong> {{ post.error_message }}</div>
+  <div>{% trans error=post.error_message %}<strong>Publishing Error:</strong> <bdi>{{ error }}</bdi>{% endtrans %}</div>
 </div>
 {% endif %}
 
@@ -39,8 +39,8 @@
             <div class="d-flex align-items-center gap-2">
               <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} platform-icon platform-{{ post.platform }}"></i>
               <span class="text-capitalize text-muted small">{{ post.platform }}</span>
-              <span class="badge bg-{{ status_colors.get(post.status,'secondary') }}">{{ post.status.replace('_',' ') }}</span>
-              {% if post.content_type %}<span class="badge bg-light text-dark border">{{ post.content_type|capitalize }}</span>{% endif %}
+              <span class="badge bg-{{ status_colors.get(post.status,'secondary') }}">{{ status_labels.get(post.status, post.status) }}</span>
+              {% if post.content_type %}<span class="badge bg-light text-dark border">{{ content_type_labels.get(post.content_type, post.content_type) }}</span>{% endif %}
             </div>
           </div>
           <small class="text-muted">{{ post.updated_at[:16] }}</small>
@@ -51,7 +51,7 @@
 
         {% if post.hook %}
         <div class="mb-3 p-3 rounded border border-warning bg-warning bg-opacity-10">
-          <small class="fw-bold text-warning d-block mb-1"><i class="bi bi-lightning-fill me-1"></i>Video Hook</small>
+          <small class="fw-bold text-warning d-block mb-1"><i class="bi bi-lightning-fill me-1"></i>{{ _('Video Hook') }}</small>
           <span class="fw-semibold">{{ post.hook }}</span>
         </div>
         {% endif %}
@@ -62,24 +62,24 @@
 
         {% if post.scheduled_date %}
         <div class="mt-3">
-          <small class="text-muted"><i class="bi bi-calendar-event me-1"></i>Scheduled: <strong>{{ post.scheduled_date }}</strong></small>
+          <small class="text-muted"><i class="bi bi-calendar-event me-1"></i>{% trans date=post.scheduled_date %}Scheduled: <strong><bdi>{{ date }}</bdi></strong>{% endtrans %}</small>
         </div>
         {% endif %}
         {% if post.posted_date %}
         <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
-          <small class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Posted: <strong>{{ post.posted_date }}</strong></small>
+          <small class="text-success"><i class="bi bi-check-circle-fill me-1"></i>{% trans date=post.posted_date %}Posted: <strong><bdi>{{ date }}</bdi></strong>{% endtrans %}</small>
           {% if post.posted_url %}
           <a href="{{ post.posted_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">
-            <i class="bi bi-box-arrow-up-right me-1"></i>View Live Post
+            <i class="bi bi-box-arrow-up-right me-1"></i>{{ _('View Live Post') }}
           </a>
           {% endif %}
         </div>
         {% endif %}
         {% if post.image_url %}
         <div class="mt-3">
-          <small class="text-muted fw-semibold d-block mb-1"><i class="bi bi-image me-1"></i>Image</small>
+          <small class="text-muted fw-semibold d-block mb-1"><i class="bi bi-image me-1"></i>{{ _('Image') }}</small>
           <a href="{{ post.image_url }}" target="_blank" rel="noopener">
-            <img src="{{ post.image_url }}" alt="Post image"
+            <img src="{{ post.image_url }}" alt="{{ _('Post image') }}"
                  class="img-thumbnail" style="max-height:180px;object-fit:cover">
           </a>
         </div>
@@ -92,13 +92,16 @@
 
         {% if post.status == 'approved' %}
         <div class="mt-3 d-flex align-items-center gap-2">
-          <span class="badge bg-success"><i class="bi bi-send-fill me-1"></i>Sent to Make.com</span>
+          <span class="badge bg-success"><i class="bi bi-send-fill me-1"></i>{{ _('Sent to Make.com') }}</span>
           {% if current_user.role == 'admin' %}
           <button class="btn btn-sm btn-outline-secondary" id="retestWebhookBtn"
                   data-postid="{{ post.id }}">
-            <i class="bi bi-arrow-clockwise"></i> Resend webhook
+            <i class="bi bi-arrow-clockwise"></i> {{ _('Resend webhook') }}
           </button>
-          <span id="webhookTestResult" class="small ms-1"></span>
+          <span id="webhookTestResult" class="small ms-1"
+                data-sending="{{ _('Sending…') }}"
+                data-ok="{{ _('✓ Sent successfully') }}"
+                data-failed="{{ _('✗ Request failed') }}"></span>
           {% endif %}
         </div>
         {% endif %}
@@ -108,9 +111,9 @@
     <!-- Attached media -->
     <div class="card mb-4">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-images me-2"></i>Attached Media</span>
+        <span><i class="bi bi-images me-2"></i>{{ _('Attached Media') }}</span>
         <button class="btn btn-sm btn-outline-primary" id="openGalleryPickerBtn">
-          <i class="bi bi-plus-lg me-1"></i>Attach from Gallery
+          <i class="bi bi-plus-lg me-1"></i>{{ _('Attach from Gallery') }}
         </button>
       </div>
       <div class="card-body">
@@ -131,22 +134,24 @@
               {% endif %}
               <button class="btn btn-danger btn-sm position-absolute top-0 end-0 detach-media-btn"
                       style="width:22px;height:22px;padding:0;font-size:.65rem;border-radius:50%"
-                      data-id="{{ m.id }}" title="Remove">
+                      data-id="{{ m.id }}" title="{{ _('Remove') }}">
                 <i class="bi bi-x"></i>
               </button>
               <p class="small text-truncate mt-1 mb-0 text-muted" style="font-size:.65rem" title="{{ m.original_name }}">{{ m.original_name }}</p>
             </div>
             {% endfor %}
           {% else %}
-            <p class="text-muted small mb-0" id="noMediaMsg">No media attached yet.</p>
+            <p class="text-muted small mb-0" id="noMediaMsg">{{ _('No media attached yet.') }}</p>
           {% endif %}
         </div>
 
         <!-- Gallery picker (hidden by default) -->
         <div id="galleryPickerPane" class="d-none mt-3 pt-3 border-top">
-          <p class="small fw-semibold mb-2">Click to attach:</p>
-          <div class="d-flex flex-wrap gap-2" id="galleryPickerItems">
-            <span class="text-muted small">Loading…</span>
+          <p class="small fw-semibold mb-2">{{ _('Click to attach:') }}</p>
+          <div class="d-flex flex-wrap gap-2" id="galleryPickerItems"
+               data-empty="{{ _('No media in this gallery yet.') }}"
+               data-upload="{{ _('Upload media →') }}">
+            <span class="text-muted small">{{ _('Loading…') }}</span>
           </div>
         </div>
       </div>
@@ -155,10 +160,10 @@
     <!-- Performance metrics -->
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-graph-up me-2"></i>Performance Metrics</span>
+        <span><i class="bi bi-graph-up me-2"></i>{{ _('Performance Metrics') }}</span>
         {% if post.status == 'posted' %}
         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#perfModal">
-          <i class="bi bi-plus-lg"></i> Add Metrics
+          <i class="bi bi-plus-lg"></i> {{ _('Add Metrics') }}
         </button>
         {% endif %}
       </div>
@@ -166,7 +171,7 @@
         {% if metrics %}
         {% set m = metrics[0] %}
         <div class="row g-3 mb-3">
-          {% set metric_items = [('Likes','heart-fill','danger',m.likes),('Comments','chat-fill','primary',m.comments),('Shares','share-fill','info',m.shares),('Saves','bookmark-fill','warning',m.saves),('Views','play-fill','dark',m.views),('Reach','eye-fill','success',m.reach),('Impressions','bar-chart-fill','secondary',m.impressions),('Clicks','cursor-fill','dark',m.clicks)] %}
+          {% set metric_items = [(_('Likes'),'heart-fill','danger',m.likes),(_('Comments'),'chat-fill','primary',m.comments),(_('Shares'),'share-fill','info',m.shares),(_('Saves'),'bookmark-fill','warning',m.saves),(_('Views'),'play-fill','dark',m.views),(_('Reach'),'eye-fill','success',m.reach),(_('Impressions'),'bar-chart-fill','secondary',m.impressions),(_('Clicks'),'cursor-fill','dark',m.clicks)] %}
           {% for label,icon,color,val in metric_items %}
           <div class="col-6 col-sm-4 col-md-3">
             <div class="metric-mini">
@@ -180,19 +185,19 @@
         {% if m.reach and m.reach > 0 %}
         {% set eng = ((m.likes or 0) + (m.comments or 0) + (m.shares or 0)) / m.reach * 100 %}
         <div class="alert alert-light border">
-          <strong>Engagement Rate:</strong> {{ "%.2f"|format(eng) }}%
-          <small class="text-muted ms-2">(Likes + Comments + Shares) ÷ Reach</small>
+          {% trans rate="%.2f"|format(eng) %}<strong>Engagement Rate:</strong> {{ rate }}%{% endtrans %}
+          <small class="text-muted ms-2">{{ _('(Likes + Comments + Shares) ÷ Reach') }}</small>
         </div>
         {% endif %}
         {% if metrics|length > 1 %}
-        <small class="text-muted">Showing most recent entry. {{ metrics|length }} total entries.</small>
+        <small class="text-muted">{{ _('Showing most recent entry.') }} {{ ngettext('%(num)d entry in total.', '%(num)d entries in total.', metrics|length) }}</small>
         {% endif %}
         {% else %}
         <div class="text-center text-muted py-3">
           {% if post.status == 'posted' %}
-          <p>No metrics logged yet. Add your first performance data above.</p>
+          <p>{{ _('No metrics logged yet. Add your first performance data above.') }}</p>
           {% else %}
-          <p>Metrics can be added once the post is marked as <strong>Posted</strong>.</p>
+          <p>{% trans status=status_labels['posted'] %}Metrics can be added once the post is marked as <strong>{{ status }}</strong>.{% endtrans %}</p>
           {% endif %}
         </div>
         {% endif %}
@@ -205,7 +210,7 @@
 
     <!-- Approval workflow -->
     <div class="card mb-4">
-      <div class="card-header"><i class="bi bi-arrow-left-right me-2"></i>Approval Workflow</div>
+      <div class="card-header"><i class="bi bi-arrow-left-right me-2"></i>{{ _('Approval Workflow') }}</div>
       <div class="card-body">
         {% set all_statuses = ['draft','needs_review','approved','scheduled','posted'] %}
         {% set status_idx = all_statuses.index(post.status) if post.status in all_statuses else 0 %}
@@ -215,7 +220,7 @@
           {% set idx = loop.index0 %}
           <div class="workflow-step {% if post.status == s %}active bg-{{ s_colors[s] }}{% elif idx < status_idx %}done{% endif %}">
             <div class="step-dot"></div>
-            <div class="step-label text-capitalize">{{ s.replace('_',' ') }}</div>
+            <div class="step-label">{{ status_labels.get(s, s) }}</div>
           </div>
           {% endfor %}
         </div>
@@ -224,38 +229,38 @@
         <form method="POST" action="{{ url_for('content_status', post_id=post.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-2">
-            <label class="form-label fw-semibold small">Move to</label>
+            <label class="form-label fw-semibold small">{{ _('Move to') }}</label>
             <select name="status" class="form-select form-select-sm">
               {% for t in allowed_transitions %}
-              <option value="{{ t }}">{{ t.replace('_',' ')|capitalize }}</option>
+              <option value="{{ t }}">{{ status_labels.get(t, t) }}</option>
               {% endfor %}
             </select>
           </div>
           <div class="mb-2">
             <textarea name="notes" class="form-control form-control-sm" rows="2"
-                      placeholder="Notes (optional)…"></textarea>
+                      placeholder="{{ _('Notes (optional)…') }}"></textarea>
           </div>
           <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-arrow-right-circle"></i> Update Status
+            <i class="bi bi-arrow-right-circle"></i> {{ _('Update Status') }}
           </button>
         </form>
         {% else %}
-        <p class="text-muted small mb-0">This post has been posted. No further status changes.</p>
+        <p class="text-muted small mb-0">{{ _('This post has been posted. No further status changes.') }}</p>
         {% endif %}
       </div>
     </div>
 
     <!-- Approval history -->
     <div class="card">
-      <div class="card-header"><i class="bi bi-clock-history me-2"></i>History</div>
+      <div class="card-header"><i class="bi bi-clock-history me-2"></i>{{ _('History') }}</div>
       <div class="card-body p-0">
         <ul class="list-group list-group-flush">
           {% for h in history %}
           <li class="list-group-item py-2">
             <div class="d-flex justify-content-between">
               <small class="fw-semibold">
-                {% if h.from_status %}<span class="text-muted">{{ h.from_status.replace('_',' ') }} →</span>{% endif %}
-                {{ h.to_status.replace('_',' ')|capitalize }}
+                {% if h.from_status %}<span class="text-muted">{{ status_labels.get(h.from_status, h.from_status) }} →</span>{% endif %}
+                {{ status_labels.get(h.to_status, h.to_status) }}
               </small>
               <small class="text-muted">{{ h.changed_at[:10] }}</small>
             </div>
@@ -264,7 +269,7 @@
             {% endif %}
           </li>
           {% else %}
-          <li class="list-group-item text-muted small">No history yet.</li>
+          <li class="list-group-item text-muted small">{{ _('No history yet.') }}</li>
           {% endfor %}
         </ul>
       </div>
@@ -278,7 +283,7 @@
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title fw-bold"><i class="bi bi-eye me-2"></i>Post Preview</h5>
+        <h5 class="modal-title fw-bold"><i class="bi bi-eye me-2"></i>{{ _('Post Preview') }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-3">
@@ -582,7 +587,8 @@ document.getElementById('openGalleryPickerBtn').addEventListener('click', async 
     galleryLoaded = true;
     const media = await fetch(`/api/media/client/${CLIENT_ID}`).then(r => r.json());
     if (!media.length) {
-      galleryItems.innerHTML = '<span class="text-muted small">No media in gallery. <a href="/clients/' + CLIENT_ID + '/gallery" target="_blank">Upload media →</a></span>';
+      galleryItems.innerHTML = '<span class="text-muted small">' + galleryItems.dataset.empty +
+        ' <a href="/clients/' + CLIENT_ID + '/gallery" target="_blank">' + galleryItems.dataset.upload + '</a></span>';
       return;
     }
     galleryItems.innerHTML = '';
@@ -628,17 +634,17 @@ if (retestBtn) {
   retestBtn.addEventListener('click', async () => {
     retestBtn.disabled = true;
     const result = document.getElementById('webhookTestResult');
-    result.textContent = 'Sending…';
+    result.textContent = result.dataset.sending;
     try {
       const res = await fetch('/webhook/test/{{ post.id }}', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
       });
       const data = await res.json();
-      result.textContent = data.ok ? '✓ Sent successfully' : '✗ ' + data.error;
+      result.textContent = data.ok ? result.dataset.ok : '✗ ' + data.error;
       result.className = 'small ms-1 ' + (data.ok ? 'text-success' : 'text-danger');
     } catch (e) {
-      result.textContent = '✗ Request failed';
+      result.textContent = result.dataset.failed;
       result.className = 'small ms-1 text-danger';
     } finally {
       retestBtn.disabled = false;

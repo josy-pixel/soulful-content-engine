@@ -18,13 +18,13 @@
   {% if not webhook %}
   <div class="alert alert-dark d-flex justify-content-between align-items-center py-2">
     <span><i class="bi bi-exclamation-triangle me-1"></i> No publishing webhook configured for this client — content can't be dispatched.</span>
-    <a href="{{ url_for('settings.webhooks_page') }}" class="btn btn-sm btn-light">Configure</a>
+    <a href="{{ url_for('settings.webhooks_page') }}" class="btn btn-sm btn-light">{{ _('Configure') }}</a>
   </div>
   {% elif webhook.status in ('untested', 'insecure', 'failing') %}
   <div class="alert {{ 'alert-danger' if webhook.status in ('insecure','failing') else 'alert-warning' }} d-flex justify-content-between align-items-center py-2">
     <span><i class="bi bi-exclamation-triangle me-1"></i>
       Webhook is <strong>{{ webhook.status }}</strong> — {% if webhook.status == 'untested' %}send a test ping before publishing.{% else %}{{ webhook.last_error }}{% endif %}</span>
-    <a href="{{ url_for('settings.webhooks_page') }}" class="btn btn-sm btn-light">Settings</a>
+    <a href="{{ url_for('settings.webhooks_page') }}" class="btn btn-sm btn-light">{{ _('Settings') }}</a>
   </div>
   {% endif %}
 {% endif %}
@@ -45,8 +45,8 @@
 <!-- Brand Voice -->
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-mic-fill me-2"></i>Brand Voice Profiles</span>
-    <small class="text-muted">Click a platform tab to edit its voice settings</small>
+    <span><i class="bi bi-mic-fill me-2"></i>{{ _('Brand Voice Profiles') }}</span>
+    <small class="text-muted">{{ _('Click a platform tab to edit its voice settings') }}</small>
   </div>
   <div class="card-body">
     <ul class="nav nav-tabs mb-3" id="voiceTabs">
@@ -68,22 +68,22 @@
         <form class="brand-voice-form" data-client="{{ client.id }}" data-platform="{{ p }}">
           <div class="row g-3">
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Tone</label>
+              <label class="form-label fw-semibold">{{ _('Tone') }}</label>
               <input type="text" name="tone" class="form-control form-control-sm"
-                     value="{{ v.get('tone','') }}" placeholder="e.g. Warm, authentic, empowering">
+                     value="{{ v.get('tone','') }}" placeholder="{{ _('e.g. Warm, authentic, empowering') }}">
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Style</label>
+              <label class="form-label fw-semibold">{{ _('Style') }}</label>
               <input type="text" name="style" class="form-control form-control-sm"
-                     value="{{ v.get('style','') }}" placeholder="e.g. Conversational storytelling">
+                     value="{{ v.get('style','') }}" placeholder="{{ _('e.g. Conversational storytelling') }}">
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Target Audience</label>
+              <label class="form-label fw-semibold">{{ _('Target Audience') }}</label>
               <input type="text" name="target_audience" class="form-control form-control-sm"
-                     value="{{ v.get('target_audience','') }}" placeholder="e.g. Women 25–45 into wellness">
+                     value="{{ v.get('target_audience','') }}" placeholder="{{ _('e.g. Women 25–45 into wellness') }}">
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold">Emoji Usage</label>
+              <label class="form-label fw-semibold">{{ _('Emoji Usage') }}</label>
               <select name="emoji_usage" class="form-select form-select-sm">
                 {% for opt in ['none','minimal','moderate','heavy'] %}
                 <option value="{{ opt }}" {% if v.get('emoji_usage','moderate')==opt %}selected{% endif %}>{{ opt|capitalize }}</option>
@@ -91,7 +91,7 @@
               </select>
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold">Caption Length</label>
+              <label class="form-label fw-semibold">{{ _('Caption Length') }}</label>
               <select name="caption_length" class="form-select form-select-sm">
                 {% for opt in ['short','medium','long'] %}
                 <option value="{{ opt }}" {% if v.get('caption_length','medium')==opt %}selected{% endif %}>{{ opt|capitalize }}</option>
@@ -99,7 +99,7 @@
               </select>
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Keywords <small class="text-muted">(comma-separated)</small></label>
+              <label class="form-label fw-semibold">{% trans %}Keywords <small class="text-muted">(comma-separated)</small>{% endtrans %}</label>
               {% set kw = v.get('keywords','[]') %}
               {% if kw and kw != '[]' %}
                 {% set kw_list = kw | replace('[','') | replace(']','') | replace('"','') %}
@@ -107,10 +107,10 @@
                 {% set kw_list = '' %}
               {% endif %}
               <input type="text" name="keywords_raw" class="form-control form-control-sm"
-                     value="{{ kw_list }}" placeholder="authentic, mindful, growth">
+                     value="{{ kw_list }}" placeholder="{{ _('authentic, mindful, growth') }}">
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Words to Avoid <small class="text-muted">(comma-separated)</small></label>
+              <label class="form-label fw-semibold">{% trans %}Words to Avoid <small class="text-muted">(comma-separated)</small>{% endtrans %}</label>
               {% set av = v.get('avoid_words','[]') %}
               {% if av and av != '[]' %}
                 {% set av_list = av | replace('[','') | replace(']','') | replace('"','') %}
@@ -118,12 +118,12 @@
                 {% set av_list = '' %}
               {% endif %}
               <input type="text" name="avoid_raw" class="form-control form-control-sm"
-                     value="{{ av_list }}" placeholder="hustle, grind, toxic">
+                     value="{{ av_list }}" placeholder="{{ _('hustle, grind, toxic') }}">
             </div>
             <div class="col-12">
-              <label class="form-label fw-semibold">Sample Caption</label>
+              <label class="form-label fw-semibold">{{ _('Sample Caption') }}</label>
               <textarea name="sample_caption" class="form-control form-control-sm" rows="2"
-                        placeholder="Paste an example caption that represents this brand voice perfectly…">{{ v.get('sample_caption','') }}</textarea>
+                        placeholder="{{ _('Paste an example caption that represents this brand voice perfectly…') }}">{{ v.get('sample_caption','') }}</textarea>
             </div>
             <div class="col-12">
               <button type="button" class="btn btn-primary btn-sm save-voice-btn">
@@ -142,10 +142,10 @@
 <!-- Recent posts -->
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-collection-fill me-2"></i>Recent Posts</span>
+    <span><i class="bi bi-collection-fill me-2"></i>{{ _('Recent Posts') }}</span>
     <div class="d-flex gap-2">
       <a href="{{ url_for('content_new', client_id=client.id) }}" class="btn btn-sm btn-outline-primary">+ New Post</a>
-      <a href="{{ url_for('content_list', client_id=client.id) }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      <a href="{{ url_for('content_list', client_id=client.id) }}" class="btn btn-sm btn-outline-secondary">{{ _('View All') }}</a>
     </div>
   </div>
   <div class="card-body p-0">
@@ -153,22 +153,22 @@
     {% if posts %}
     <div class="table-responsive">
       <table class="table table-hover mb-0">
-        <thead><tr><th>Topic</th><th>Platform</th><th>Status</th><th>Date</th><th></th></tr></thead>
+        <thead><tr><th>{{ _('Topic') }}</th><th>{{ _('Platform') }}</th><th>{{ _('Status') }}</th><th>{{ _('Date') }}</th><th></th></tr></thead>
         <tbody>
           {% for p in posts %}
           <tr>
-            <td data-label="Topic"><a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">{{ p.topic }}</a></td>
-            <td data-label="Platform"><span class="text-capitalize">{{ p.platform }}</span></td>
-            <td data-label="Status"><span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span></td>
-            <td data-label="Date"><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
-            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+            <td data-label="{{ _('Topic') }}"><a href="{{ url_for('content_detail', post_id=p.id) }}" class="text-decoration-none fw-semibold">{{ p.topic }}</a></td>
+            <td data-label="{{ _('Platform') }}"><span class="text-capitalize">{{ p.platform }}</span></td>
+            <td data-label="{{ _('Status') }}"><span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ status_labels.get(p.status, p.status) }}</span></td>
+            <td data-label="{{ _('Date') }}"><small class="text-muted">{{ p.updated_at[:10] }}</small></td>
+            <td><a href="{{ url_for('content_detail', post_id=p.id) }}" class="btn btn-sm btn-outline-secondary">{{ _('View') }}</a></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="p-4 text-center text-muted">No posts yet for this client.</div>
+    <div class="p-4 text-center text-muted">{{ _('No posts yet for this client.') }}</div>
     {% endif %}
   </div>
 </div>

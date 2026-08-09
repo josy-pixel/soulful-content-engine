@@ -72,6 +72,10 @@ def _fixture():
     # a diff is a harness people stop reading.
     conn = db.get_db()
     conn.execute("UPDATE clients SET deleted_at='2026-01-01T00:00:00' WHERE id=?", (empty,))  # raw-query-ok: snapshot fixture pins a rendered timestamp
+    # Post timestamps render too (updated_at on the detail page, posted_date in
+    # lists), so they are pinned for the same reason.
+    conn.execute("UPDATE content_posts SET created_at='2026-01-01 09:00:00', updated_at='2026-01-01 09:00:00', posted_date='2026-01-02 10:00'")  # raw-query-ok: snapshot fixture pins rendered timestamps
+    conn.execute("UPDATE approval_history SET changed_at='2026-01-01 09:00:00'")
     conn.commit()
     conn.close()
 
@@ -104,8 +108,14 @@ def capture(label):
         s['_fresh'] = True
         s['_csrf_token'] = 'snapshot-csrf'
 
+    post_id = db.get_posts(limit=1)[0]['id']
+    client_id = db.get_clients()[0]['id']
     for name, url in {'clients': '/clients', 'users': '/users',
-                      'content_list': '/content'}.items():
+                      'content_list': '/content',
+                      'dashboard': '/',
+                      'content_detail': f'/content/{post_id}',
+                      'content_form': f'/content/{post_id}/edit',
+                      'client_detail': f'/clients/{client_id}'}.items():
         _write(label, name, c.get(url))
 
     # 403 renders only for an authenticated user who lacks the role, so it needs

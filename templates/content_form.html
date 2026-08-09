@@ -13,9 +13,9 @@
           {% if not post %}
           <div class="row g-3 mb-3">
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Client *</label>
+              <label class="form-label fw-semibold">{{ _('Client *') }}</label>
               <select name="client_id" class="form-select" required>
-                <option value="">Select client…</option>
+                <option value="">{{ _('Select client…') }}</option>
                 {% for c in clients %}
                 <option value="{{ c.id }}"
                   {% if preselect.get('client_id')|string == c.id|string %}selected{% endif %}>
@@ -25,9 +25,9 @@
               </select>
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Platform *</label>
+              <label class="form-label fw-semibold">{{ _('Platform *') }}</label>
               <select name="platform" id="platformSelect" class="form-select" required>
-                <option value="">Select platform…</option>
+                <option value="">{{ _('Select platform…') }}</option>
                 {% for p in platforms %}
                 <option value="{{ p }}"
                   {% if preselect.get('platform') == p %}selected{% endif %}>
@@ -40,7 +40,7 @@
           {% endif %}
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Content Type</label>
+            <label class="form-label fw-semibold">{{ _('Content Type') }}</label>
             <select name="content_type" id="contentTypeSelect" class="form-select">
               {% if post %}
                 {% set types = (content_types or {}).get(post.platform, ['photo','video','post']) %}
@@ -54,29 +54,29 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Topic / Title *</label>
+            <label class="form-label fw-semibold">{{ _('Topic / Title *') }}</label>
             <input type="text" name="topic" class="form-control" required
                    value="{{ post.topic if post else '' }}"
-                   placeholder="e.g. Morning mindfulness routine">
+                   placeholder="{{ _('e.g. Morning mindfulness routine') }}">
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Caption *</label>
+            <label class="form-label fw-semibold">{{ _('Caption *') }}</label>
             <textarea name="caption" class="form-control" rows="8" required
-                      placeholder="Your caption text…">{{ post.caption if post else '' }}</textarea>
+                      placeholder="{{ _('Your caption text…') }}">{{ post.caption if post else '' }}</textarea>
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Hashtags</label>
+            <label class="form-label fw-semibold">{{ _('Hashtags') }}</label>
             <textarea name="hashtags" class="form-control" rows="2"
-                      placeholder="#wellness #mindfulness #intentionalliving">{{ post.hashtags if post else '' }}</textarea>
+                      placeholder="{{ _('#wellness #mindfulness #intentionalliving') }}">{{ post.hashtags if post else '' }}</textarea>
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Media URL <small class="text-muted">(image / video — or pick from gallery below)</small></label>
+            <label class="form-label fw-semibold">{% trans %}Media URL <small class="text-muted">(image / video — or pick from gallery below)</small>{% endtrans %}</label>
             <input type="text" name="image_url" id="imageUrlInput" class="form-control"
                    value="{{ post.image_url if post else '' }}"
-                   placeholder="/uploads/… או https://example.com/image.jpg">
+                   placeholder="{{ _('/uploads/… or https://example.com/image.jpg') }}">
           </div>
 
           <!-- Media picker from client gallery -->
@@ -84,14 +84,17 @@
           {% if client_id_val %}
           <div class="mb-3" id="galleryPickerSection">
             <label class="form-label fw-semibold">
-              <i class="bi bi-images me-1 text-primary"></i>Pick from Gallery
+              <i class="bi bi-images me-1 text-primary"></i>{{ _('Pick from Gallery') }}
             </label>
-            <div id="galleryPickerGrid" class="d-flex flex-wrap gap-2" data-client="{{ client_id_val }}">
-              <div class="text-muted small p-2">Loading gallery…</div>
+            <div id="galleryPickerGrid" class="d-flex flex-wrap gap-2" data-client="{{ client_id_val }}"
+                 data-empty="{{ _('No media in gallery yet.') }}"
+                 data-upload="{{ _('Upload media →') }}"
+                 data-error="{{ _('Could not load gallery.') }}">
+              <div class="text-muted small p-2">{{ _('Loading gallery…') }}</div>
             </div>
             <div id="selectedMediaPreview" class="mt-2 d-none">
               <span class="badge bg-success me-2"><i class="bi bi-check-lg"></i> Media selected</span>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="clearMediaBtn">Clear</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="clearMediaBtn">{{ _('Clear') }}</button>
             </div>
           </div>
           {% endif %}
@@ -99,7 +102,7 @@
           <div class="row g-3 mb-3">
             {% if not post %}
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Status</label>
+              <label class="form-label fw-semibold">{{ _('Status') }}</label>
               <select name="status" class="form-select">
                 {% for s in statuses %}
                 <option value="{{ s }}">{{ s.replace('_',' ')|capitalize }}</option>
@@ -108,16 +111,16 @@
             </div>
             {% endif %}
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Scheduled Date</label>
+              <label class="form-label fw-semibold">{{ _('Scheduled Date') }}</label>
               <input type="datetime-local" name="scheduled_date" class="form-control"
                      value="{{ post.scheduled_date[:16] if post and post.scheduled_date else '' }}">
             </div>
           </div>
 
           <div class="mb-4">
-            <label class="form-label fw-semibold">Internal Notes</label>
+            <label class="form-label fw-semibold">{{ _('Internal Notes') }}</label>
             <textarea name="notes" class="form-control" rows="2"
-                      placeholder="Notes for the team…">{{ post.notes if post else '' }}</textarea>
+                      placeholder="{{ _('Notes for the team…') }}">{{ post.notes if post else '' }}</textarea>
           </div>
 
           <div class="d-flex gap-2">
@@ -125,9 +128,9 @@
               <i class="bi bi-floppy-fill"></i> {{ 'Save Changes' if post else 'Create Post' }}
             </button>
             {% if post %}
-            <a href="{{ url_for('content_detail', post_id=post.id) }}" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{{ url_for('content_detail', post_id=post.id) }}" class="btn btn-outline-secondary">{{ _('Cancel') }}</a>
             {% else %}
-            <a href="{{ url_for('content_list') }}" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{{ url_for('content_list') }}" class="btn btn-outline-secondary">{{ _('Cancel') }}</a>
             {% endif %}
           </div>
 
@@ -174,7 +177,8 @@ if (picker) {
     .then(r => r.json())
     .then(media => {
       if (!media.length) {
-        picker.innerHTML = '<span class="text-muted small">No media in gallery yet. <a href="/clients/' + clientId + '/gallery" target="_blank">Upload media →</a></span>';
+        picker.innerHTML = '<span class="text-muted small">' + picker.dataset.empty +
+          ' <a href="/clients/' + clientId + '/gallery" target="_blank">' + picker.dataset.upload + '</a></span>';
         return;
       }
       picker.innerHTML = '';
@@ -208,7 +212,7 @@ if (picker) {
         picker.appendChild(div);
       });
     })
-    .catch(() => { picker.innerHTML = '<span class="text-muted small">Could not load gallery.</span>'; });
+    .catch(() => { picker.innerHTML = '<span class="text-muted small">' + picker.dataset.error + '</span>'; });
 }
 
 document.getElementById('clearMediaBtn')?.addEventListener('click', () => {

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Soulful Content Engine{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block title %}{{ _('Dashboard') }} — Soulful Content Engine{% endblock %}
+{% block page_title %}{{ _('Dashboard') }}{% endblock %}
 {% block topbar_actions %}
   <a href="{{ url_for('caption_generator') }}" class="btn btn-primary btn-sm">
     <i class="bi bi-magic"></i> Generate Caption
@@ -16,28 +16,28 @@
     <div class="stat-card">
       <div class="stat-icon" style="background:var(--primary-soft)"><i class="bi bi-collection-fill text-primary"></i></div>
       <div class="stat-value">{{ stats.total_posts }}</div>
-      <div class="stat-label">Total Posts</div>
+      <div class="stat-label">{{ _('Total Posts') }}</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat-card">
       <div class="stat-icon" style="background:#d1fae5"><i class="bi bi-check-circle-fill text-success"></i></div>
       <div class="stat-value">{{ stats.status_counts.get('posted', 0) }}</div>
-      <div class="stat-label">Published</div>
+      <div class="stat-label">{{ _('Published') }}</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat-card">
       <div class="stat-icon" style="background:#fef3c7"><i class="bi bi-eye-fill" style="color:#d97706"></i></div>
       <div class="stat-value">{{ "{:,}".format(stats.total_reach) }}</div>
-      <div class="stat-label">Total Reach</div>
+      <div class="stat-label">{{ _('Total Reach') }}</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat-card">
       <div class="stat-icon" style="background:#ede9fe"><i class="bi bi-heart-fill" style="color:#7c3aed"></i></div>
       <div class="stat-value">{{ "{:,}".format(stats.total_likes) }}</div>
-      <div class="stat-label">Total Likes</div>
+      <div class="stat-label">{{ _('Total Likes') }}</div>
     </div>
   </div>
 </div>
@@ -47,7 +47,7 @@
   <!-- Status breakdown -->
   <div class="col-lg-4">
     <div class="card h-100">
-      <div class="card-header"><i class="bi bi-funnel-fill me-2"></i>Content by Status</div>
+      <div class="card-header"><i class="bi bi-funnel-fill me-2"></i>{{ _('Content by Status') }}</div>
       <div class="card-body">
         {% for s in ['draft','needs_review','approved','scheduled','posted'] %}
         {% set cnt = stats.status_counts.get(s, 0) %}
@@ -69,7 +69,7 @@
   {% if not scope %}
   <div class="col-lg-4">
     <div class="card h-100">
-      <div class="card-header"><i class="bi bi-people-fill me-2"></i>Posts by Client</div>
+      <div class="card-header"><i class="bi bi-people-fill me-2"></i>{{ _('Posts by Client') }}</div>
       <div class="card-body">
         {% for c in stats.client_counts %}
         <div class="d-flex align-items-center mb-3">
@@ -91,7 +91,7 @@
   <!-- Platform breakdown -->
   <div class="col-lg-4">
     <div class="card h-100">
-      <div class="card-header"><i class="bi bi-share-fill me-2"></i>Posts by Platform</div>
+      <div class="card-header"><i class="bi bi-share-fill me-2"></i>{{ _('Posts by Platform') }}</div>
       <div class="card-body">
         {% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
         {% for p in stats.platform_counts %}
@@ -109,8 +109,8 @@
   <div class="col-lg-6">
     <div class="card h-100">
       <div class="card-header d-flex justify-content-between">
-        <span><i class="bi bi-calendar-event me-2"></i>Upcoming Schedule</span>
-        <a href="{{ url_for('scheduling') }}" class="btn btn-sm btn-outline-primary">View all</a>
+        <span><i class="bi bi-calendar-event me-2"></i>{{ _('Upcoming Schedule') }}</span>
+        <a href="{{ url_for('scheduling') }}" class="btn btn-sm btn-outline-primary">{{ _('View all') }}</a>
       </div>
       <div class="card-body p-0">
         {% if stats.upcoming %}
@@ -129,7 +129,7 @@
           {% endfor %}
         </ul>
         {% else %}
-        <div class="p-4 text-center text-muted">No upcoming scheduled posts.</div>
+        <div class="p-4 text-center text-muted">{{ _('No upcoming scheduled posts.') }}</div>
         {% endif %}
       </div>
     </div>
@@ -139,8 +139,8 @@
   <div class="col-lg-6">
     <div class="card h-100">
       <div class="card-header d-flex justify-content-between">
-        <span><i class="bi bi-clock-history me-2"></i>Recent Activity</span>
-        <a href="{{ url_for('content_list') }}" class="btn btn-sm btn-outline-primary">View all</a>
+        <span><i class="bi bi-clock-history me-2"></i>{{ _('Recent Activity') }}</span>
+        <a href="{{ url_for('content_list') }}" class="btn btn-sm btn-outline-primary">{{ _('View all') }}</a>
       </div>
       <div class="card-body p-0">
         {% if stats.recent %}
@@ -153,13 +153,13 @@
                 <a href="{{ url_for('content_detail', post_id=p.id) }}" class="fw-semibold text-truncate d-block text-decoration-none text-dark">{{ p.topic }}</a>
                 <small class="text-muted">{{ p.platform|capitalize }}</small>
               </div>
-              <span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ p.status.replace('_',' ') }}</span>
+              <span class="badge bg-{{ status_colors.get(p.status,'secondary') }}">{{ status_labels.get(p.status, p.status) }}</span>
             </div>
           </li>
           {% endfor %}
         </ul>
         {% else %}
-        <div class="p-4 text-center text-muted">No content yet.</div>
+        <div class="p-4 text-center text-muted">{{ _('No content yet.') }}</div>
         {% endif %}
       </div>
     </div>

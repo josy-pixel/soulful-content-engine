@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-09 23:37+0300\n"
+"POT-Creation-Date: 2026-08-09 23:59+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -282,6 +282,112 @@ msgstr ""
 msgid "Back to dashboard"
 msgstr ""
 
+#: templates/client_detail.html:21
+msgid "Configure"
+msgstr ""
+
+#: templates/client_detail.html:27
+msgid "Settings"
+msgstr ""
+
+#: templates/client_detail.html:48
+msgid "Brand Voice Profiles"
+msgstr ""
+
+#: templates/client_detail.html:49
+msgid "Click a platform tab to edit its voice settings"
+msgstr ""
+
+#: templates/client_detail.html:71
+msgid "Tone"
+msgstr ""
+
+#: templates/client_detail.html:73
+msgid "e.g. Warm, authentic, empowering"
+msgstr ""
+
+#: templates/client_detail.html:76
+msgid "Style"
+msgstr ""
+
+#: templates/client_detail.html:78
+msgid "e.g. Conversational storytelling"
+msgstr ""
+
+#: templates/client_detail.html:81
+msgid "Target Audience"
+msgstr ""
+
+#: templates/client_detail.html:83
+msgid "e.g. Women 25–45 into wellness"
+msgstr ""
+
+#: templates/client_detail.html:86
+msgid "Emoji Usage"
+msgstr ""
+
+#: templates/client_detail.html:94
+msgid "Caption Length"
+msgstr ""
+
+#: templates/client_detail.html:102
+msgid "Keywords <small class=\"text-muted\">(comma-separated)</small>"
+msgstr ""
+
+#: templates/client_detail.html:110
+msgid "authentic, mindful, growth"
+msgstr ""
+
+#: templates/client_detail.html:113
+msgid "Words to Avoid <small class=\"text-muted\">(comma-separated)</small>"
+msgstr ""
+
+#: templates/client_detail.html:121
+msgid "hustle, grind, toxic"
+msgstr ""
+
+#: templates/client_detail.html:124
+msgid "Sample Caption"
+msgstr ""
+
+#: templates/client_detail.html:126
+msgid "Paste an example caption that represents this brand voice perfectly…"
+msgstr ""
+
+#: templates/client_detail.html:145
+msgid "Recent Posts"
+msgstr ""
+
+#: templates/client_detail.html:148
+msgid "View All"
+msgstr ""
+
+#: templates/client_detail.html:156 templates/client_detail.html:160
+msgid "Topic"
+msgstr ""
+
+#: templates/client_detail.html:156 templates/client_detail.html:161
+msgid "Platform"
+msgstr ""
+
+#: templates/client_detail.html:156 templates/client_detail.html:162
+#: templates/content_form.html:105 templates/users.html:111
+#: templates/users.html:168 templates/users.html:194
+msgid "Status"
+msgstr ""
+
+#: templates/client_detail.html:156 templates/client_detail.html:163
+msgid "Date"
+msgstr ""
+
+#: templates/client_detail.html:164 templates/content_list.html:77
+msgid "View"
+msgstr ""
+
+#: templates/client_detail.html:171
+msgid "No posts yet for this client."
+msgstr ""
+
 #: templates/clients.html:2 templates/clients.html:3
 msgid "Clients"
 msgstr ""
@@ -383,6 +489,302 @@ msgstr ""
 msgid "Restore"
 msgstr ""
 
+#: templates/content_detail.html:3
+msgid "Post Detail"
+msgstr ""
+
+#: templates/content_detail.html:6
+msgid "Preview Post"
+msgstr ""
+
+#: templates/content_detail.html:9
+msgid "Edit"
+msgstr ""
+
+#: templates/content_detail.html:12
+msgid "Delete this post?"
+msgstr ""
+
+#: templates/content_detail.html:14
+msgid "Delete"
+msgstr ""
+
+#: templates/content_detail.html:25
+#, python-format
+msgid "<strong>Publishing Error:</strong> <bdi>%(error)s</bdi>"
+msgstr ""
+
+#: templates/content_detail.html:54
+msgid "Video Hook"
+msgstr ""
+
+#: templates/content_detail.html:65
+#, python-format
+msgid "Scheduled: <strong><bdi>%(date)s</bdi></strong>"
+msgstr ""
+
+#: templates/content_detail.html:70
+#, python-format
+msgid "Posted: <strong><bdi>%(date)s</bdi></strong>"
+msgstr ""
+
+#: templates/content_detail.html:73
+msgid "View Live Post"
+msgstr ""
+
+#: templates/content_detail.html:80
+msgid "Image"
+msgstr ""
+
+#: templates/content_detail.html:82
+msgid "Post image"
+msgstr ""
+
+#: templates/content_detail.html:95
+msgid "Sent to Make.com"
+msgstr ""
+
+#: templates/content_detail.html:99
+msgid "Resend webhook"
+msgstr ""
+
+#: templates/content_detail.html:102
+msgid "Sending…"
+msgstr ""
+
+#: templates/content_detail.html:103
+msgid "✓ Sent successfully"
+msgstr ""
+
+#: templates/content_detail.html:104
+msgid "✗ Request failed"
+msgstr ""
+
+#: templates/content_detail.html:114
+msgid "Attached Media"
+msgstr ""
+
+#: templates/content_detail.html:116
+msgid "Attach from Gallery"
+msgstr ""
+
+#: templates/content_detail.html:137
+msgid "Remove"
+msgstr ""
+
+#: templates/content_detail.html:144
+msgid "No media attached yet."
+msgstr ""
+
+#: templates/content_detail.html:150
+msgid "Click to attach:"
+msgstr ""
+
+#: templates/content_detail.html:152
+msgid "No media in this gallery yet."
+msgstr ""
+
+#: templates/content_detail.html:153 templates/content_form.html:91
+msgid "Upload media →"
+msgstr ""
+
+#: templates/content_detail.html:154
+msgid "Loading…"
+msgstr ""
+
+#: templates/content_detail.html:163
+msgid "Performance Metrics"
+msgstr ""
+
+#: templates/content_detail.html:166
+msgid "Add Metrics"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Likes"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Comments"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Shares"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Saves"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Views"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Reach"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Impressions"
+msgstr ""
+
+#: templates/content_detail.html:174
+msgid "Clicks"
+msgstr ""
+
+#: templates/content_detail.html:188
+#, python-format
+msgid "<strong>Engagement Rate:</strong> %(rate)s%%"
+msgstr ""
+
+#: templates/content_detail.html:189
+msgid "(Likes + Comments + Shares) ÷ Reach"
+msgstr ""
+
+#: templates/content_detail.html:193
+msgid "Showing most recent entry."
+msgstr ""
+
+#: templates/content_detail.html:193
+#, python-format
+msgid "%(num)d entry in total."
+msgid_plural "%(num)d entries in total."
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/content_detail.html:198
+msgid "No metrics logged yet. Add your first performance data above."
+msgstr ""
+
+#: templates/content_detail.html:200
+#, python-format
+msgid ""
+"Metrics can be added once the post is marked as "
+"<strong>%(status)s</strong>."
+msgstr ""
+
+#: templates/content_detail.html:213
+msgid "Approval Workflow"
+msgstr ""
+
+#: templates/content_detail.html:232
+msgid "Move to"
+msgstr ""
+
+#: templates/content_detail.html:241
+msgid "Notes (optional)…"
+msgstr ""
+
+#: templates/content_detail.html:244
+msgid "Update Status"
+msgstr ""
+
+#: templates/content_detail.html:248
+msgid "This post has been posted. No further status changes."
+msgstr ""
+
+#: templates/content_detail.html:255
+msgid "History"
+msgstr ""
+
+#: templates/content_detail.html:272
+msgid "No history yet."
+msgstr ""
+
+#: templates/content_detail.html:286
+msgid "Post Preview"
+msgstr ""
+
+#: templates/content_form.html:16
+msgid "Client *"
+msgstr ""
+
+#: templates/content_form.html:18
+msgid "Select client…"
+msgstr ""
+
+#: templates/content_form.html:28
+msgid "Platform *"
+msgstr ""
+
+#: templates/content_form.html:30
+msgid "Select platform…"
+msgstr ""
+
+#: templates/content_form.html:43
+msgid "Content Type"
+msgstr ""
+
+#: templates/content_form.html:57
+msgid "Topic / Title *"
+msgstr ""
+
+#: templates/content_form.html:60
+msgid "e.g. Morning mindfulness routine"
+msgstr ""
+
+#: templates/content_form.html:64
+msgid "Caption *"
+msgstr ""
+
+#: templates/content_form.html:66
+msgid "Your caption text…"
+msgstr ""
+
+#: templates/content_form.html:70
+msgid "Hashtags"
+msgstr ""
+
+#: templates/content_form.html:72
+msgid "#wellness #mindfulness #intentionalliving"
+msgstr ""
+
+#: templates/content_form.html:76
+msgid ""
+"Media URL <small class=\"text-muted\">(image / video — or pick from "
+"gallery below)</small>"
+msgstr ""
+
+#: templates/content_form.html:79
+msgid "/uploads/… or https://example.com/image.jpg"
+msgstr ""
+
+#: templates/content_form.html:87
+msgid "Pick from Gallery"
+msgstr ""
+
+#: templates/content_form.html:90
+msgid "No media in gallery yet."
+msgstr ""
+
+#: templates/content_form.html:92
+msgid "Could not load gallery."
+msgstr ""
+
+#: templates/content_form.html:93
+msgid "Loading gallery…"
+msgstr ""
+
+#: templates/content_form.html:97 templates/content_list.html:44
+msgid "Clear"
+msgstr ""
+
+#: templates/content_form.html:114
+msgid "Scheduled Date"
+msgstr ""
+
+#: templates/content_form.html:121
+msgid "Internal Notes"
+msgstr ""
+
+#: templates/content_form.html:123
+msgid "Notes for the team…"
+msgstr ""
+
+#: templates/content_form.html:131 templates/content_form.html:133
+msgid "Cancel"
+msgstr ""
+
 #: templates/content_list.html:2 templates/content_list.html:3
 msgid "Content Library"
 msgstr ""
@@ -407,10 +809,6 @@ msgstr ""
 msgid "Filter"
 msgstr ""
 
-#: templates/content_list.html:44
-msgid "Clear"
-msgstr ""
-
 #: templates/content_list.html:46
 #, python-format
 msgid "%(num)d post"
@@ -421,10 +819,6 @@ msgstr[1] ""
 #: templates/content_list.html:73
 #, python-format
 msgid "Posted %(date)s"
-msgstr ""
-
-#: templates/content_list.html:77
-msgid "View"
 msgstr ""
 
 #: templates/content_list.html:86
@@ -441,6 +835,58 @@ msgstr ""
 
 #: templates/content_list.html:90
 msgid "Manual Post"
+msgstr ""
+
+#: templates/dashboard.html:2 templates/dashboard.html:3
+msgid "Dashboard"
+msgstr ""
+
+#: templates/dashboard.html:19
+msgid "Total Posts"
+msgstr ""
+
+#: templates/dashboard.html:26
+msgid "Published"
+msgstr ""
+
+#: templates/dashboard.html:33
+msgid "Total Reach"
+msgstr ""
+
+#: templates/dashboard.html:40
+msgid "Total Likes"
+msgstr ""
+
+#: templates/dashboard.html:50
+msgid "Content by Status"
+msgstr ""
+
+#: templates/dashboard.html:72
+msgid "Posts by Client"
+msgstr ""
+
+#: templates/dashboard.html:94
+msgid "Posts by Platform"
+msgstr ""
+
+#: templates/dashboard.html:112
+msgid "Upcoming Schedule"
+msgstr ""
+
+#: templates/dashboard.html:113 templates/dashboard.html:143
+msgid "View all"
+msgstr ""
+
+#: templates/dashboard.html:132
+msgid "No upcoming scheduled posts."
+msgstr ""
+
+#: templates/dashboard.html:142
+msgid "Recent Activity"
+msgstr ""
+
+#: templates/dashboard.html:162
+msgid "No content yet."
 msgstr ""
 
 #: templates/invite.html:6 templates/invite.html:18
@@ -564,10 +1010,6 @@ msgstr ""
 
 #: templates/users.html:108 templates/users.html:168 templates/users.html:194
 msgid "Last login"
-msgstr ""
-
-#: templates/users.html:111 templates/users.html:168 templates/users.html:194
-msgid "Status"
 msgstr ""
 
 #: templates/users.html:112
