@@ -595,6 +595,123 @@ def get_clients_including_deleted():
     return [dict(r) for r in rows]
 
 
+def get_deleted_clients():
+    """The trash. Base-table read — these rows are invisible to every other
+    reader by design.
+    # raw-query-ok: the trash must see deleted rows"""
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT * FROM clients WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC'
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_client_including_deleted(client_id):
+    """Base-table read (sees soft-deleted). For trash/restore ONLY.
+    # raw-query-ok: trash/restore must see deleted rows"""
+    conn = get_db()
+    row = conn.execute('SELECT * FROM clients WHERE id=?', (client_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_client_deletion_impact(client_id):
+    """What removing this client actually takes with it — shown before the act,
+    so nobody deletes a live client thinking it is an empty test row.
+    # raw-query-ok: counts the base tables on purpose, deleted rows included"""
+    conn = get_db()
+    q = conn.execute
+    out = {
+        'posts':        q('SELECT COUNT(*) FROM content_posts WHERE client_id=? AND deleted_at IS NULL',
+                          (client_id,)).fetchone()[0],
+        'posted':       q("SELECT COUNT(*) FROM content_posts WHERE client_id=? AND status='posted' "
+                          "AND deleted_at IS NULL", (client_id,)).fetchone()[0],
+        'users':        q('SELECT COUNT(*) FROM users WHERE client_id=? AND is_active=1',
+                          (client_id,)).fetchone()[0],
+        'media':        q('SELECT COUNT(*) FROM client_media WHERE client_id=?',
+                          (client_id,)).fetchone()[0],
+        'has_webhook':  q('SELECT COUNT(*) FROM client_webhooks WHERE client_id=? AND deleted_at IS NULL',
+                          (client_id,)).fetchone()[0] > 0,
+    }
+    conn.close()
+    return out
+
+
+def soft_delete_client(client_id, actor_user_id=None, actor_role=None,
+                       reason=None, request_ip=None):
+    """Remove a client from the app without destroying anything.
+
+    Everything below happens in ONE transaction, because a half-deleted client
+    is the dangerous state — a client marked gone whose webhook still fires
+    would keep publishing to a live page.
+
+      - clients.deleted_at is set. Every reader goes through v_clients_active,
+        so the client vanishes from listings, dashboards, reports and dropdowns.
+      - Their posts are deliberately NOT marked deleted. get_post()/get_posts()
+        inner-join v_clients_active, so the content is already invisible
+        everywhere — including the machine publish path, which loads via
+        get_post() and will now find nothing. Leaving the posts untouched is
+        what makes a restore bring the library back intact.
+      - Their users are deactivated: a client user must not keep a working
+        login into a client that no longer exists.
+      - Their outbound webhook is soft-deleted, so nothing of theirs can reach
+        Make again even if a post is somehow dispatched.
+
+    Returns the impact dict, or None if there is no such client.
+    Raises ValueError if it is already deleted.
+    """
+    impact = get_client_deletion_impact(client_id)
+    now = datetime.now().isoformat()
+
+    with write_db() as conn:
+        # raw-query-ok: deletion must read and write the base table
+        row = conn.execute('SELECT id, name, deleted_at FROM clients WHERE id=?',
+                           (client_id,)).fetchone()
+        if row is None:
+            return None
+        if row['deleted_at'] is not None:
+            raise ValueError('client id=%s is already deleted' % client_id)
+        # raw-query-ok: deletion must write the base table
+        conn.execute('UPDATE clients SET deleted_at=? WHERE id=?', (now, client_id))
+        conn.execute('UPDATE users SET is_active=0 WHERE client_id=?', (client_id,))
+        conn.execute(
+            'UPDATE client_webhooks SET deleted_at=?, updated_at=? '
+            'WHERE client_id=? AND deleted_at IS NULL', (now, now, client_id))
+        name = row['name']
+
+    # Audit outside the transaction — add_audit opens its own connection.
+    add_audit(actor_user_id, actor_role, client_id, 'client', client_id, 'delete',
+              reason=reason or ('soft-deleted %s' % name), metadata=impact,
+              request_ip=request_ip)
+    return impact
+
+
+def restore_client(client_id, actor_user_id=None, actor_role=None, request_ip=None):
+    """Bring a client back.
+
+    Publishing is NOT resumed. Their users stay deactivated and their webhook
+    stays removed, both of which must be re-enabled deliberately — a restore
+    should never quietly reconnect a live Facebook page.
+    """
+    with write_db() as conn:
+        # raw-query-ok: restore must read and write the base table
+        row = conn.execute('SELECT id, name, deleted_at FROM clients WHERE id=?',
+                           (client_id,)).fetchone()
+        if row is None:
+            return None
+        if row['deleted_at'] is None:
+            raise ValueError('client id=%s is not deleted' % client_id)
+        # raw-query-ok: restore must write the base table
+        conn.execute('UPDATE clients SET deleted_at=NULL WHERE id=?', (client_id,))
+        name = row['name']
+
+    add_audit(actor_user_id, actor_role, client_id, 'client', client_id, 'restore',
+              reason='restored %s (users and webhook left off)' % name,
+              request_ip=request_ip)
+    return True
+
+
 # ── Per-client outbound webhooks ──────────────────────────────────────────────
 # Reads go through v_client_webhooks_active. The base table is touched only by the
 # writes below and by *_including_deleted (re-onboarding a removed webhook).
