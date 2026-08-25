@@ -7,6 +7,7 @@ import requests
 from datetime import datetime
 
 import database as db
+import s3_media
 
 log = logging.getLogger('dispatch')
 
@@ -28,7 +29,9 @@ def _build_payload(post):
         'caption':          post.get('caption'),
         'hashtags':         post.get('hashtags') or '',
         'hook':             post.get('hook') or '',
-        'image_url':        post.get('image_url') or '',
+        # Absolute and ready to fetch. For S3-backed media this is a signed link
+        # that expires; Make must send it through untouched, not prefix a domain.
+        'image_url':        s3_media.resolve(post.get('image_url') or '', app_url),
         'scheduled_date':   post.get('scheduled_date') or '',
         'approved_at':      datetime.now().isoformat(),
         'callback_url':     f'{app_url}/webhook/publish' if app_url else '',

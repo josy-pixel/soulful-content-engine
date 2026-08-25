@@ -299,6 +299,11 @@ def init_db():
         "ALTER TABLE clients ADD COLUMN deleted_reason TEXT",
         "ALTER TABLE clients ADD COLUMN purge_after TEXT",
         "ALTER TABLE clients ADD COLUMN erased_at TEXT",
+        # ── Media storage backend ──
+        # Existing rows stay 'local' and keep being served off the disk; only new
+        # uploads go to S3. Nothing is migrated by this column alone.
+        "ALTER TABLE client_media ADD COLUMN storage TEXT NOT NULL DEFAULT 'local'",
+        "ALTER TABLE client_media ADD COLUMN s3_key TEXT",
     ]:
         try:
             conn.execute(migration)
@@ -1128,17 +1133,19 @@ def add_trends(rows):
 
 # ── Media Gallery ──────────────────────────────────────────────────────────────
 
-def add_media(client_id, filename, original_name, media_type, file_size=0, caption_hint='', tags='[]'):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
-        'INSERT INTO client_media (client_id,filename,original_name,media_type,file_size,caption_hint,tags) VALUES (?,?,?,?,?,?,?)',
-        (client_id, filename, original_name, media_type, file_size, caption_hint, tags)
-    )
-    media_id = c.lastrowid
-    conn.commit()
-    conn.close()
-    return media_id
+def add_media(client_id, filename, original_name, media_type, file_size=0, caption_hint='', tags='[]',
+              storage='local', s3_key=None):
+    """Register a media row. `storage` says where the bytes actually live:
+    'local' means UPLOAD_PATH on disk, 's3' means the bucket under `s3_key`."""
+    with write_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            'INSERT INTO client_media (client_id,filename,original_name,media_type,file_size,'
+            'caption_hint,tags,storage,s3_key) VALUES (?,?,?,?,?,?,?,?,?)',
+            (client_id, filename, original_name, media_type, file_size, caption_hint, tags,
+             storage, s3_key)
+        )
+        return c.lastrowid
 
 
 def get_client_media(client_id, media_type=None):

@@ -11,6 +11,7 @@ import claude_api as ai
 import voice_engine as ve
 import config
 import webhooks
+import s3_media
 import auth
 import security
 from security import (current_scope, enforce_client_id, require_content_access,
@@ -78,6 +79,25 @@ def _upload_dir(client_id):
 
 def _media_url(client_id, filename):
     return url_for('serve_media', client_id=client_id, filename=filename)
+
+
+def _media_ref(media):
+    """What gets stored on a post: a stable reference, never a signed URL.
+
+    Signed URLs expire, so persisting one would leave the post pointing at a
+    dead link a few hours later. The reference is resolved to a fetchable URL
+    at the moment it is needed instead.
+    """
+    if media.get('storage') == 's3' and media.get('s3_key'):
+        return s3_media.ref(media['s3_key'])
+    return _media_url(media['client_id'], media['filename'])
+
+
+def _media_display_url(media):
+    """A URL the browser can show right now, wherever the bytes actually live."""
+    if media.get('storage') == 's3' and media.get('s3_key'):
+        return s3_media.presign_view(media['s3_key'])
+    return _media_url(media['client_id'], media['filename'])
 
 PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube']
 STATUSES = ['raw', 'branded', 'draft', 'needs_review', 'approved', 'scheduled', 'posted', 'error']
@@ -315,7 +335,7 @@ def client_gallery(client_id):
         return redirect(url_for('clients'))
     media = db.get_client_media(client_id)
     for m in media:
-        m['url'] = _media_url(client_id, m['filename'])
+        m['url'] = _media_display_url(m)
     return render_template('client_gallery.html', client=client, media=media)
 
 
@@ -359,6 +379,75 @@ def media_upload(client_id):
     return jsonify({'ok': True, 'uploaded': uploaded, 'errors': errors})
 
 
+@app.route('/clients/<int:client_id>/media/presign', methods=['POST'])
+@require_client_access('client_id')
+def media_presign(client_id):
+    """Hand the browser a short-lived permit to upload one file straight to S3.
+
+    The bytes never reach this server, so neither MAX_CONTENT_LENGTH nor the size
+    of the Render disk applies. The permit is scoped to a single key we choose —
+    the caller cannot pick where the file lands, or overwrite another client's.
+    """
+    if not s3_media.enabled():
+        return jsonify({'error': 'Direct upload is not configured on this server.'}), 503
+    if not db.get_client(client_id):
+        return jsonify({'error': 'Client not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    filename = (data.get('filename') or '').strip()
+    if not filename or not _allowed_file(filename):
+        return jsonify({'error': 'File type not allowed'}), 400
+
+    key = s3_media.build_key(client_id, filename)
+    permit = s3_media.presign_upload(key, data.get('content_type') or None)
+    return jsonify({
+        'ok': True,
+        'key': key,
+        'url': permit['url'],
+        'fields': permit['fields'],
+        'max_bytes': s3_media.MAX_UPLOAD_BYTES,
+    })
+
+
+@app.route('/clients/<int:client_id>/media/complete', methods=['POST'])
+@require_client_access('client_id')
+def media_complete(client_id):
+    """Register a file the browser says it uploaded — after checking that it did.
+
+    The key is re-derived from client_id rather than trusted, and the object is
+    read back from S3, so a caller cannot register someone else's file or a row
+    for bytes that were never stored.
+    """
+    if not s3_media.enabled():
+        return jsonify({'error': 'Direct upload is not configured on this server.'}), 503
+
+    data = request.get_json(silent=True) or {}
+    key = (data.get('key') or '').strip()
+    original = secure_filename((data.get('filename') or '').strip())
+    if not key.startswith('clients/%d/' % client_id):
+        abort(403)                                   # not this client's prefix
+    if not original or not _allowed_file(original):
+        return jsonify({'error': 'File type not allowed'}), 400
+
+    stored = s3_media.head(key)
+    if not stored:
+        return jsonify({'error': 'Upload did not arrive — nothing to register.'}), 400
+
+    mtype = _media_type(original)
+    media_id = db.add_media(client_id, key.rsplit('/', 1)[-1], original, mtype,
+                            stored['size'], data.get('caption_hint', ''),
+                            data.get('tags', '[]'), storage='s3', s3_key=key)
+    media = db.get_media(media_id)
+    return jsonify({'ok': True, 'media': {
+        'id': media_id,
+        'filename': media['filename'],
+        'original_name': original,
+        'media_type': mtype,
+        'file_size': stored['size'],
+        'url': _media_display_url(media),
+    }})
+
+
 @app.route('/api/media/<int:media_id>', methods=['PATCH'])
 def api_media_update(media_id):
     media = db.get_media(media_id)
@@ -380,9 +469,14 @@ def api_media_delete(media_id):
         return jsonify({'error': 'Not found'}), 404
     if not security.can_see_client(media['client_id']):   # object-level tenant check
         abort(403)
-    file_path = os.path.join(UPLOAD_PATH, str(media['client_id']), media['filename'])
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    if media.get('storage') == 's3' and media.get('s3_key'):
+        # Versioning keeps a recoverable copy behind a delete marker, so this is
+        # not the irreversible loss that removing the local file is.
+        s3_media.delete(media['s3_key'])
+    else:
+        file_path = os.path.join(UPLOAD_PATH, str(media['client_id']), media['filename'])
+        if os.path.exists(file_path):
+            os.remove(file_path)
     db.delete_media(media_id)
     return jsonify({'ok': True})
 
@@ -393,7 +487,7 @@ def api_client_media(client_id):
     media_type = request.args.get('type')
     media = db.get_client_media(client_id, media_type or None)
     for m in media:
-        m['url'] = _media_url(client_id, m['filename'])
+        m['url'] = _media_display_url(m)
     return jsonify(media)
 
 
@@ -414,7 +508,7 @@ def api_attach_media(post_id):
         if merged and not merged.get('image_url'):
             db.update_post(post_id, {
                 'topic': merged['topic'], 'caption': merged['caption'],
-                'hashtags': merged.get('hashtags', ''), 'image_url': _media_url(media['client_id'], media['filename']),
+                'hashtags': merged.get('hashtags', ''), 'image_url': _media_ref(media),
                 'hook': merged.get('hook', ''), 'content_type': merged.get('content_type', 'photo'),
                 'scheduled_date': merged.get('scheduled_date'), 'notes': merged.get('notes', ''),
             })
