@@ -93,6 +93,29 @@ def _media_ref(media):
     return _media_url(media['client_id'], media['filename'])
 
 
+VIDEO_SUFFIXES = tuple('.' + e for e in ALLOWED_VIDEOS)
+
+
+@app.template_filter('media_src')
+def media_src(stored):
+    """Resolve a stored media reference into something the browser can load.
+
+    Templates hold references, not URLs — a post outlives a signed link. On-disk
+    media is already a usable path and passes through unchanged.
+    """
+    if not stored:
+        return ''
+    if stored.startswith(s3_media.SCHEME):
+        return s3_media.presign_view(stored[len(s3_media.SCHEME):])
+    return stored
+
+
+@app.template_filter('is_video')
+def is_video(stored):
+    """A video in an <img> tag is a permanently broken image."""
+    return bool(stored) and stored.lower().split('?')[0].endswith(VIDEO_SUFFIXES)
+
+
 def _media_display_url(media):
     """A URL the browser can show right now, wherever the bytes actually live."""
     if media.get('storage') == 's3' and media.get('s3_key'):
