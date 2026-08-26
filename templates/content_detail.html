@@ -539,6 +539,7 @@
 <script>
 const POST_ID    = {{ post.id }};
 const CLIENT_ID  = {{ post.client_id }};
+const POST_CONTENT_TYPE = {{ (post.content_type or "post") | tojson }};
 
 // ── Preview modal ────────────────────────────────────────────────────────────
 document.getElementById('previewPostBtn').addEventListener('click', () => {
@@ -589,12 +590,30 @@ document.getElementById('openGalleryPickerBtn').addEventListener('click', async 
   galleryPane.classList.toggle('d-none');
   if (!galleryLoaded) {
     galleryLoaded = true;
-    const media = await fetch(`/api/media/client/${CLIENT_ID}`).then(r => r.json());
+    const all = await fetch(`/api/media/client/${CLIENT_ID}`).then(r => r.json());
+
+    // Only what this kind of post can actually carry. The server refuses the rest
+    // anyway; showing it here would only be an invitation to be told no.
+    const ACCEPTS = {photo: ['image'], video: ['video'], reel: ['video'],
+                     story: ['video'], carousel: ['image', 'video'],
+                     post: ['image', 'video']};
+    const allowed = ACCEPTS[POST_CONTENT_TYPE] || ['image', 'video'];
+    const media = all.filter(m => allowed.includes(m.media_type));
+    const hidden = all.length - media.length;
+
     if (!media.length) {
-      galleryItems.innerHTML = '<span class="text-muted small">No media in gallery. <a href="/clients/' + CLIENT_ID + '/gallery" target="_blank">Upload media →</a></span>';
+      galleryItems.innerHTML = all.length
+        ? `<span class="text-muted small">Nothing in the gallery fits a
+             <strong>${POST_CONTENT_TYPE}</strong> post — it takes ${allowed.join(' or ')}.
+             <a href="/clients/${CLIENT_ID}/gallery" target="_blank">Open the library →</a></span>`
+        : '<span class="text-muted small">No media in gallery. <a href="/clients/' + CLIENT_ID + '/gallery" target="_blank">Upload media →</a></span>';
       return;
     }
-    galleryItems.innerHTML = '';
+    galleryItems.innerHTML = hidden
+      ? `<div class="w-100 small text-muted mb-1">Showing ${allowed.join(' and ')} only —
+           ${hidden} other file${hidden > 1 ? 's' : ''} cannot go in a
+           <strong>${POST_CONTENT_TYPE}</strong> post.</div>`
+      : '';
     media.forEach(m => {
       const div = document.createElement('div');
       div.style.cssText = 'width:72px;height:72px;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s;position:relative';

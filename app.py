@@ -12,6 +12,7 @@ import voice_engine as ve
 import config
 import webhooks
 import s3_media
+import media_rules
 import auth
 import security
 from security import (current_scope, enforce_client_id, require_content_access,
@@ -573,6 +574,17 @@ def api_attach_media(post_id):
     _m = db.get_media(media_id)
     if _m and not security.can_see_client(_m['client_id']):   # no cross-client media
         abort(403)
+    if not _m:
+        return jsonify({'error': 'Media not found'}), 404
+
+    # Refuse the mismatch here rather than letting the network refuse it hours
+    # later with a generic message. The app knows both facts at this moment.
+    post = g.content_row
+    ok, why = media_rules.check(post.get('content_type'),
+                                media_rules.kind_of_filename(_m.get('filename')))
+    if not ok:
+        return jsonify({'error': why}), 409
+
     db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0))
     media = db.get_media(media_id)
     if media:

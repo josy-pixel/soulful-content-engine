@@ -8,6 +8,7 @@ from datetime import datetime
 
 import database as db
 import s3_media
+import media_rules
 
 log = logging.getLogger('dispatch')
 
@@ -77,6 +78,16 @@ def dispatch_post(post, actor_user_id=None, actor_role=None, request_ip=None):
     """
     client_id = post.get('client_id')           # the ONLY routing input, from the row
     platform = post.get('platform')
+
+    # The attach step already refuses a mismatch, but a post's content type can be
+    # changed afterwards. This is the last point before it reaches the network,
+    # where the failure would come back hours later as a generic error.
+    media_ref = post.get('image_url') or ''
+    if media_ref and not media_ref.startswith(('http://', 'https://')):
+        ok, why = media_rules.check(post.get('content_type'),
+                                    media_rules.kind_of_filename(media_ref))
+        if not ok:
+            return False, why + ' Change the content type, or attach different media.'
 
     # Stage 2 outbound guard: re-read the base row at dispatch time so a post deleted
     # between load and dispatch cannot be published.
