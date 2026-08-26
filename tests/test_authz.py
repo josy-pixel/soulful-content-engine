@@ -269,10 +269,12 @@ def test_users_page_lists_admins_and_clients_separately(client, data):
     client_section = body.index('>\n      Client users')
     assert admin_section < client_section
 
-    # every admin sits above the client-users heading; the client user sits below
+    # Every admin sits above the client-users heading; the client user sits below.
+    # Searched from the heading onwards, not from the top of the page: the signed-in
+    # user's own address also appears in the sidebar, which is not the listing.
     for email in ("admin@t.co", "second-admin@t.co"):
-        assert admin_section < body.index(email) < client_section, email
-    assert body.index("holly@t.co") > client_section
+        assert admin_section < body.index(email, admin_section) < client_section, email
+    assert body.index("holly@t.co", client_section) > client_section
 
 
 # ── lockout guards ──

@@ -83,6 +83,19 @@
 
   <div class="sidebar-footer">
     {% if current_user.is_authenticated %}
+    {# Who am I signed in as — next to the button that signs them out, because that
+       is the moment the question actually matters. #}
+    <div class="sidebar-user" title="{{ current_user.email }}">
+      <span class="sidebar-user-avatar">{{ current_user.email[:1]|upper }}</span>
+      <span class="sidebar-user-text">
+        <span class="sidebar-user-name">{{ current_user.email }}</span>
+        <span class="sidebar-user-role">
+          {%- if current_client %}{{ current_client.name }}
+          {%- elif current_user.role == 'admin' %}Administrator
+          {%- else %}{{ current_user.role|capitalize }}{% endif -%}
+        </span>
+      </span>
+    </div>
     <a href="{{ url_for('logout') }}" class="nav-link">
       <i class="bi bi-box-arrow-right"></i> Sign out
     </a>
