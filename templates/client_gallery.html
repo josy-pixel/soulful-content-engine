@@ -17,17 +17,21 @@
 <div id="dropZone" class="border-2 border-dashed rounded-3 p-5 text-center mb-4 text-muted" style="border-color:#dee2e6;cursor:pointer;transition:all .2s">
   <i class="bi bi-cloud-upload display-4 d-block mb-2 opacity-50"></i>
   <p class="mb-1 fw-semibold">Drag & drop images or videos here</p>
-  <p class="small mb-0">or click <strong>Upload Media</strong> — JPG, PNG, GIF, WEBP, MP4, MOV (max 200 MB each)</p>
+  <p class="small mb-0">or click <strong>Upload Media</strong> — JPG, PNG, GIF, WEBP, MP4, MOV — large videos are fine, they upload straight to storage</p>
 </div>
 
-<!-- Upload progress -->
-<div id="uploadProgress" class="d-none mb-4">
-  <div class="d-flex align-items-center gap-2 mb-2">
-    <div class="spinner-border spinner-border-sm text-primary"></div>
-    <span id="uploadStatusText">Uploading…</span>
-  </div>
-  <div class="progress" style="height:6px">
-    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:0%"></div>
+<!-- Upload progress: one row per file, so a batch of fifty is legible -->
+<div id="uploadProgress" class="d-none mb-4 card">
+  <div class="card-body">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <div class="spinner-border spinner-border-sm text-primary" id="uploadSpinner"></div>
+      <span class="fw-semibold" id="uploadStatusText">Uploading…</span>
+      <button class="btn btn-sm btn-primary ms-auto d-none" id="uploadDoneBtn">Show my files</button>
+    </div>
+    <div class="progress mb-3" style="height:6px">
+      <div class="progress-bar" id="progressBar" style="width:0%"></div>
+    </div>
+    <div id="uploadRows" class="d-flex flex-column gap-2" style="max-height:320px;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -85,6 +89,22 @@
             {{ m.media_type }}
           </span>
           <small class="text-muted">{{ (m.file_size / 1024 / 1024)|round(1) }} MB</small>
+        </div>
+        {# Whether this file is safe to remove is the first thing you need to know. #}
+        <div class="mt-1">
+          {% if m.posted_uses %}
+            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">
+              <i class="bi bi-broadcast me-1"></i>in {{ m.posted_uses }} published
+            </span>
+          {% elif m.uses %}
+            <span class="badge bg-warning bg-opacity-10 text-warning-emphasis border border-warning border-opacity-25">
+              <i class="bi bi-link-45deg me-1"></i>used in {{ m.uses }} post{{ 's' if m.uses > 1 }}
+            </span>
+          {% else %}
+            <span class="badge bg-secondary bg-opacity-10 text-secondary border">
+              <i class="bi bi-dash-circle me-1"></i>not used
+            </span>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -179,41 +199,100 @@ async function uploadOne(file, onProgress) {
   return done.media;
 }
 
+const MAX_PARALLEL = 3;   // enough to keep the link busy, few enough to stay readable
+
+function makeRow(file) {
+  const row = document.createElement('div');
+  row.innerHTML = `
+    <div class="d-flex align-items-center gap-2 small">
+      <i class="bi bi-file-earmark-play text-muted"></i>
+      <span class="text-truncate" style="max-width:340px" title="${file.name}">${file.name}</span>
+      <span class="text-muted ms-auto">${(file.size / 1048576).toFixed(1)} MB</span>
+      <span class="badge bg-secondary" data-role="state">waiting</span>
+    </div>
+    <div class="progress mt-1" style="height:4px">
+      <div class="progress-bar" data-role="bar" style="width:0%"></div>
+    </div>`;
+  document.getElementById('uploadRows').appendChild(row);
+  return {
+    bar: row.querySelector('[data-role="bar"]'),
+    state: row.querySelector('[data-role="state"]'),
+  };
+}
+
+/** Run tasks with a fixed number in flight. One failure never stops the rest. */
+async function runPool(items, limit, worker) {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      await worker(items[i], i);
+    }
+  });
+  await Promise.all(runners);
+}
+
 async function uploadFiles(files) {
   if (!files.length) return;
-  const progress = document.getElementById('uploadProgress');
+  const list = Array.from(files);
+  const panel = document.getElementById('uploadProgress');
   const bar = document.getElementById('progressBar');
   const statusText = document.getElementById('uploadStatusText');
-  progress.classList.remove('d-none');
+  const spinner = document.getElementById('uploadSpinner');
+  const doneBtn = document.getElementById('uploadDoneBtn');
+
+  panel.classList.remove('d-none');
+  spinner.classList.remove('d-none');
+  doneBtn.classList.add('d-none');
+  document.getElementById('uploadRows').innerHTML = '';
   bar.classList.remove('bg-danger');
   bar.style.width = '0%';
 
-  const list = Array.from(files);
-  const failures = [];
-  let completed = 0;
+  const rows = list.map(makeRow);
+  const progressOf = new Array(list.length).fill(0);
+  let done = 0, failed = 0;
 
-  for (const file of list) {
-    statusText.textContent = `Uploading ${file.name} (${completed + 1} of ${list.length})…`;
+  const paint = () => {
+    const overall = progressOf.reduce((a, b) => a + b, 0) / list.length;
+    bar.style.width = `${Math.round(overall * 100)}%`;
+    statusText.textContent = `${done} of ${list.length} uploaded` +
+                             (failed ? ` · ${failed} failed` : '');
+  };
+
+  await runPool(list, MAX_PARALLEL, async (file, i) => {
+    const row = rows[i];
+    row.state.textContent = 'uploading';
+    row.state.className = 'badge bg-primary';
     try {
-      await uploadOne(file, fraction => {
-        const overall = (completed + fraction) / list.length;
-        bar.style.width = `${Math.round(overall * 100)}%`;
-      });
-      completed += 1;
+      await uploadOne(file, f => { progressOf[i] = f; paint(); });
+      progressOf[i] = 1;
+      done += 1;
+      row.state.textContent = 'done';
+      row.state.className = 'badge bg-success';
+      row.bar.style.width = '100%';
+      row.bar.classList.add('bg-success');
     } catch (e) {
-      failures.push(`${file.name}: ${e.message}`);
+      progressOf[i] = 1;              // finished, just not successfully
+      failed += 1;
+      row.state.textContent = e.message;
+      row.state.className = 'badge bg-danger';
+      row.bar.classList.add('bg-danger');
     }
-    bar.style.width = `${Math.round(((completed + failures.length) / list.length) * 100)}%`;
-  }
+    paint();
+  });
 
-  if (completed) {
-    statusText.textContent = failures.length
-      ? `Uploaded ${completed} of ${list.length}. ${failures.join('; ')}`
-      : `Uploaded ${completed} file(s). Refreshing…`;
-    setTimeout(() => window.location.reload(), failures.length ? 4000 : 800);
+  spinner.classList.add('d-none');
+  if (failed) bar.classList.add('bg-danger');
+  statusText.textContent = failed
+    ? `${done} uploaded, ${failed} failed — the failures are listed below.`
+    : `All ${done} file(s) uploaded.`;
+
+  // A batch that partly failed stays on screen; nothing is hidden by a reload.
+  if (failed) {
+    doneBtn.classList.remove('d-none');
+    doneBtn.onclick = () => window.location.reload();
   } else {
-    statusText.textContent = failures.join('; ') || 'Upload failed.';
-    bar.classList.add('bg-danger');
+    setTimeout(() => window.location.reload(), 900);
   }
 }
 
@@ -237,13 +316,39 @@ document.querySelectorAll('.preview-btn').forEach(btn => {
 });
 
 // ── Delete ───────────────────────────────────────────────────────────────────
+// Deleting a file also pulls it out of every post that uses it, so the confirm
+// says what that costs before you agree to it — not a generic "are you sure".
 document.querySelectorAll('.delete-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
-    if (!confirm('Delete this media? This cannot be undone.')) return;
     const id = btn.dataset.id;
+
+    let usage = { uses: 0, posted_uses: 0, posts: [] };
+    try {
+      const r = await fetch(`/api/media/${id}/usage`);
+      if (r.ok) usage = await r.json();
+    } catch (e) { /* fall back to the plain confirm below */ }
+
+    let message = 'Delete this file? This cannot be undone.';
+    if (usage.uses) {
+      const titles = usage.posts.slice(0, 5).map(p => `  • ${p.topic} (${p.status})`).join('\n');
+      const more = usage.posts.length > 5 ? `\n  …and ${usage.posts.length - 5} more` : '';
+      message = `This file is used by ${usage.uses} post(s):\n${titles}${more}\n\n` +
+                `Deleting it removes the file from those posts too. Continue?`;
+    }
+    if (usage.posted_uses) {
+      message = `⚠ This file is used by ${usage.posted_uses} PUBLISHED post(s).\n\n` +
+                `Removing it will not change anything already live on the network — it only ` +
+                `breaks the record of what was posted.\n\n${message}`;
+    }
+    if (!confirm(message)) return;
+
     const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
     const data = await res.json();
-    if (data.ok) btn.closest('.gallery-item').remove();
+    if (data.ok) {
+      btn.closest('.gallery-item').remove();
+    } else {
+      alert(data.error || 'Could not delete this file.');
+    }
   });
 });
 

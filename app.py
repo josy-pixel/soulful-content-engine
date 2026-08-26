@@ -356,10 +356,31 @@ def client_gallery(client_id):
     if not client:
         flash('Client not found.', 'error')
         return redirect(url_for('clients'))
-    media = db.get_client_media(client_id)
+    media = db.get_client_media_with_usage(client_id)
     for m in media:
         m['url'] = _media_display_url(m)
-    return render_template('client_gallery.html', client=client, media=media)
+    return render_template('client_gallery.html', client=client, media=media,
+                           all_clients=scoped_clients(db.get_clients()),
+                           unused=sum(1 for m in media if not m['uses']))
+
+
+@app.route('/media')
+def media_library():
+    """The way in. A client lands in their own library; an admin picks whose to open.
+
+    The gallery route itself has always allowed a client user through — there was
+    simply no link to it anywhere, so for them it did not exist.
+    """
+    scope = current_scope()
+    if scope is not None:
+        return redirect(url_for('client_gallery', client_id=scope))
+    wanted = request.args.get('client', type=int)
+    if wanted:
+        return redirect(url_for('client_gallery', client_id=wanted))
+    clients_ = db.get_clients()
+    if len(clients_) == 1:
+        return redirect(url_for('client_gallery', client_id=clients_[0]['id']))
+    return render_template('media_picker.html', clients=clients_)
 
 
 @app.route('/clients/<int:client_id>/media/upload', methods=['POST'])
@@ -485,6 +506,19 @@ def api_media_update(media_id):
     return jsonify({'ok': True})
 
 
+@app.route('/api/media/<int:media_id>/usage')
+def api_media_usage(media_id):
+    """What removing this file would cost — asked before the confirm, not after."""
+    media = db.get_media(media_id)
+    if not media:
+        return jsonify({'error': 'Not found'}), 404
+    if not security.can_see_client(media['client_id']):
+        abort(403)
+    usage = db.get_media_usage(media_id)
+    usage['client_may_delete'] = usage['posted_uses'] == 0
+    return jsonify(usage)
+
+
 @app.route('/api/media/<int:media_id>', methods=['DELETE'])
 def api_media_delete(media_id):
     media = db.get_media(media_id)
@@ -492,6 +526,19 @@ def api_media_delete(media_id):
         return jsonify({'error': 'Not found'}), 404
     if not security.can_see_client(media['client_id']):   # object-level tenant check
         abort(403)
+
+    # Deleting a media row silently detaches it from every post that uses it. For a
+    # post that is already published that quietly breaks the record of what was
+    # posted, while changing nothing on the network — so a client user cannot do it.
+    # An admin still can, deliberately.
+    usage = db.get_media_usage(media_id)
+    if usage['posted_uses'] and current_scope() is not None:
+        return jsonify({
+            'error': 'This file is used by %d published post(s). Ask an admin to remove it.'
+                     % usage['posted_uses'],
+            'uses': usage['uses'], 'posted_uses': usage['posted_uses'],
+        }), 409
+
     if media.get('storage') == 's3' and media.get('s3_key'):
         # Versioning keeps a recoverable copy behind a delete marker, so this is
         # not the irreversible loss that removing the local file is.

@@ -1161,6 +1161,59 @@ def get_client_media(client_id, media_type=None):
     return [dict(r) for r in rows]
 
 
+def get_client_media_with_usage(client_id, media_type=None):
+    """The client's library, each row carrying how many posts use it.
+
+    Counted in one query rather than per row, and only against posts that are
+    still live — a soft-deleted post must not make a file look busy. `posted_uses`
+    is what decides whether removing the file would strip media from something
+    already published.
+    """
+    query = '''
+        SELECT m.*,
+               COALESCE(u.uses, 0)        AS uses,
+               COALESCE(u.posted_uses, 0) AS posted_uses
+        FROM client_media m
+        LEFT JOIN (
+            SELECT pm.media_id,
+                   COUNT(*) AS uses,
+                   SUM(CASE WHEN p.status = 'posted' THEN 1 ELSE 0 END) AS posted_uses
+            FROM post_media pm
+            JOIN v_content_active p ON p.id = pm.post_id
+            GROUP BY pm.media_id
+        ) u ON u.media_id = m.id
+        WHERE m.client_id = ?
+    '''
+    params = [client_id]
+    if media_type:
+        query += ' AND m.media_type = ?'
+        params.append(media_type)
+    query += ' ORDER BY m.created_at DESC'
+    conn = get_db()
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_media_usage(media_id):
+    """Which live posts use this file. Returns (uses, posted_uses, [titles])."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT p.id, p.topic, p.status
+        FROM post_media pm
+        JOIN v_content_active p ON p.id = pm.post_id
+        WHERE pm.media_id = ?
+        ORDER BY p.updated_at DESC
+    ''', (media_id,)).fetchall()
+    conn.close()
+    posts = [dict(r) for r in rows]
+    return {
+        'uses': len(posts),
+        'posted_uses': sum(1 for p in posts if p['status'] == 'posted'),
+        'posts': posts,
+    }
+
+
 def get_media(media_id):
     conn = get_db()
     row = conn.execute('SELECT * FROM client_media WHERE id=?', (media_id,)).fetchone()
