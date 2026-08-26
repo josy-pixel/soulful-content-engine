@@ -28,6 +28,29 @@ ACCEPTS = {
 _WORD = {IMAGE: 'an image', VIDEO: 'a video'}
 
 
+# What the publishing scenarios can actually carry out today. A content type the
+# app offers but no module handles must be refused here — sending it produces one
+# operation, nothing published, and a green "success", which is the failure mode
+# that takes longest to notice. Instagram stories have no module anywhere yet.
+PUBLISHABLE = {
+    'facebook':  {'photo', 'video', 'post', 'reel'},
+    'instagram': {'photo', 'video', 'reel', 'carousel'},
+}
+
+
+def can_publish(platform, content_type):
+    """(ok, message). Platforms absent from the table are not judged here — the
+    webhook's own platform list already refuses those."""
+    allowed = PUBLISHABLE.get((platform or '').lower())
+    # An empty content type is not a mismatch — the payload defaults it downstream,
+    # the same way the rest of the app does.
+    if allowed is None or not content_type or content_type.lower() in allowed:
+        return True, None
+    return False, ('%s %s posts are not published by this system yet — nothing is '
+                   'set up to send them. Change the content type, or post it by hand.'
+                   % ((platform or '').title(), content_type))
+
+
 def accepts(content_type):
     """Which media kinds this content type may carry. Unknown types allow both
     rather than blocking work on a type this table has not caught up with."""

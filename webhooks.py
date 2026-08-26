@@ -79,6 +79,19 @@ def dispatch_post(post, actor_user_id=None, actor_role=None, request_ip=None):
     client_id = post.get('client_id')           # the ONLY routing input, from the row
     platform = post.get('platform')
 
+
+    # Stage 2 outbound guard: re-read the base row at dispatch time so a post deleted
+    # between load and dispatch cannot be published.
+    fresh = db.get_post_including_deleted(post['id'])
+    if fresh is None or fresh.get('deleted_at'):
+        return False, 'Post is deleted; refusing to dispatch.'
+
+    # Refuse a content type nothing downstream can publish. Sent anyway it would be
+    # accepted, match no route, publish nothing and report success.
+    ok, why = media_rules.can_publish(platform, post.get('content_type'))
+    if not ok:
+        return False, why
+
     # The attach step already refuses a mismatch, but a post's content type can be
     # changed afterwards. This is the last point before it reaches the network,
     # where the failure would come back hours later as a generic error.
@@ -88,12 +101,6 @@ def dispatch_post(post, actor_user_id=None, actor_role=None, request_ip=None):
                                     media_rules.kind_of_filename(media_ref))
         if not ok:
             return False, why + ' Change the content type, or attach different media.'
-
-    # Stage 2 outbound guard: re-read the base row at dispatch time so a post deleted
-    # between load and dispatch cannot be published.
-    fresh = db.get_post_including_deleted(post['id'])
-    if fresh is None or fresh.get('deleted_at'):
-        return False, 'Post is deleted; refusing to dispatch.'
 
     webhook = db.get_client_webhook(client_id)
 

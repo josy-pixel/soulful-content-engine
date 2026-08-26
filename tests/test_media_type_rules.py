@@ -153,3 +153,30 @@ def test_an_external_link_is_left_alone(data, monkeypatch):
                               "image_url": "https://youtu.be/xyz"})
     ok, _ = webhooks.dispatch_post(db.get_post(post_id))
     assert ok is True
+
+
+# ── content types nothing can publish ────────────────────────────────────────
+
+def test_an_instagram_story_is_refused_rather_than_silently_dropped(data):
+    """No module publishes stories. Sent anyway, the scenario matches no route,
+    publishes nothing and reports success — the failure nobody notices."""
+    post_id = db.create_post({"client_id": data["cid"], "platform": "instagram",
+                              "content_type": "story", "topic": "t", "caption": "c",
+                              "image_url": "s3://clients/1/clip.mp4"})
+    ok, message = webhooks.dispatch_post(db.get_post(post_id))
+    assert ok is False
+    assert "story" in message.lower()
+    assert "not published" in message.lower()
+
+
+@pytest.mark.parametrize("platform,content_type", [
+    ("facebook", "photo"), ("facebook", "video"), ("facebook", "post"),
+    ("instagram", "photo"), ("instagram", "reel"), ("instagram", "video"),
+])
+def test_everything_with_a_route_is_allowed_through(platform, content_type):
+    assert media_rules.can_publish(platform, content_type)[0] is True
+
+
+def test_a_platform_not_in_the_table_is_not_judged_here():
+    """The webhook's own platform list already refuses those."""
+    assert media_rules.can_publish("tiktok", "video")[0] is True
