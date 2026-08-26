@@ -55,12 +55,13 @@
             </select>
           </div>
           {% else %}
-          {# One selector per chosen platform: a reel is not a thing on Facebook the way
-             it is on Instagram, and silently substituting a type would publish the wrong
-             kind of post. #}
+          {# Types are listed per platform: a reel is not a thing on Facebook the way it
+             is on Instagram. Several can be ticked for the same platform — a reel and a
+             story go out as two posts, because that is what they are. #}
           <div class="mb-3 d-none" id="typeSection">
-            <label class="form-label fw-semibold">Content type per platform</label>
+            <label class="form-label fw-semibold">Content type</label>
             <div id="typeRows" class="d-flex flex-column gap-2"></div>
+            <small class="text-muted d-block mt-1" id="typeSummary"></small>
           </div>
           {% endif %}
 
@@ -162,35 +163,61 @@ const typeRows = document.getElementById('typeRows');
 
 function label(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+function countPosts() {
+  const boxes = Array.from(typeRows.querySelectorAll('.type-check:checked'));
+  const summary = document.getElementById('typeSummary');
+  if (!summary) return;
+  summary.textContent = boxes.length
+    ? `${boxes.length} post${boxes.length > 1 ? 's' : ''} will be created — one per selection.`
+    : 'Tick at least one type.';
+}
+
 function syncTypeRows() {
   if (!typeRows) return;
   const chosen = Array.from(document.querySelectorAll('.platform-check:checked')).map(c => c.value);
+
+  // remember what was already ticked so adding a platform does not reset the rest
   const kept = {};
-  typeRows.querySelectorAll('select').forEach(s => { kept[s.dataset.platform] = s.value; });
+  typeRows.querySelectorAll('.type-check').forEach(cb => {
+    kept[cb.dataset.platform] = kept[cb.dataset.platform] || new Set();
+    if (cb.checked) kept[cb.dataset.platform].add(cb.value);
+  });
 
   typeRows.innerHTML = '';
   chosen.forEach(p => {
     const types = CONTENT_TYPES[p] || ['photo', 'video', 'post'];
+    const previously = kept[p];
+
     const row = document.createElement('div');
-    row.className = 'd-flex align-items-center gap-2';
+    row.className = 'd-flex align-items-center gap-3 flex-wrap';
     row.innerHTML = `<span class="badge bg-light text-dark border" style="min-width:92px">${label(p)}</span>`;
 
-    const sel = document.createElement('select');
-    sel.className = 'form-select form-select-sm';
-    sel.name = `content_type_${p}`;
-    sel.dataset.platform = p;
-    types.forEach(t => {
-      const o = document.createElement('option');
-      o.value = t;
-      o.textContent = label(t);
-      // keep what was already picked for this platform when another is ticked
-      if (kept[p] === t) o.selected = true;
-      sel.appendChild(o);
+    types.forEach((t, i) => {
+      const id = `ct-${p}-${t}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'form-check';
+      const cb = document.createElement('input');
+      cb.className = 'form-check-input type-check';
+      cb.type = 'checkbox';
+      cb.name = `content_type_${p}`;
+      cb.value = t;
+      cb.id = id;
+      cb.dataset.platform = p;
+      // default to the first type only when this platform has just appeared
+      cb.checked = previously ? previously.has(t) : i === 0;
+      cb.addEventListener('change', countPosts);
+      const lab = document.createElement('label');
+      lab.className = 'form-check-label';
+      lab.htmlFor = id;
+      lab.textContent = label(t);
+      wrap.appendChild(cb);
+      wrap.appendChild(lab);
+      row.appendChild(wrap);
     });
-    row.appendChild(sel);
     typeRows.appendChild(row);
   });
   typeSection.classList.toggle('d-none', chosen.length === 0);
+  countPosts();
 }
 
 document.querySelectorAll('.platform-check').forEach(cb =>
@@ -204,6 +231,11 @@ document.querySelector('form')?.addEventListener('submit', e => {
   if (!document.querySelectorAll('.platform-check:checked').length) {
     e.preventDefault();
     alert('Pick at least one platform.');
+    return;
+  }
+  if (!typeRows.querySelectorAll('.type-check:checked').length) {
+    e.preventDefault();
+    alert('Pick at least one content type.');
   }
 });
 

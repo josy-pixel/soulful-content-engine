@@ -121,3 +121,43 @@ def test_every_created_post_belongs_to_the_client_user_not_the_form(client, data
     posts = db.get_posts()
     assert len(posts) == 2
     assert {p["client_id"] for p in posts} == {data["cid"]}
+
+
+# ── several content types on one platform ────────────────────────────────────
+
+def test_a_reel_and_a_story_are_two_posts(client, data):
+    """They are different posts on Instagram, not one post in two shapes."""
+    login_as(client, data["admin"])
+    client.post("/content/new", data=form(
+        client_id=data["cid"], platforms=["instagram"],
+        content_type_instagram=["reel", "story"]))
+    types = sorted(p["content_type"] for p in db.get_posts())
+    assert types == ["reel", "story"]
+    assert {p["platform"] for p in db.get_posts()} == {"instagram"}
+
+
+def test_types_multiply_across_platforms(client, data):
+    login_as(client, data["admin"])
+    client.post("/content/new", data=form(
+        client_id=data["cid"], platforms=["facebook", "instagram"],
+        content_type_facebook=["photo", "video"],
+        content_type_instagram=["reel"]))
+    pairs = sorted((p["platform"], p["content_type"]) for p in db.get_posts())
+    assert pairs == [("facebook", "photo"), ("facebook", "video"), ("instagram", "reel")]
+
+
+def test_a_type_that_platform_lacks_is_dropped_not_substituted(client, data):
+    """Facebook has no stories; asking for one must not quietly become a photo."""
+    login_as(client, data["admin"])
+    client.post("/content/new", data=form(
+        client_id=data["cid"], platforms=["facebook"],
+        content_type_facebook=["video", "story"]))
+    assert [p["content_type"] for p in db.get_posts()] == ["video"]
+
+
+def test_the_same_type_twice_makes_one_post(client, data):
+    login_as(client, data["admin"])
+    client.post("/content/new", data=form(
+        client_id=data["cid"], platforms=["instagram"],
+        content_type_instagram=["reel", "reel"]))
+    assert len(db.get_posts()) == 1

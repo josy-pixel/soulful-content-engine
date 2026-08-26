@@ -741,20 +741,23 @@ def content_new():
         created = []
         for platform in chosen:
             allowed = CONTENT_TYPES.get(platform, ['photo'])
-            # Each platform carries its own selector; anything not offered for that
-            # platform falls back rather than publishing a kind of post it has no
-            # concept of.
-            wanted = request.form.get('content_type_%s' % platform) \
-                or request.form.get('content_type') or allowed[0]
-            data = dict(base, platform=platform,
-                        content_type=wanted if wanted in allowed else allowed[0])
-            created.append(db.create_post(data))
+            # Several types may be ticked for one platform — a reel and a story are
+            # two different posts on Instagram, not one post in two shapes. Anything
+            # that platform does not offer is dropped rather than substituted.
+            wanted = [t for t in request.form.getlist('content_type_%s' % platform)
+                      if t in allowed]
+            if not wanted:
+                single = request.form.get('content_type')
+                wanted = [single if single in allowed else allowed[0]]
+            for content_type in dict.fromkeys(wanted):        # de-duplicated, order kept
+                created.append(db.create_post(
+                    dict(base, platform=platform, content_type=content_type)))
 
         if len(created) == 1:
             flash('Post created successfully.', 'success')
             return redirect(url_for('content_detail', post_id=created[0]))
-        flash('Created %d posts — one per platform. Each is approved and published '
-              'separately.' % len(created), 'success')
+        flash('Created %d posts — one per platform and content type. Each is approved '
+              'and published separately.' % len(created), 'success')
         return redirect(url_for('content_list'))
     preselect = {
         'client_id': request.args.get('client_id', ''),

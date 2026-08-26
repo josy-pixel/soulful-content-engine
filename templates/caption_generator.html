@@ -178,6 +178,20 @@ async function generate() {
         extra_context: document.getElementById('genContext').value.trim(),
       }),
     });
+    // A failed request is usually not JSON — reading it as JSON first turns a
+    // readable server error into a parse error, and the catch below then blames
+    // the API key for something that has nothing to do with it.
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = body.error || JSON.stringify(body);
+      } catch (_) {
+        detail = (await res.text()).slice(0, 300);
+      }
+      throw new Error(`The server returned ${res.status}. ${detail}`.trim());
+    }
+
     const data = await res.json();
     if (data.error) { alert('Error: ' + data.error); show('emptyState'); return; }
 
@@ -244,7 +258,10 @@ async function generate() {
     document.getElementById('regenBtn').classList.remove('d-none');
     document.getElementById('copyBtn').classList.remove('d-none');
   } catch (e) {
-    alert('Request failed. Check your network and API key.');
+    // Say what actually went wrong. The old message named the API key for every
+    // failure, which sent an investigation after a key that was working fine.
+    console.error('generate-caption failed:', e);
+    alert('Could not generate a caption.\n\n' + (e && e.message ? e.message : e));
     show('emptyState');
   } finally {
     document.getElementById('generateBtn').disabled = false;
