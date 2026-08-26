@@ -25,33 +25,44 @@
               </select>
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Platform *</label>
-              <select name="platform" id="platformSelect" class="form-select" required>
-                <option value="">Select platform…</option>
+              <label class="form-label fw-semibold">Platforms *</label>
+              <div id="platformBoxes" class="d-flex flex-wrap gap-3 pt-1">
                 {% for p in platforms %}
-                <option value="{{ p }}"
-                  {% if preselect.get('platform') == p %}selected{% endif %}>
-                  {{ p|capitalize }}
-                </option>
+                <div class="form-check">
+                  <input class="form-check-input platform-check" type="checkbox" name="platforms"
+                         value="{{ p }}" id="pf-{{ p }}"
+                         {% if preselect.get('platform') == p %}checked{% endif %}>
+                  <label class="form-check-label" for="pf-{{ p }}">{{ p|capitalize }}</label>
+                </div>
                 {% endfor %}
-              </select>
+              </div>
+              <small class="text-muted d-block mt-1">
+                Pick more than one and a post is created for each — they are approved and
+                published separately.
+              </small>
             </div>
           </div>
           {% endif %}
 
+          {% if post %}
           <div class="mb-3">
             <label class="form-label fw-semibold">Content Type</label>
             <select name="content_type" id="contentTypeSelect" class="form-select">
-              {% if post %}
-                {% set types = (content_types or {}).get(post.platform, ['photo','video','post']) %}
-                {% for t in types %}
-                <option value="{{ t }}" {% if post.content_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
-                {% endfor %}
-              {% else %}
-                <option value="photo">Photo</option>
-              {% endif %}
+              {% set types = (content_types or {}).get(post.platform, ['photo','video','post']) %}
+              {% for t in types %}
+              <option value="{{ t }}" {% if post.content_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
+              {% endfor %}
             </select>
           </div>
+          {% else %}
+          {# One selector per chosen platform: a reel is not a thing on Facebook the way
+             it is on Instagram, and silently substituting a type would publish the wrong
+             kind of post. #}
+          <div class="mb-3 d-none" id="typeSection">
+            <label class="form-label fw-semibold">Content type per platform</label>
+            <div id="typeRows" class="d-flex flex-column gap-2"></div>
+          </div>
+          {% endif %}
 
           <div class="mb-3">
             <label class="form-label fw-semibold">Topic / Title *</label>
@@ -141,27 +152,60 @@
 {% block scripts %}
 <script>
 const CONTENT_TYPES = {{ content_types | tojson }};
-const platformSelect = document.getElementById('platformSelect');
-const ctSelect = document.getElementById('contentTypeSelect');
+const ctSelect = document.getElementById('contentTypeSelect');   // edit form only
 
-function updateContentTypes(platform, current) {
-  if (!ctSelect) return;
-  const types = CONTENT_TYPES[platform] || ['photo', 'video', 'post'];
-  ctSelect.innerHTML = '';
-  types.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t;
-    opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
-    if (t === current) opt.selected = true;
-    ctSelect.appendChild(opt);
+// ── New post: a content type per chosen platform ─────────────────────────────
+// Instagram has reels and stories, Facebook does not. One shared selector would
+// either hide options or offer ones that cannot be published.
+const typeSection = document.getElementById('typeSection');
+const typeRows = document.getElementById('typeRows');
+
+function label(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function syncTypeRows() {
+  if (!typeRows) return;
+  const chosen = Array.from(document.querySelectorAll('.platform-check:checked')).map(c => c.value);
+  const kept = {};
+  typeRows.querySelectorAll('select').forEach(s => { kept[s.dataset.platform] = s.value; });
+
+  typeRows.innerHTML = '';
+  chosen.forEach(p => {
+    const types = CONTENT_TYPES[p] || ['photo', 'video', 'post'];
+    const row = document.createElement('div');
+    row.className = 'd-flex align-items-center gap-2';
+    row.innerHTML = `<span class="badge bg-light text-dark border" style="min-width:92px">${label(p)}</span>`;
+
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm';
+    sel.name = `content_type_${p}`;
+    sel.dataset.platform = p;
+    types.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t;
+      o.textContent = label(t);
+      // keep what was already picked for this platform when another is ticked
+      if (kept[p] === t) o.selected = true;
+      sel.appendChild(o);
+    });
+    row.appendChild(sel);
+    typeRows.appendChild(row);
   });
+  typeSection.classList.toggle('d-none', chosen.length === 0);
 }
 
-if (platformSelect) {
-  const initCurrent = ctSelect ? ctSelect.value : 'photo';
-  if (platformSelect.value) updateContentTypes(platformSelect.value, initCurrent);
-  platformSelect.addEventListener('change', () => updateContentTypes(platformSelect.value, null));
-}
+document.querySelectorAll('.platform-check').forEach(cb =>
+  cb.addEventListener('change', syncTypeRows));
+syncTypeRows();
+
+// The browser cannot mark a checkbox group as required, so the check is here as
+// well as on the server.
+document.querySelector('form')?.addEventListener('submit', e => {
+  if (!typeRows) return;                                   // editing, not creating
+  if (!document.querySelectorAll('.platform-check:checked').length) {
+    e.preventDefault();
+    alert('Pick at least one platform.');
+  }
+});
 
 // ── Gallery picker ───────────────────────────────────────────────────────────
 const picker = document.getElementById('galleryPickerGrid');

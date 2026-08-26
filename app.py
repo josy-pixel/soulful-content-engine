@@ -708,10 +708,16 @@ def content_new():
     if request.method == 'POST':
         # HARD RULE 1: client user's client_id comes from the session, not the form.
         submitted_cid = request.form.get('client_id', type=int)
-        data = {
+
+        # One post per platform rather than one post carrying several. Content type,
+        # approval, the link it ends up at and its metrics are all per-platform, and
+        # a single row could hold only one of each.
+        chosen = [p for p in request.form.getlist('platforms') if p in PLATFORMS]
+        if not chosen and request.form.get('platform') in PLATFORMS:
+            chosen = [request.form['platform']]              # older form, still accepted
+
+        base = {
             'client_id': enforce_client_id(submitted_cid),
-            'platform': request.form['platform'],
-            'content_type': request.form.get('content_type', 'photo'),
             'topic': request.form['topic'].strip(),
             'caption': request.form['caption'].strip(),
             'hashtags': request.form.get('hashtags', '').strip(),
@@ -720,14 +726,36 @@ def content_new():
             'scheduled_date': request.form.get('scheduled_date') or None,
             'notes': request.form.get('notes', '').strip(),
         }
-        if not data['topic'] or not data['caption']:
-            flash('Topic and caption are required.', 'error')
+
+        problem = None
+        if not chosen:
+            problem = 'Pick at least one platform.'
+        elif not base['topic'] or not base['caption']:
+            problem = 'Topic and caption are required.'
+        if problem:
+            flash(problem, 'error')
             return render_template('content_form.html', post=None, clients=all_clients,
                                    platforms=PLATFORMS, statuses=STATUSES,
                                    content_types=CONTENT_TYPES, preselect={})
-        post_id = db.create_post(data)
-        flash('Post created successfully.', 'success')
-        return redirect(url_for('content_detail', post_id=post_id))
+
+        created = []
+        for platform in chosen:
+            allowed = CONTENT_TYPES.get(platform, ['photo'])
+            # Each platform carries its own selector; anything not offered for that
+            # platform falls back rather than publishing a kind of post it has no
+            # concept of.
+            wanted = request.form.get('content_type_%s' % platform) \
+                or request.form.get('content_type') or allowed[0]
+            data = dict(base, platform=platform,
+                        content_type=wanted if wanted in allowed else allowed[0])
+            created.append(db.create_post(data))
+
+        if len(created) == 1:
+            flash('Post created successfully.', 'success')
+            return redirect(url_for('content_detail', post_id=created[0]))
+        flash('Created %d posts — one per platform. Each is approved and published '
+              'separately.' % len(created), 'success')
+        return redirect(url_for('content_list'))
     preselect = {
         'client_id': request.args.get('client_id', ''),
         'platform': request.args.get('platform', ''),
