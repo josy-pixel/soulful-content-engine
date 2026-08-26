@@ -1,6 +1,8 @@
 """Admin-only Settings section. Access is enforced on the blueprint (before_request),
 not per route, so a new page cannot be added unprotected by accident."""
-from flask import (Blueprint, render_template, request, redirect, url_for, flash,
+import os
+
+from flask import (Blueprint, render_template, request, redirect, url_for, flash, session,
                    jsonify, abort)
 from flask_login import current_user
 
@@ -109,8 +111,39 @@ def webhooks_delete(client_id):
 
 @settings_bp.route('/api-keys')
 def api_keys():
-    return render_template('settings/placeholder.html', active='api-keys', title='API Keys',
-                           blurb='Inbound API access — per-client, scoped keys — will live here.')
+    keys_by_client = {}
+    for k in db.get_client_api_keys():
+        keys_by_client.setdefault(k['client_id'], []).append(k)
+    clients = db.get_clients()
+    for c in clients:
+        c['api_keys'] = keys_by_client.get(c['id'], [])
+    # Shown once, immediately after minting, then never again — only the hash is kept.
+    fresh = session.pop('fresh_api_key', None)
+    return render_template('settings/api_keys.html', clients=clients, active='api-keys',
+                           fresh=fresh,
+                           legacy_on=os.environ.get('LEGACY_INBOUND_SECRET', 'true') == 'true')
+
+
+@settings_bp.route('/api-keys/<int:client_id>/create', methods=['POST'])
+def api_keys_create(client_id):
+    if not db.get_client(client_id):
+        abort(404)
+    label = (request.form.get('label') or '').strip()[:60]
+    key_id, raw = db.create_client_api_key(client_id, label)
+    db.add_audit(current_user.id, current_user.role, client_id, 'api_key', key_id, 'create',
+                 metadata={'label': label}, request_ip=request.remote_addr)   # never the key
+    session['fresh_api_key'] = {'client_id': client_id, 'key': raw, 'label': label}
+    flash('Key created. Copy it now — it is not shown again.', 'success')
+    return redirect(url_for('settings.api_keys'))
+
+
+@settings_bp.route('/api-keys/<int:key_id>/revoke', methods=['POST'])
+def api_keys_revoke(key_id):
+    db.revoke_client_api_key(key_id)
+    db.add_audit(current_user.id, current_user.role, None, 'api_key', key_id, 'revoke',
+                 request_ip=request.remote_addr)
+    flash('Key revoked. Any scenario still using it will start being refused.', 'success')
+    return redirect(url_for('settings.api_keys'))
 
 
 @settings_bp.route('/general')

@@ -1,6 +1,8 @@
 import sqlite3
 import json
 import os
+import hashlib
+import secrets
 import shutil
 import logging
 from contextlib import contextmanager
@@ -310,6 +312,28 @@ def init_db():
             conn.commit()
         except Exception:
             pass
+
+    # Inbound machine keys, one per client. Same shape as the Stage 1 invite tokens:
+    # only the sha256 hash is stored, so a leaked database does not hand anyone a
+    # working key. `last4` exists purely so the UI can say which key a row is.
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS client_api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            label TEXT DEFAULT '',
+            key_hash TEXT NOT NULL,
+            last4 TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_used_at TEXT,
+            revoked_at TEXT,
+            FOREIGN KEY (client_id) REFERENCES clients(id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_client_api_key_hash
+            ON client_api_keys(key_hash);
+        CREATE INDEX IF NOT EXISTS idx_client_api_key_client
+            ON client_api_keys(client_id) WHERE revoked_at IS NULL;
+    ''')
+    conn.commit()
 
     # Stage 2: append-only audit log + delete indexes (idempotent).
     conn.executescript('''
@@ -1159,6 +1183,68 @@ def get_client_media(client_id, media_type=None):
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Inbound machine keys ─────────────────────────────────────────────────────
+
+def _hash_api_key(raw):
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+
+def create_client_api_key(client_id, label=''):
+    """Mint a key for one client. Returns (id, raw_key) — the raw value is the only
+    time it exists anywhere; from here on only its hash is stored."""
+    raw = 'sce_' + secrets.token_urlsafe(32)
+    with write_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            'INSERT INTO client_api_keys (client_id,label,key_hash,last4) VALUES (?,?,?,?)',
+            (client_id, label, _hash_api_key(raw), raw[-4:])
+        )
+        return c.lastrowid, raw
+
+
+def client_id_for_api_key(raw):
+    """Which client does this key belong to? None if unknown or revoked.
+
+    The caller never supplies a client id — it is derived from the key, so a key
+    cannot be pointed at someone else's content.
+    """
+    if not raw:
+        return None
+    conn = get_db()
+    row = conn.execute(
+        'SELECT id, client_id FROM client_api_keys WHERE key_hash=? AND revoked_at IS NULL',
+        (_hash_api_key(raw),)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    with write_db() as c:
+        c.execute('UPDATE client_api_keys SET last_used_at=? WHERE id=?',
+                  (datetime.now().isoformat(), row['id']))
+    return row['client_id']
+
+
+def get_client_api_keys(client_id=None):
+    q = ('SELECT id, client_id, label, last4, created_at, last_used_at, revoked_at '
+         'FROM client_api_keys')
+    params = []
+    if client_id is not None:
+        q += ' WHERE client_id=?'
+        params.append(client_id)
+    q += ' ORDER BY revoked_at IS NOT NULL, created_at DESC'
+    conn = get_db()
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def revoke_client_api_key(key_id):
+    """Revoked, never deleted — the audit trail of what was used and when survives."""
+    with write_db() as conn:
+        conn.execute('UPDATE client_api_keys SET revoked_at=? WHERE id=? AND revoked_at IS NULL',
+                     (datetime.now().isoformat(), key_id))
 
 
 def get_client_media_with_usage(client_id, media_type=None):

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Settings — API Keys{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-3">{% include 'settings/_nav.html' %}</div>
+  <div class="col-lg-9">
+
+    {% if fresh %}
+    {# The only moment this value exists outside the caller's hands. #}
+    <div class="card border-success mb-4">
+      <div class="card-header bg-success bg-opacity-10 fw-semibold text-success-emphasis">
+        <i class="bi bi-key-fill me-1"></i>New key — copy it now, it is not shown again
+      </div>
+      <div class="card-body">
+        <div class="input-group mb-2">
+          <input class="form-control font-monospace" id="freshKey" value="{{ fresh.key }}" readonly>
+          <button class="btn btn-outline-secondary" type="button" id="copyFreshKey">Copy</button>
+        </div>
+        <small class="text-muted">
+          Paste it into this client's Make scenario as the header
+          <code>X-Api-Key</code> on the module that calls back to this app.
+          Only its hash is stored here, so it cannot be shown again — if it is lost,
+          revoke it and create another.
+        </small>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+      <div class="card-body">
+        <h6 class="mb-2">What these keys are for</h6>
+        <p class="text-muted small mb-2">
+          A client's scenario uses its own key to report back to this app — that a post
+          went live, and how it performed. The key identifies which client is calling, so
+          a scenario can only ever touch that client's own posts.
+        </p>
+        <p class="text-muted small mb-0">
+          <strong>No key publishes anything.</strong> Content arriving from outside would
+          land as <em>needs review</em>; releasing it stays a human decision in this app.
+        </p>
+      </div>
+    </div>
+
+    {% if legacy_on %}
+    <div class="alert alert-warning d-flex gap-2">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <div>
+        <strong>The old shared secret still works.</strong> One secret is accepted from any
+        caller and carries no client, so it cannot be scoped. Once every scenario sends its
+        own key, set <code>LEGACY_INBOUND_SECRET=false</code> to switch it off.
+      </div>
+    </div>
+    {% endif %}
+
+    {% for c in clients %}
+    <div class="card mb-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <div class="client-avatar" style="background:{{ c.logo_color }}">{{ c.name[:1]|upper }}</div>
+        <span class="fw-semibold">{{ c.name }}</span>
+        <form method="post" action="{{ url_for('settings.api_keys_create', client_id=c.id) }}"
+              class="ms-auto d-flex gap-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input name="label" class="form-control form-control-sm" style="width:170px"
+                 placeholder="What is it for?">
+          <button class="btn btn-sm btn-primary">Create key</button>
+        </form>
+      </div>
+      <div class="card-body p-0">
+        {% if c.api_keys %}
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for k in c.api_keys %}
+            <tr class="{% if k.revoked_at %}opacity-50{% endif %}">
+              <td>{{ k.label or '—' }}</td>
+              <td><code>sce_…{{ k.last4 }}</code></td>
+              <td><small class="text-muted">{{ k.created_at[:16] }}</small></td>
+              <td>
+                <small class="{% if k.last_used_at %}text-muted{% else %}text-warning-emphasis{% endif %}">
+                  {{ k.last_used_at[:16] if k.last_used_at else 'never used' }}
+                </small>
+              </td>
+              <td class="text-end">
+                {% if k.revoked_at %}
+                  <span class="badge bg-secondary">revoked</span>
+                {% else %}
+                <form method="post" action="{{ url_for('settings.api_keys_revoke', key_id=k.id) }}"
+                      onsubmit="return confirm('Revoke this key? Any scenario using it stops being able to report back.')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-sm btn-outline-danger">Revoke</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small m-3 mb-3">No key yet — this client's scenario is still using the shared secret.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('copyFreshKey')?.addEventListener('click', async () => {
+  const field = document.getElementById('freshKey');
+  field.select();
+  try {
+    await navigator.clipboard.writeText(field.value);
+    const btn = document.getElementById('copyFreshKey');
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  } catch (e) {
+    document.execCommand('copy');
+  }
+});
+</script>
+{% endblock %}

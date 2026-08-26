@@ -20,6 +20,7 @@ from flask import abort, g, session
 from flask_login import login_user, current_user
 from werkzeug.security import generate_password_hash
 import hashlib
+import logging
 
 
 def _hash_token(tok):
@@ -35,6 +36,8 @@ except Exception:
     Image = None
 
 load_dotenv()
+
+log = logging.getLogger('app')
 
 app = Flask(__name__)
 
@@ -807,26 +810,67 @@ def content_status(post_id):
 
 # ── Webhooks ───────────────────────────────────────────────────────────────────
 
-@app.route('/webhook/publish', methods=['POST'])
-def webhook_publish():
-    """Inbound endpoint — Make.com calls this after publishing a post.
+def _inbound_caller(data):
+    """Who is calling a machine endpoint, and how much are they allowed to touch?
 
-    Expected JSON body:
-        { "post_id": 123, "secret": "...", "posted_url": "https://..." }
+    Returns (authorised, client_id, how). A per-client key resolves to the client
+    it belongs to — the caller never states which client they are, so a key cannot
+    be aimed at someone else's content. The old shared secret is honoured while
+    scenarios migrate, but it carries no client, so it stays unscoped.
     """
-    data = request.get_json(silent=True) or {}
+    key = (request.headers.get('X-Api-Key') or data.get('api_key') or '').strip()
+    if key:
+        cid = db.client_id_for_api_key(key)
+        if cid is not None:
+            return True, cid, 'key'
+        return False, None, None            # a key was offered and it was not valid
 
-    secret = data.get('secret', request.args.get('secret', ''))
-    if not webhooks.verify_secret(secret):
-        return jsonify({'error': 'Forbidden'}), 403
+    # Legacy shared secret. Body only — a secret in the query string ends up in
+    # access logs, proxies and browser history.
+    if os.environ.get('LEGACY_INBOUND_SECRET', 'true') == 'true':
+        if webhooks.verify_secret(data.get('secret', '')):
+            return True, None, 'legacy'
+    return False, None, None
+
+
+def _inbound_post(data):
+    """Resolve the post a machine call refers to, refusing anything out of its scope.
+    Returns (post, error_response)."""
+    ok, cid, how = _inbound_caller(data)
+    if not ok:
+        return None, (jsonify({'error': 'Forbidden'}), 403)
 
     post_id = data.get('post_id')
     if not post_id:
-        return jsonify({'error': 'post_id is required'}), 400
+        return None, (jsonify({'error': 'post_id is required'}), 400)
 
     post = db.get_post(int(post_id))
     if not post:
-        return jsonify({'error': 'Post not found'}), 404
+        return None, (jsonify({'error': 'Post not found'}), 404)
+
+    if cid is not None and post['client_id'] != cid:
+        log.warning('inbound key for client %s tried to touch post %s of client %s',
+                    cid, post_id, post['client_id'])
+        return None, (jsonify({'error': 'Post not found'}), 404)   # no cross-client probing
+    return post, None
+
+
+@app.route('/webhook/publish', methods=['POST'])
+def webhook_publish():
+    """Inbound endpoint — a client's scenario calls this after publishing a post.
+
+    Authenticate with the client's own key, sent as the X-Api-Key header (or
+    "api_key" in the body). The legacy shared "secret" still works until every
+    scenario has moved over.
+
+    Expected JSON body:
+        { "post_id": 123, "posted_url": "https://..." }
+    """
+    data = request.get_json(silent=True) or {}
+    post, err = _inbound_post(data)
+    if err:
+        return err
+    post_id = post['id']
 
     posted_url = data.get('posted_url', '') or ''
     notes = posted_url or 'Marked posted by Make.com'
@@ -919,26 +963,23 @@ def api_add_performance(post_id):
 
 @app.route('/api/performance', methods=['POST'])
 def api_performance_inbound():
-    """Called by Make.com ~24h after publishing with auto-fetched platform stats.
+    """Called by a client's scenario ~24h after publishing with platform stats.
+
+    Same authentication as /webhook/publish: the client's own key in X-Api-Key,
+    with the legacy shared secret honoured until every scenario has moved over.
 
     Expected JSON body:
         {
-          "post_id": 123, "secret": "...",
+          "post_id": 123,
           "likes": 0, "comments": 0, "shares": 0, "saves": 0,
           "reach": 0, "impressions": 0, "clicks": 0
         }
     """
     data = request.get_json(silent=True) or {}
-
-    secret = data.get('secret', request.args.get('secret', ''))
-    if not webhooks.verify_secret(secret):
-        return jsonify({'error': 'Forbidden'}), 403
-
-    post_id = data.get('post_id')
-    if not post_id:
-        return jsonify({'error': 'post_id required'}), 400
-    if not db.get_post(int(post_id)):
-        return jsonify({'error': 'Post not found'}), 404
+    post, err = _inbound_post(data)
+    if err:
+        return err
+    post_id = post['id']
 
     metrics = {
         'likes':       int(data.get('likes', 0) or 0),
