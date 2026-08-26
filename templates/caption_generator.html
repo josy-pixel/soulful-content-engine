@@ -182,13 +182,15 @@ async function generate() {
     // readable server error into a parse error, and the catch below then blames
     // the API key for something that has nothing to do with it.
     if (!res.ok) {
-      let detail = '';
+      // Read the body once. A response body is a stream — reading it as JSON and
+      // then again as text throws "body stream already read", which replaces the
+      // server's actual error with a message about the error handler itself.
+      const bodyText = await res.text();
+      let detail = bodyText.slice(0, 400);
       try {
-        const body = await res.json();
-        detail = body.error || JSON.stringify(body);
-      } catch (_) {
-        detail = (await res.text()).slice(0, 300);
-      }
+        const parsed = JSON.parse(bodyText);
+        detail = parsed.error || detail;
+      } catch (_) { /* not JSON — the raw text is the best detail available */ }
       throw new Error(`The server returned ${res.status}. ${detail}`.trim());
     }
 

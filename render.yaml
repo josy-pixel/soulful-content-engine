@@ -1,11 +1,19 @@
+# NOT the source of truth. The live service was created by hand and has never been
+# synced from this file — it runs in ohio, not the oregon this file used to claim,
+# and it kept gunicorn's 30-second default while this file said 120. Changes made
+# here do not reach the service; they are applied through the Render API or console.
+# This file is kept in step so it describes what is actually running.
 services:
   - type: web
     name: soulful-content-engine
     runtime: python
     plan: starter
-    region: oregon
+    region: ohio
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    # 180s: generating a caption is several model calls in sequence — draft, voice
+    # audit, rewrite, hashtags — and the 30-second default killed the worker
+    # mid-request, which surfaced in the browser as "check your API key".
+    startCommand: gunicorn app:app --timeout 180
     healthCheckPath: /healthz
     envVars:
       - key: ANTHROPIC_API_KEY
@@ -16,6 +24,16 @@ services:
         value: /data/soulful_content.db
       - key: UPLOAD_PATH
         value: /data/uploads
+      # Media lives in S3; the app hands out short-lived signed links rather than
+      # serving the bytes itself.
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
     disk:
       name: data
       mountPath: /data
