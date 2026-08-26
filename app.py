@@ -360,7 +360,6 @@ def client_gallery(client_id):
     for m in media:
         m['url'] = _media_display_url(m)
     return render_template('client_gallery.html', client=client, media=media,
-                           all_clients=scoped_clients(db.get_clients()),
                            unused=sum(1 for m in media if not m['uses']))
 
 

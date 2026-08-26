@@ -66,6 +66,27 @@ def test_a_client_cannot_open_another_clients_library(client, data):
     assert client.get("/clients/%d/gallery" % data["cb"]).status_code == 403
 
 
+def test_the_gallery_page_actually_renders(client, data, monkeypatch):
+    """The page itself, not just the redirect into it.
+
+    Testing only the redirects let a TypeError in the view reach production as a
+    500 on the very page the feature is about.
+    """
+    monkeypatch.setattr(s3_media, "presign_view", lambda key, expires=None: "https://x/y")
+    db.add_media(data["ca"], "a.jpg", "a.jpg", "image", 10)
+    db.add_media(data["ca"], "b.mp4", "b.mp4", "video", 20, storage="s3", s3_key="clients/1/b.mp4")
+    login_as(client, data["admin"])
+    r = client.get("/clients/%d/gallery" % data["ca"])
+    assert r.status_code == 200
+    assert b"a.jpg" in r.data and b"b.mp4" in r.data
+    assert b"not used" in r.data                 # the usage badge rendered
+
+
+def test_the_gallery_renders_for_a_client_user_too(client, data):
+    login_as(client, data["user_a"])
+    assert client.get("/clients/%d/gallery" % data["ca"]).status_code == 200
+
+
 def test_an_admin_gets_a_picker_when_there_are_several_clients(client, data):
     login_as(client, data["admin"])
     r = client.get("/media")
