@@ -35,6 +35,16 @@
   </div>
 </div>
 
+<!-- Selection bar: appears only once something is selected -->
+<div id="selectionBar" class="d-none align-items-center gap-3 mb-3 p-2 px-3 rounded border bg-body-tertiary sticky-top" style="top:.5rem;z-index:5">
+  <span class="fw-semibold"><span id="selectedCount">0</span> selected</span>
+  <button class="btn btn-sm btn-outline-secondary" id="selectAllBtn">Select all shown</button>
+  <button class="btn btn-sm btn-outline-secondary" id="clearSelectionBtn">Clear</button>
+  <button class="btn btn-sm btn-danger ms-auto" id="deleteSelectedBtn">
+    <i class="bi bi-trash me-1"></i>Delete selected
+  </button>
+</div>
+
 <!-- Filter bar -->
 <div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
   <span class="fw-semibold me-1">Filter:</span>
@@ -68,15 +78,19 @@
         {% else %}
           <img src="{{ m.url }}" class="w-100 h-100" style="object-fit:cover" loading="lazy" alt="{{ m.original_name }}">
         {% endif %}
-        <!-- Actions overlay -->
-        <div class="gallery-overlay position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center gap-2 opacity-0" style="background:rgba(0,0,0,.5);transition:opacity .2s">
-          <button class="btn btn-sm btn-light preview-btn" title="Preview" data-id="{{ m.id }}" data-url="{{ m.url }}" data-type="{{ m.media_type }}" data-name="{{ m.original_name }}">
-            <i class="bi bi-eye"></i>
-          </button>
-          <button class="btn btn-sm btn-danger delete-btn" title="Delete" data-id="{{ m.id }}">
-            <i class="bi bi-trash"></i>
-          </button>
+        {# Always visible: hover-only controls do not exist at all on a touch screen. #}
+        <div class="position-absolute top-0 start-0 p-2">
+          <input class="form-check-input select-media shadow" type="checkbox" value="{{ m.id }}"
+                 style="width:1.15rem;height:1.15rem;cursor:pointer" aria-label="Select {{ m.original_name }}">
         </div>
+        <div class="gallery-overlay position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center opacity-0" style="background:rgba(0,0,0,.35);transition:opacity .2s;pointer-events:none">
+          <i class="bi bi-eye text-white fs-4"></i>
+        </div>
+        <button class="btn btn-sm btn-light position-absolute bottom-0 end-0 m-2 preview-btn shadow-sm"
+                title="Preview" data-id="{{ m.id }}" data-url="{{ m.url }}"
+                data-type="{{ m.media_type }}" data-name="{{ m.original_name }}">
+          <i class="bi bi-eye"></i>
+        </button>
       </div>
       <!-- Card body -->
       <div class="card-body p-2">
@@ -91,7 +105,7 @@
           <small class="text-muted">{{ (m.file_size / 1024 / 1024)|round(1) }} MB</small>
         </div>
         {# Whether this file is safe to remove is the first thing you need to know. #}
-        <div class="mt-1">
+        <div class="d-flex justify-content-between align-items-center gap-1 mt-1">
           {% if m.posted_uses %}
             <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">
               <i class="bi bi-broadcast me-1"></i>in {{ m.posted_uses }} published
@@ -105,6 +119,8 @@
               <i class="bi bi-dash-circle me-1"></i>not used
             </span>
           {% endif %}
+          <button class="btn btn-sm btn-outline-danger delete-btn px-2 py-0" title="Delete this file"
+                  data-id="{{ m.id }}"><i class="bi bi-trash"></i></button>
         </div>
       </div>
     </div>
@@ -350,6 +366,85 @@ document.querySelectorAll('.delete-btn').forEach(btn => {
       alert(data.error || 'Could not delete this file.');
     }
   });
+});
+
+// ── Selecting several files at once ──────────────────────────────────────────
+// Cleaning up a library one file at a time is the slow path nobody takes.
+const selectionBar = document.getElementById('selectionBar');
+const selectedCount = document.getElementById('selectedCount');
+
+function selectedBoxes() {
+  return Array.from(document.querySelectorAll('.select-media:checked'));
+}
+
+function refreshSelection() {
+  const n = selectedBoxes().length;
+  selectedCount.textContent = n;
+  selectionBar.classList.toggle('d-none', n === 0);
+  selectionBar.classList.toggle('d-flex', n > 0);
+}
+
+document.querySelectorAll('.select-media').forEach(cb =>
+  cb.addEventListener('change', refreshSelection));
+
+document.getElementById('selectAllBtn').addEventListener('click', () => {
+  // "shown" — respects whatever the filter and search have narrowed the grid to
+  document.querySelectorAll('.gallery-item').forEach(item => {
+    if (item.style.display !== 'none') {
+      const cb = item.querySelector('.select-media');
+      if (cb) cb.checked = true;
+    }
+  });
+  refreshSelection();
+});
+
+document.getElementById('clearSelectionBtn').addEventListener('click', () => {
+  document.querySelectorAll('.select-media').forEach(cb => { cb.checked = false; });
+  refreshSelection();
+});
+
+document.getElementById('deleteSelectedBtn').addEventListener('click', async () => {
+  const ids = selectedBoxes().map(cb => cb.value);
+  if (!ids.length) return;
+
+  // Ask what it costs before asking whether to do it.
+  const usages = [];
+  await runPool(ids, 4, async id => {
+    try {
+      const r = await fetch(`/api/media/${id}/usage`);
+      if (r.ok) usages.push({ id, ...(await r.json()) });
+      else usages.push({ id, uses: 0, posted_uses: 0 });
+    } catch (e) { usages.push({ id, uses: 0, posted_uses: 0 }); }
+  });
+
+  const inUse = usages.filter(u => u.uses).length;
+  const published = usages.filter(u => u.posted_uses).length;
+  let message = `Delete ${ids.length} file(s)? This cannot be undone.`;
+  if (inUse) message = `${inUse} of these ${ids.length} file(s) are used by posts, and ` +
+                       `deleting them removes the file from those posts too.\n\n${message}`;
+  if (published) message = `⚠ ${published} of them are used by PUBLISHED posts.\n\n${message}`;
+  if (!confirm(message)) return;
+
+  const failed = [];
+  let removed = 0;
+  await runPool(ids, 3, async id => {
+    try {
+      const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        removed += 1;
+        document.querySelector(`.select-media[value="${id}"]`)?.closest('.gallery-item')?.remove();
+      } else {
+        failed.push(data.error || `file ${id}`);
+      }
+    } catch (e) { failed.push(`file ${id}: ${e.message}`); }
+  });
+
+  refreshSelection();
+  if (failed.length) {
+    alert(`Removed ${removed}. ${failed.length} could not be removed:\n\n` +
+          failed.slice(0, 5).join('\n'));
+  }
 });
 
 // ── Caption hint autosave ────────────────────────────────────────────────────
