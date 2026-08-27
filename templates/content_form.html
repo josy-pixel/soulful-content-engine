@@ -113,10 +113,12 @@
             <div class="col-md-6">
               <label class="form-label fw-semibold">Status</label>
               <select name="status" class="form-select">
-                {% for s in statuses %}
+                {% for s in create_statuses %}
                 <option value="{{ s }}">{{ s.replace('_',' ')|capitalize }}</option>
                 {% endfor %}
               </select>
+              <div class="form-text">Approve it from the post itself once its media is
+                attached — approving is what sends it to be published.</div>
             </div>
             {% endif %}
             <div class="col-md-6">

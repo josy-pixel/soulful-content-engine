@@ -128,6 +128,15 @@ def _media_display_url(media):
 
 PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube']
 STATUSES = ['raw', 'branded', 'draft', 'needs_review', 'approved', 'scheduled', 'posted', 'error']
+# Statuses a post may be BORN in. Creating a post never publishes it — the move to
+# 'approved' is the only thing that does (see content_status). A post created already
+# approved would sit there looking ready while nothing was ever sent, and its author
+# would then reach for the 'Posted' button to finish the job by hand. That is how a
+# post marked "posted" comes to exist that no network has ever seen.
+PRE_APPROVAL_STATUSES = ['raw', 'branded', 'draft', 'needs_review']
+# What the create form offers a person. 'raw' and 'branded' belong to the machine
+# ingestion pipeline, not to someone sitting down to write a post.
+CREATE_STATUSES = ['draft', 'needs_review']
 CONTENT_TYPES = {
     'instagram': ['photo', 'video', 'reel', 'story'],
     'facebook':  ['photo', 'video', 'post'],
@@ -689,6 +698,8 @@ def api_save_caption():
     required = ['client_id', 'platform', 'topic', 'caption']
     if not all(data.get(k) for k in required):
         return jsonify({'error': 'Missing required fields.'}), 400
+    if data.get('status', 'draft') not in PRE_APPROVAL_STATUSES:
+        return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
     post_id = db.create_post(data)
     return jsonify({'ok': True, 'post_id': post_id})
 
@@ -744,10 +755,15 @@ def content_new():
             problem = 'Pick at least one platform.'
         elif not base['topic'] or not base['caption']:
             problem = 'Topic and caption are required.'
+        elif base['status'] not in PRE_APPROVAL_STATUSES:
+            problem = ('A post cannot be created as "%s". Create it, attach its media, '
+                       'then approve it — approving is what sends it to be published.'
+                       % base['status'].replace('_', ' '))
         if problem:
             flash(problem, 'error')
             return render_template('content_form.html', post=None, clients=all_clients,
                                    platforms=PLATFORMS, statuses=STATUSES,
+                                   create_statuses=CREATE_STATUSES,
                                    content_types=CONTENT_TYPES, preselect={})
 
         created = []
@@ -777,6 +793,7 @@ def content_new():
     }
     return render_template('content_form.html', post=None, clients=all_clients,
                            platforms=PLATFORMS, statuses=STATUSES,
+                           create_statuses=CREATE_STATUSES,
                            content_types=CONTENT_TYPES, preselect=preselect)
 
 
@@ -825,6 +842,7 @@ def content_edit(post_id):
         return redirect(url_for('content_detail', post_id=post_id))
     return render_template('content_form.html', post=post, clients=all_clients,
                            platforms=PLATFORMS, statuses=STATUSES,
+                           create_statuses=CREATE_STATUSES,
                            content_types=CONTENT_TYPES, preselect={})
 
 
@@ -1157,6 +1175,8 @@ def api_content_create():
         return jsonify({'error': 'client_id, platform, topic are required'}), 400
     if not db.get_client(int(data['client_id'])):
         return jsonify({'error': 'Client not found'}), 404
+    if data.get('status', 'raw') not in PRE_APPROVAL_STATUSES:
+        return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
     post_data = {
         'client_id': int(data['client_id']),
         'platform': data['platform'],
