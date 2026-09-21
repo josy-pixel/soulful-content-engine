@@ -186,6 +186,70 @@ def generate_trends(clients_summary, platform):
         return None, f'Claude API error: {str(e)}'
 
 
+def plan_week(client_name, description, theme, platform, count,
+              trends_list=None, performance_rows=None):
+    """Break a week's direction into `count` distinct daily topics, informed by
+    recent performance and current trends — the planning step ahead of writing
+    each post in the client's voice. Returns (topics, error) where topics is a
+    list of {"day": int, "topic": str}."""
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        return None, 'ANTHROPIC_API_KEY not set.'
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    if performance_rows:
+        perf_lines = []
+        for r in performance_rows[:10]:
+            stats = ', '.join(
+                f'{k}={r[k]}' for k in ('likes', 'comments', 'shares', 'reach', 'views')
+                if r.get(k) is not None
+            )
+            perf_lines.append(f"- [{r.get('posted_date', '')[:10]}] {r.get('topic', '')} ({stats})")
+        perf_text = '\n'.join(perf_lines)
+    else:
+        perf_text = 'No recent performance data available.'
+
+    trends_text = '\n'.join(f'- {t}' for t in (trends_list or [])) or 'None supplied.'
+
+    prompt = (
+        f"You are planning a week of {platform} content for {client_name}"
+        f"{(' — ' + description) if description else ''}.\n\n"
+        f"THIS WEEK'S DIRECTION:\n{theme}\n\n"
+        f"WHAT WORKED RECENTLY (last 7 days of performance):\n{perf_text}\n\n"
+        f"CURRENT TRENDING THEMES TO CONSIDER (use only what genuinely fits — never force one):\n{trends_text}\n\n"
+        f"Plan {count} distinct posts across the week — one clear, specific topic per post, "
+        f"each different enough that the week doesn't repeat itself, together forming one "
+        f"coherent through-line rather than {count} disconnected ideas.\n\n"
+        f"Return a JSON array ONLY, no other text, exactly {count} objects, each with fields "
+        f'"day" (integer, 0-indexed position in the week) and "topic" (one specific sentence '
+        f"a copywriter could write a caption from directly — not a vague theme).\n"
+        f'Example: [{{"day": 0, "topic": "..."}}, ...]'
+    )
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1536,
+            system=[{
+                'type': 'text',
+                'text': 'You are a social media content strategist. Return only a valid JSON array, no markdown, no explanation.',
+                'cache_control': {'type': 'ephemeral'},
+            }],
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith('```'):
+            raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+        topics = json.loads(raw)
+        if not isinstance(topics, list):
+            return None, 'Claude did not return a JSON array'
+        return topics, None
+    except (json.JSONDecodeError, ValueError) as e:
+        return None, f'JSON parse error: {str(e)}'
+    except anthropic.APIError as e:
+        return None, f'Claude API error: {str(e)}'
+
+
 def generate_report(report_data):
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:

@@ -981,6 +981,29 @@ def get_performance(post_id):
     return [dict(r) for r in rows]
 
 
+def get_recent_performance(client_id, days=7):
+    """Posted content for this client in the last N days, each carrying its most
+    recent metrics snapshot — the 'what worked this week' input for planning a
+    new batch. Only the latest performance_metrics row per post is used, same as
+    the post detail page's most-recent-entry display."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT p.topic, p.platform, p.content_type, p.posted_date,
+               lm.likes, lm.comments, lm.shares, lm.saves, lm.views, lm.reach, lm.impressions
+        FROM v_content_active p
+        LEFT JOIN (
+            SELECT m1.* FROM performance_metrics m1
+            WHERE m1.recorded_at = (
+                SELECT MAX(m2.recorded_at) FROM performance_metrics m2 WHERE m2.post_id = m1.post_id
+            )
+        ) lm ON lm.post_id = p.id
+        WHERE p.client_id = ? AND p.status = 'posted' AND p.posted_date >= datetime('now', ?)
+        ORDER BY p.posted_date DESC
+    ''', (client_id, f'-{int(days)} days')).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def add_performance(post_id, data):
     conn = get_db()
     conn.execute('''

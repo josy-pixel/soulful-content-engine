@@ -704,6 +704,143 @@ def api_save_caption():
     return jsonify({'ok': True, 'post_id': post_id})
 
 
+# ── Bulk Content Generator ───────────────────────────────────────────────────
+# Same voice-faithful pipeline as the single generator (ve.generate_post), run
+# once per planned topic. The rulebook is identical across the whole batch, so
+# it's the cached prefix on every call after the first — see voice_engine.py.
+
+@app.route('/bulk-generate')
+def bulk_generate():
+    all_clients = scoped_clients()
+    preselect_client = current_scope() or request.args.get('client_id', type=int)
+    return render_template('bulk_generate.html', clients=all_clients,
+                           platforms=PLATFORMS, content_types=CONTENT_TYPES,
+                           create_statuses=CREATE_STATUSES,
+                           preselect_client=preselect_client)
+
+
+@app.route('/api/bulk-generate', methods=['POST'])
+def api_bulk_generate():
+    data = request.get_json(silent=True) or {}
+    # HARD RULE 1: never trust client_id from the body for a client user.
+    client_id = enforce_client_id(data.get('client_id'))
+    platform = data.get('platform')
+    theme = (data.get('theme') or '').strip()
+
+    try:
+        days = max(1, min(14, int(data.get('days', 7))))
+        per_day = max(1, min(3, int(data.get('posts_per_day', 1))))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'days and posts_per_day must be numbers.'}), 400
+    count = days * per_day
+
+    if not all([client_id, platform, theme]) or platform not in PLATFORMS:
+        return jsonify({'error': 'client_id, a valid platform, and a theme are required.'}), 400
+
+    client = db.get_client(client_id)
+    if not client:
+        return jsonify({'error': 'Client not found.'}), 404
+
+    try:
+        base_date = datetime.strptime(data.get('start_date') or '', '%Y-%m-%d')
+    except ValueError:
+        base_date = datetime.now()
+
+    brand_voice = dict(db.get_brand_voice(client_id, platform) or db.get_brand_voice(client_id, 'general') or {})
+    brand_voice['platform'] = platform
+    voice_document, sample_captions = db.get_client_voice(client_id)
+
+    performance_rows = db.get_recent_performance(client_id, days=7) if data.get('include_performance', True) else []
+    trend_rows = db.get_trends(platform=platform, limit=8) if data.get('include_trends', True) else []
+    trend_texts = [t['trend_text'] for t in trend_rows]
+
+    topics, err = ai.plan_week(client['name'], client.get('description', ''), theme,
+                               platform, count, trends_list=trend_texts,
+                               performance_rows=performance_rows)
+    if err:
+        return jsonify({'error': err}), 500
+    if not topics:
+        return jsonify({'error': 'Claude returned no topics — try again.'}), 500
+    topics = topics[:count]   # defend against a short/long/malformed list
+
+    hour_slots = [9, 13, 17]   # simple, deterministic spacing when posts_per_day > 1
+    posts = []
+    for i, t in enumerate(topics):
+        topic = (t.get('topic') or '').strip() if isinstance(t, dict) else str(t).strip()
+        if not topic:
+            continue
+        day_offset, slot = divmod(i, per_day)
+        post_date = base_date + timedelta(days=day_offset)
+        scheduled = post_date.replace(hour=hour_slots[slot % len(hour_slots)], minute=0,
+                                      second=0, microsecond=0).strftime('%Y-%m-%dT%H:%M')
+
+        result = ve.generate_post(client['name'], brand_voice, topic,
+                                  voice_document=voice_document,
+                                  sample_captions=sample_captions,
+                                  weekly_direction=theme, debug=False)
+        if result.get('error'):
+            posts.append({'topic': topic, 'scheduled_date': scheduled, 'error': result['error']})
+            continue
+
+        posts.append({
+            'topic': topic,
+            'caption': result['caption'],
+            'hashtags': result['hashtags'],
+            'voice_score': result.get('voice_score'),
+            'voice_audit': result.get('voice_audit', ''),
+            'scheduled_date': scheduled,
+        })
+
+    return jsonify({
+        'ok': True,
+        'client_id': client_id,
+        'platform': platform,
+        'posts': posts,
+        'performance_used': len(performance_rows),
+        'trends_used': trend_texts,
+    })
+
+
+@app.route('/api/bulk-save', methods=['POST'])
+def api_bulk_save():
+    data = request.get_json(silent=True) or {}
+    # HARD RULE 1: a client user's posts are always created under THEIR client_id.
+    client_id = enforce_client_id(data.get('client_id'))
+    platform = data.get('platform')
+    content_type = data.get('content_type') or (CONTENT_TYPES.get(platform) or ['photo'])[0]
+    status = data.get('status', 'draft')
+    posts = data.get('posts') or []
+
+    if not client_id or platform not in PLATFORMS:
+        return jsonify({'error': 'client_id and a valid platform are required.'}), 400
+    if content_type not in CONTENT_TYPES.get(platform, []):
+        return jsonify({'error': 'Invalid content type for this platform.'}), 400
+    if status not in CREATE_STATUSES:
+        return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
+    if not posts:
+        return jsonify({'error': 'No posts to save.'}), 400
+
+    created = []
+    for p in posts:
+        topic = (p.get('topic') or '').strip()
+        caption = (p.get('caption') or '').strip()
+        if not topic or not caption:
+            continue
+        created.append(db.create_post({
+            'client_id': client_id,
+            'platform': platform,
+            'content_type': content_type,
+            'topic': topic,
+            'caption': caption,
+            'hashtags': (p.get('hashtags') or '').strip(),
+            'status': status,
+            'scheduled_date': p.get('scheduled_date') or None,
+            'notes': 'Created via bulk weekly build.',
+        }))
+
+    return jsonify({'ok': True, 'created': created, 'count': len(created)})
+
+
 # ── Content Library ────────────────────────────────────────────────────────────
 
 @app.route('/content')
