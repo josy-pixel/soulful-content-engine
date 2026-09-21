@@ -83,6 +83,16 @@ def presign_upload(key, content_type=None):
     )
 
 
+def put(key, data, content_type=None):
+    """Write bytes straight to the bucket — for a trusted server-to-server
+    sender (a Make.com scenario) rather than a browser, where the presigned
+    POST flow above is what keeps bytes off this server."""
+    kwargs = {'Bucket': BUCKET, 'Key': key, 'Body': data}
+    if content_type:
+        kwargs['ContentType'] = content_type
+    client().put_object(**kwargs)
+
+
 def presign_view(key, expires=None):
     """A link that works for a while and then stops working."""
     return client().generate_presigned_url(

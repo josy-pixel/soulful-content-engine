@@ -35,6 +35,7 @@ _PUBLIC_ENDPOINTS = {'login', 'setup_admin', 'healthz', 'static', 'serve_media',
 # Make.com cannot sign in. Keep this list in sync with the X-Secret routes.
 _MACHINE_ENDPOINTS = {
     'webhook_publish',
+    'webhook_media_ingest',
     'api_performance_inbound',
     'api_content_get',
     'api_content_patch',

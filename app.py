@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import secrets
+import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
@@ -64,6 +65,11 @@ ALLOWED_VIDEOS = {'mp4', 'mov', 'avi', 'webm'}
 ALLOWED_EXTENSIONS = ALLOWED_IMAGES | ALLOWED_VIDEOS
 MAX_UPLOAD_MB = int(os.environ.get('MAX_UPLOAD_MB', '200'))
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
+# Fallback when a fetched media_url has no usable extension of its own.
+ALLOWED_MEDIA_MIME = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+    'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
+}
 
 
 def _allowed_file(filename):
@@ -376,6 +382,17 @@ def client_gallery(client_id):
                            unused=sum(1 for m in media if not m['uses']))
 
 
+@app.route('/editing-queue')
+def editing_queue():
+    """Raw media pulled in from Instagram/TikTok/the web, across every client
+    (or just one, for a client-portal user) — still needs Canva or the video
+    editor before it can go on a post. Oldest first, so nothing gets lost."""
+    pending = db.get_pending_edits(scope=current_scope())
+    for m in pending:
+        m['url'] = _media_display_url(m)
+    return render_template('editing_queue.html', pending=pending)
+
+
 @app.route('/media')
 def media_library():
     """The way in. A client lands in their own library; an admin picks whose to open.
@@ -512,9 +529,13 @@ def api_media_update(media_id):
     if not security.can_see_client(media['client_id']):   # object-level tenant check
         abort(403)
     data = request.get_json(silent=True) or {}
+    edit_status = data.get('edit_status')
+    if edit_status and edit_status not in ('ready', 'needs_editing'):
+        return jsonify({'error': 'Invalid edit_status.'}), 400
     db.update_media(media_id,
                     caption_hint=data.get('caption_hint', media.get('caption_hint', '')),
-                    tags=data.get('tags', media.get('tags', '[]')))
+                    tags=data.get('tags', media.get('tags', '[]')),
+                    edit_status=edit_status)
     return jsonify({'ok': True})
 
 
@@ -938,6 +959,105 @@ def webhook_publish():
     db.update_post_status(int(post_id), 'posted', notes, changed_by='make.com',
                           posted_url=posted_url or None)
     return jsonify({'ok': True, 'post_id': post_id, 'status': 'posted'})
+
+
+@app.route('/webhook/media-ingest', methods=['POST'])
+def webhook_media_ingest():
+    """Inbound endpoint — a Make.com scenario calls this with media it pulled
+    from a client's own Instagram/TikTok (via the official API, never scraped)
+    or the open web. Lands as a raw source in that client's gallery, marked
+    'needs_editing' — it still needs a pass through Canva or the video editor
+    before it's usable on a post. Authenticate with the client's own key
+    (X-Api-Key header, or "api_key"/"secret" in the body — same as
+    /webhook/publish).
+
+    Either send the file directly (multipart, field "file"), or a JSON body
+    with "media_url" for the server to fetch. Either way, these fields:
+        source       "instagram" | "tiktok" | "web" (default "web")
+        source_url   the original post/page, for the editor's context
+        caption_hint the original caption, if any
+        client_id    required only on the legacy shared-secret path — a
+                     per-client key already implies its own client
+    """
+    is_multipart = bool(request.files)
+    data = request.form.to_dict() if is_multipart else (request.get_json(silent=True) or {})
+
+    ok, cid, how = _inbound_caller(data)
+    if not ok:
+        return jsonify({'error': 'Forbidden'}), 403
+    if cid is None:
+        try:
+            cid = int(data.get('client_id')) if data.get('client_id') else None
+        except (TypeError, ValueError):
+            cid = None
+    if not cid or not db.get_client(cid):
+        return jsonify({'error': 'client_id is required and must be a known client '
+                                 '(or authenticate with a per-client key).'}), 400
+
+    source = (data.get('source') or 'web').strip().lower()
+    source_url = (data.get('source_url') or '').strip()
+    caption_hint = (data.get('caption_hint') or '').strip()
+
+    filename = None
+    content_type = None
+    raw = None
+
+    if is_multipart:
+        f = request.files.get('file')
+        if not f or not f.filename:
+            return jsonify({'error': 'No file provided.'}), 400
+        filename = f.filename
+        content_type = f.content_type
+        raw = f.read()
+    else:
+        media_url = (data.get('media_url') or '').strip()
+        if not media_url:
+            return jsonify({'error': 'Provide either a "file" upload or a "media_url".'}), 400
+        try:
+            resp = requests.get(media_url, stream=True, timeout=15,
+                                headers={'User-Agent': 'Mozilla/5.0 (compatible; SoulfulContentEngine/1.0)'})
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            return jsonify({'error': 'Could not fetch media_url: %s' % e}), 400
+        content_type = resp.headers.get('Content-Type', '').split(';')[0].strip()
+        chunks, total = [], 0
+        for chunk in resp.iter_content(chunk_size=65536):
+            total += len(chunk)
+            if total > app.config['MAX_CONTENT_LENGTH']:
+                return jsonify({'error': 'File exceeds the maximum upload size.'}), 400
+            chunks.append(chunk)
+        raw = b''.join(chunks)
+        filename = media_url.rsplit('/', 1)[-1].split('?')[0] or 'media'
+
+    if not raw:
+        return jsonify({'error': 'No media data received.'}), 400
+
+    if not _allowed_file(filename):
+        # A fetched URL often has no real extension — fall back to Content-Type.
+        ext = ALLOWED_MEDIA_MIME.get((content_type or '').lower())
+        if not ext:
+            return jsonify({'error': 'Unrecognised or disallowed file type.'}), 400
+        filename = filename.rsplit('.', 1)[0] + '.' + ext
+
+    mtype = _media_type(filename)
+    ext = filename.rsplit('.', 1)[1].lower()
+    unique_name = '%s.%s' % (uuid.uuid4().hex, ext)
+
+    if s3_media.enabled():
+        key = s3_media.build_key(cid, unique_name)
+        s3_media.put(key, raw, content_type)
+        media_id = db.add_media(cid, key.rsplit('/', 1)[-1], filename, mtype, len(raw),
+                                caption_hint, '[]', storage='s3', s3_key=key,
+                                edit_status='needs_editing', source=source, source_url=source_url)
+    else:
+        save_dir = _upload_dir(cid)
+        with open(os.path.join(save_dir, unique_name), 'wb') as out:
+            out.write(raw)
+        media_id = db.add_media(cid, unique_name, filename, mtype, len(raw),
+                                caption_hint, '[]', storage='local', s3_key=None,
+                                edit_status='needs_editing', source=source, source_url=source_url)
+
+    return jsonify({'ok': True, 'media_id': media_id}), 201
 
 
 @app.route('/webhook/test/<int:post_id>', methods=['POST'])
