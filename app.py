@@ -704,6 +704,88 @@ def api_save_caption():
     return jsonify({'ok': True, 'post_id': post_id})
 
 
+# ── Reel Repurposer ───────────────────────────────────────────────────────────
+# The reel-repurposer skill: diagnose and re-cut an EXISTING/underperforming
+# video using its own measured performance, rather than scripting a new one.
+
+@app.route('/reel-repurposer')
+def reel_repurposer():
+    all_clients = scoped_clients()
+    preselect_client = current_scope() or request.args.get('client_id', type=int)
+    post_id = request.args.get('post_id', type=int)
+    post = None
+    if post_id:
+        post = db.get_post(post_id)
+        if post and not security.can_see_client(post['client_id']):
+            post = None   # not this user's post — behave as if none was picked
+    return render_template('reel_repurposer.html', clients=all_clients,
+                           preselect_client=preselect_client, post=post)
+
+
+@app.route('/api/reel-repurpose/candidates/<int:client_id>')
+@require_client_access('client_id')
+def api_repurpose_candidates(client_id):
+    candidates = db.get_repurpose_candidates(client_id)
+    return jsonify(candidates)
+
+
+@app.route('/api/reel-repurpose/generate', methods=['POST'])
+def api_reel_repurpose_generate():
+    data = request.get_json(silent=True) or {}
+    post_id = data.get('post_id')
+    source_material = (data.get('source_material') or '').strip()
+    extra_context = (data.get('extra_context') or '').strip()
+
+    if not post_id:
+        return jsonify({'error': 'post_id is required.'}), 400
+    post = db.get_post(int(post_id))
+    if not post:
+        return jsonify({'error': 'Post not found.'}), 404
+    if not security.can_see_client(post['client_id']):
+        abort(403)
+    if not source_material:
+        return jsonify({'error': "Source material is required — Claude can't watch video, "
+                                 'so paste a transcript or shot list first.'}), 400
+
+    brand_voice = dict(db.get_brand_voice(post['client_id'], post['platform'])
+                       or db.get_brand_voice(post['client_id'], 'general') or {})
+    voice_document, sample_captions = db.get_client_voice(post['client_id'])
+
+    metrics = db.get_performance(int(post_id))
+    m = metrics[0] if metrics else {}
+    performance_summary = (
+        'Topic: %s\nPlatform: %s\nPosted: %s\n'
+        'Likes: %s, Comments: %s, Shares: %s, Saves: %s, Views: %s, Reach: %s, Impressions: %s'
+        % (post['topic'], post['platform'], post.get('posted_date') or 'unknown',
+           m.get('likes', 0), m.get('comments', 0), m.get('shares', 0),
+           m.get('saves', 0), m.get('views', 0), m.get('reach', 0), m.get('impressions', 0))
+    )
+
+    result = ve.build_reel_repurpose(post['client_name'], brand_voice, voice_document,
+                                     sample_captions, source_material, performance_summary,
+                                     extra_context=extra_context, debug=config.DEBUG_ENGINE)
+    if result.get('error'):
+        return jsonify({'error': result['error']}), 500
+    return jsonify({'ok': True, 'package': result['package'],
+                    'performance_summary': performance_summary})
+
+
+@app.route('/api/reel-repurpose/save', methods=['POST'])
+def api_reel_repurpose_save():
+    data = request.get_json(silent=True) or {}
+    post_id = data.get('post_id')
+    package = (data.get('package') or '').strip()
+    if not post_id or not package:
+        return jsonify({'error': 'post_id and package are required.'}), 400
+    post = db.get_post(int(post_id))
+    if not post:
+        return jsonify({'error': 'Post not found.'}), 404
+    if not security.can_see_client(post['client_id']):
+        abort(403)
+    db.set_repurpose_brief(int(post_id), package)
+    return jsonify({'ok': True})
+
+
 # ── Content Library ────────────────────────────────────────────────────────────
 
 @app.route('/content')

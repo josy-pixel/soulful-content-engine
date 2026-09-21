@@ -306,6 +306,11 @@ def init_db():
         # uploads go to S3. Nothing is migrated by this column alone.
         "ALTER TABLE client_media ADD COLUMN storage TEXT NOT NULL DEFAULT 'local'",
         "ALTER TABLE client_media ADD COLUMN s3_key TEXT",
+        # Reel-repurposer output — the latest diagnosis/re-cut package for a
+        # posted video, same one-field-holds-the-latest-analysis pattern as
+        # voice_score/voice_audit above.
+        "ALTER TABLE content_posts ADD COLUMN repurpose_brief TEXT DEFAULT ''",
+        "ALTER TABLE content_posts ADD COLUMN repurpose_brief_generated_at TEXT",
     ]:
         try:
             conn.execute(migration)
@@ -979,6 +984,38 @@ def get_performance(post_id):
     rows = conn.execute('SELECT * FROM performance_metrics WHERE post_id=? ORDER BY recorded_at DESC', (post_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_repurpose_candidates(client_id):
+    """Posted video/reel content for this client, with its latest performance
+    snapshot — weakest reach first, since those are the most likely
+    repurposing candidates. Feeds the reel-repurposer picker."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT p.*,
+               lm.likes, lm.comments, lm.shares, lm.saves, lm.views, lm.reach, lm.impressions, lm.clicks
+        FROM v_content_active p
+        LEFT JOIN (
+            SELECT m1.* FROM performance_metrics m1
+            WHERE m1.recorded_at = (
+                SELECT MAX(m2.recorded_at) FROM performance_metrics m2 WHERE m2.post_id = m1.post_id
+            )
+        ) lm ON lm.post_id = p.id
+        WHERE p.client_id = ? AND p.status = 'posted' AND p.content_type IN ('video', 'reel')
+        ORDER BY (lm.reach IS NULL), lm.reach ASC, p.posted_date DESC
+    ''', (client_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def set_repurpose_brief(post_id, brief):
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        conn.execute(
+            'UPDATE content_posts SET repurpose_brief=?, repurpose_brief_generated_at=?, '
+            'updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (brief, datetime.now().strftime('%Y-%m-%d %H:%M'), post_id)
+        )
 
 
 def add_performance(post_id, data):

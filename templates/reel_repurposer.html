@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Reel Repurposer — Soulful Content Engine{% endblock %}
+{% block page_title %}Reel Repurposer{% endblock %}
+
+{% block content %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<p class="text-muted mb-4">Diagnose an existing, already-posted video using its own performance — why it flopped, what to
+do about it, and a re-hooked, retention-structured, compliance-checked rebuild package. Claude can't watch footage,
+so paste a transcript or shot list of the existing clip.</p>
+
+<div class="row g-4">
+
+  <!-- Builder form -->
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><i class="bi bi-arrow-repeat me-2"></i>Pick the Post to Repurpose</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Client *</label>
+          <select id="genClient" class="form-select">
+            <option value="">Select client…</option>
+            {% for c in clients %}
+            <option value="{{ c.id }}" {% if preselect_client==c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div id="candidatesWrap" class="mb-2 d-none">
+          <label class="form-label fw-semibold small">Posted video/reel content <small class="text-muted">(weakest reach first)</small></label>
+          <div id="candidatesList" class="list-group" style="max-height:320px;overflow-y:auto"></div>
+        </div>
+        <p id="noCandidatesMsg" class="text-muted small d-none">No posted video or reel content for this client yet.</p>
+        <div id="selectedPostBadge" class="alert alert-primary py-2 px-3 d-none mb-0"></div>
+      </div>
+    </div>
+
+    <div class="card" id="materialCard" style="display:none">
+      <div class="card-header"><i class="bi bi-file-text me-2"></i>Source Material</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Transcript / shot list of the existing video *</label>
+          <textarea id="genMaterial" class="form-control" rows="8"
+                    placeholder="e.g. 0:00–0:12 Holly to camera saying X; b-roll of baby sleeping; screenshot of the mastitis story…"></textarea>
+        </div>
+        <div class="mb-4">
+          <label class="form-label fw-semibold">Additional context <small class="text-muted">(optional)</small></label>
+          <textarea id="genExtra" class="form-control" rows="3"
+                    placeholder="Audio eligibility, known length, a retention/drop-off note from Facebook Insights, why this is being revisited…"></textarea>
+        </div>
+        <button id="generateBtn" class="btn btn-primary w-100">
+          <i class="bi bi-magic me-1"></i> Generate Repurposing Package
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result panel -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-file-earmark-richtext me-2"></i>Repurposing Package</span>
+        <div class="d-flex gap-2">
+          <button id="copyBtn" class="btn btn-sm btn-outline-secondary d-none">
+            <i class="bi bi-clipboard"></i> Copy
+          </button>
+        </div>
+      </div>
+      <div class="card-body d-flex flex-column">
+
+        <div id="emptyState" class="empty-state my-auto">
+          <i class="bi bi-arrow-repeat display-4 text-muted"></i>
+          <p class="mt-3 text-muted">Pick a client, choose a posted video, paste its transcript, then generate.</p>
+        </div>
+
+        <div id="loadingState" class="d-none text-center my-auto">
+          <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem"></div>
+          <p class="text-muted mb-1">Claude is diagnosing and rebuilding this reel…</p>
+          <p class="small text-muted">This is a long package — can take a minute or so.</p>
+        </div>
+
+        <div id="resultState" class="d-none flex-column h-100">
+          <textarea id="packageResult" class="form-control flex-grow-1 mb-3" rows="24" style="font-size:.85rem"></textarea>
+          <button id="saveBtn" class="btn btn-success w-100">
+            <i class="bi bi-check-circle"></i> Save to This Post
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const platformColors = { instagram:'#e1306c', facebook:'#1877f2', tiktok:'#010101', linkedin:'#0077b5', youtube:'#ff0000' };
+const platformIcons  = { instagram:'bi-instagram', facebook:'bi-facebook', tiktok:'bi-tiktok', linkedin:'bi-linkedin', youtube:'bi-youtube' };
+
+let selectedPostId = null;
+let selectedPostLabel = '';
+
+function show(id) {
+  ['emptyState','loadingState','resultState'].forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.classList.add('d-none');
+  });
+  const target = document.getElementById(id);
+  if (target) {
+    target.classList.remove('d-none');
+    if (id === 'resultState') target.classList.add('d-flex');
+  }
+}
+
+function selectPost(post) {
+  selectedPostId = post.id;
+  selectedPostLabel = post.topic;
+  document.querySelectorAll('.candidate-item').forEach(el => el.classList.remove('active'));
+  const el = document.querySelector(`.candidate-item[data-id="${post.id}"]`);
+  if (el) el.classList.add('active');
+  const badge = document.getElementById('selectedPostBadge');
+  badge.classList.remove('d-none');
+  badge.innerHTML = `<i class="bi bi-check-circle me-1"></i>Repurposing: <strong>${escapeHtml(post.topic)}</strong>` +
+                    ` <span class="badge ms-1" style="background:${platformColors[post.platform]||'#6366f1'}">${post.platform}</span>`;
+  document.getElementById('materialCard').style.display = '';
+}
+
+function renderCandidates(list) {
+  const wrap = document.getElementById('candidatesWrap');
+  const box = document.getElementById('candidatesList');
+  const none = document.getElementById('noCandidatesMsg');
+  box.innerHTML = '';
+  if (!list.length) {
+    wrap.classList.add('d-none');
+    none.classList.remove('d-none');
+    return;
+  }
+  none.classList.add('d-none');
+  wrap.classList.remove('d-none');
+  list.forEach(post => {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'list-group-item list-group-item-action candidate-item py-2';
+    a.dataset.id = post.id;
+    a.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="small fw-semibold text-truncate" style="max-width:220px">${escapeHtml(post.topic)}</span>
+        <i class="bi ${platformIcons[post.platform] || 'bi-globe'}"></i>
+      </div>
+      <div class="small text-muted">reach ${post.reach ?? 0} · views ${post.views ?? 0} · likes ${post.likes ?? 0}</div>`;
+    a.addEventListener('click', e => { e.preventDefault(); selectPost(post); });
+    box.appendChild(a);
+  });
+}
+
+async function loadCandidates(clientId) {
+  document.getElementById('candidatesWrap').classList.add('d-none');
+  document.getElementById('noCandidatesMsg').classList.add('d-none');
+  document.getElementById('selectedPostBadge').classList.add('d-none');
+  document.getElementById('materialCard').style.display = 'none';
+  selectedPostId = null;
+  if (!clientId) return;
+  const res = await fetch(`/api/reel-repurpose/candidates/${clientId}`);
+  if (!res.ok) return;
+  renderCandidates(await res.json());
+}
+
+document.getElementById('genClient').addEventListener('change', e => loadCandidates(e.target.value));
+{% if preselect_client %}
+loadCandidates({{ preselect_client }});
+{% endif %}
+{% if post %}
+selectPost({{ {'id': post.id, 'topic': post.topic, 'platform': post.platform} | tojson }});
+{% endif %}
+
+document.getElementById('generateBtn').addEventListener('click', async () => {
+  const material = document.getElementById('genMaterial').value.trim();
+  if (!selectedPostId) { alert('Pick a post to repurpose first.'); return; }
+  if (!material) { alert('Paste a transcript or shot list of the existing video first.'); return; }
+
+  show('loadingState');
+  document.getElementById('generateBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/reel-repurpose/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        post_id: selectedPostId,
+        source_material: material,
+        extra_context: document.getElementById('genExtra').value.trim(),
+      }),
+    });
+    if (!res.ok) {
+      const bodyText = await res.text();
+      let detail = bodyText.slice(0, 400);
+      try { detail = JSON.parse(bodyText).error || detail; } catch (_) {}
+      throw new Error(`The server returned ${res.status}. ${detail}`.trim());
+    }
+    const data = await res.json();
+    if (data.error) { alert('Error: ' + data.error); show('emptyState'); return; }
+
+    document.getElementById('packageResult').value = data.package;
+    show('resultState');
+    document.getElementById('copyBtn').classList.remove('d-none');
+  } catch (e) {
+    console.error('reel-repurpose generate failed:', e);
+    alert('Could not generate this package.\n\n' + (e && e.message ? e.message : e));
+    show('emptyState');
+  } finally {
+    document.getElementById('generateBtn').disabled = false;
+  }
+});
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('packageResult').value);
+  const btn = document.getElementById('copyBtn');
+  btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
+  setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy', 2000);
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const pkg = document.getElementById('packageResult').value.trim();
+  if (!pkg) { alert('Nothing to save.'); return; }
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+  try {
+    const res = await fetch('/api/reel-repurpose/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post_id: selectedPostId, package: pkg }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = `/content/${selectedPostId}`;
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-circle"></i> Save to This Post';
+  }
+});
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+</script>
+{% endblock %}

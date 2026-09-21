@@ -207,6 +207,25 @@
         {% endif %}
       </div>
     </div>
+
+    {% if post.status == 'posted' and post.content_type in ('video', 'reel') %}
+    <!-- Reel repurposer -->
+    <div class="card mt-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-arrow-repeat me-2"></i>Reel Repurposer</span>
+        <a href="{{ url_for('reel_repurposer', client_id=post.client_id, post_id=post.id) }}"
+           class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-magic me-1"></i>{% if post.repurpose_brief %}Regenerate{% else %}Repurpose this reel{% endif %}
+        </a>
+      </div>
+      {% if post.repurpose_brief %}
+      <div class="card-body">
+        <small class="text-muted d-block mb-2">Generated {{ post.repurpose_brief_generated_at }}</small>
+        <div class="border rounded p-3 bg-light" style="max-height:320px;overflow-y:auto;white-space:pre-wrap;font-size:.85rem">{{ post.repurpose_brief }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <!-- Sidebar: Workflow -->
