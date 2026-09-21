@@ -301,6 +301,12 @@ def init_db():
         "ALTER TABLE clients ADD COLUMN deleted_reason TEXT",
         "ALTER TABLE clients ADD COLUMN purge_after TEXT",
         "ALTER TABLE clients ADD COLUMN erased_at TEXT",
+        # ── Talent sign-off — separate from the internal admin/manager status
+        # workflow and its publish dispatch (see content_status). A simple yes/no
+        # from whoever the content is about, independent of who on the team has
+        # reviewed it editorially.
+        "ALTER TABLE content_posts ADD COLUMN talent_approved INTEGER DEFAULT 0",
+        "ALTER TABLE content_posts ADD COLUMN talent_approved_at TEXT",
         # ── Media storage backend ──
         # Existing rows stay 'local' and keep being served off the disk; only new
         # uploads go to S3. Nothing is migrated by this column alone.
@@ -950,6 +956,55 @@ def set_post_error(post_id, error_message):
             'UPDATE content_posts SET error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
             (error_message, post_id)
         )
+
+
+def update_post_review(post_id, caption=None, hashtags=None):
+    """Lightweight caption/hashtags save for the inline review UI — unlike
+    update_post(), doesn't require topic/content_type/scheduled_date/etc."""
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        post = conn.execute('SELECT caption, hashtags FROM content_posts WHERE id=?', (post_id,)).fetchone()
+        if not post:
+            return
+        conn.execute(
+            'UPDATE content_posts SET caption=?, hashtags=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (caption if caption is not None else post['caption'],
+             hashtags if hashtags is not None else post['hashtags'], post_id)
+        )
+
+
+def set_talent_approval(post_id, approved):
+    """Talent's own sign-off — independent of the admin/manager status
+    workflow (draft/needs_review/approved/...) and its publish dispatch."""
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        conn.execute(
+            'UPDATE content_posts SET talent_approved=?, talent_approved_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (1 if approved else 0,
+             datetime.now().strftime('%Y-%m-%d %H:%M') if approved else None, post_id)
+        )
+
+
+def get_posts_pending_approval(scope=None):
+    """Posts talent hasn't signed off on yet — feeds the dashboard's 'Ready for
+    Your Approval' overview. scope mirrors get_dashboard_stats: None for the
+    org-wide admin/manager view, or a client_id for the client portal."""
+    conn = get_db()
+    pw = ' AND p.client_id = ?' if scope is not None else ''
+    params = (scope,) if scope is not None else ()
+    rows = conn.execute(
+        "SELECT p.*, c.name AS client_name, c.logo_color, "
+        "(SELECT m.filename FROM post_media pm JOIN client_media m ON m.id = pm.media_id "
+        " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC LIMIT 1) AS hero_filename, "
+        "(SELECT m.media_type FROM post_media pm JOIN client_media m ON m.id = pm.media_id "
+        " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC LIMIT 1) AS hero_type "
+        "FROM v_content_active p JOIN v_clients_active c ON c.id = p.client_id "
+        "WHERE p.talent_approved = 0 AND p.status IN ('needs_review','approved','scheduled')" + pw +
+        " ORDER BY (p.scheduled_date IS NULL), p.scheduled_date ASC, p.updated_at DESC",
+        params
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def delete_post(post_id):

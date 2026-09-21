@@ -209,9 +209,19 @@ def inject_user_scope():
 @app.route('/')
 def dashboard():
     # scope=None for admin/manager (org-wide); the client's own id for a client user.
-    stats = db.get_dashboard_stats(scope=current_scope())
+    scope = current_scope()
+    stats = db.get_dashboard_stats(scope=scope)
+    pending_approval = db.get_posts_pending_approval(scope=scope)
+    for p in pending_approval:
+        if p.get('hero_filename'):
+            p['hero_url'] = _media_url(p['client_id'], p['hero_filename'])
+        elif p.get('image_url'):
+            p['hero_url'] = media_src(p['image_url'])
+            p['hero_type'] = 'video' if is_video(p['image_url']) else 'image'
+        else:
+            p['hero_url'] = None
     return render_template('dashboard.html', stats=stats, platforms=PLATFORMS, statuses=STATUSES,
-                           content_types=CONTENT_TYPES, scope=current_scope())
+                           content_types=CONTENT_TYPES, scope=scope, pending_approval=pending_approval)
 
 
 # ── Clients ────────────────────────────────────────────────────────────────────
@@ -867,6 +877,27 @@ def content_status(post_id):
             flash(f'Dispatch failed: {msg}', 'warning')
 
     return redirect(url_for('content_detail', post_id=post_id))
+
+
+@app.route('/api/content/<int:post_id>/review', methods=['PATCH'])
+@require_content_access('post_id')
+def api_content_review(post_id):
+    """Inline caption/hashtags edit + talent sign-off, for the visual review UI
+    on the post detail page and dashboard. Separate from the admin/manager
+    status workflow — ticking this never triggers publish dispatch."""
+    post = g.content_row   # loaded + scope-checked by the decorator
+    # Same rule as content_edit: a client user may act on their own content
+    # only while it hasn't gone out yet.
+    if current_scope() is not None and post.get('status') == 'posted':
+        abort(403)
+
+    data = request.get_json(silent=True) or {}
+    if 'caption' in data or 'hashtags' in data:
+        db.update_post_review(post_id, caption=data.get('caption'), hashtags=data.get('hashtags'))
+    if 'talent_approved' in data:
+        db.set_talent_approval(post_id, bool(data['talent_approved']))
+
+    return jsonify({'ok': True})
 
 
 # ── Webhooks ───────────────────────────────────────────────────────────────────

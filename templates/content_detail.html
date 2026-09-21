@@ -47,18 +47,65 @@
         </div>
 
         <h5 class="mb-3">{{ post.topic }}</h5>
-        <div class="caption-box mb-3">{{ post.caption }}</div>
 
-        {% if post.hook %}
-        <div class="mb-3 p-3 rounded border border-warning bg-warning bg-opacity-10">
-          <small class="fw-bold text-warning d-block mb-1"><i class="bi bi-lightning-fill me-1"></i>Video Hook</small>
-          <span class="fw-semibold">{{ post.hook }}</span>
+        {% set review_locked = current_user.role == 'client' and post.status == 'posted' %}
+        <div class="row g-4">
+          <!-- Large media -->
+          <div class="col-md-6">
+            <div class="review-media-frame">
+              {% if post_media %}
+                {% set hero = post_media[0] %}
+                {% if hero.media_type == 'video' %}
+                <video src="{{ hero.url }}" controls class="review-media"></video>
+                {% else %}
+                <img src="{{ hero.url }}" class="review-media" alt="Post media">
+                {% endif %}
+              {% elif post.image_url %}
+                {% if post.image_url | is_video %}
+                <video src="{{ post.image_url | media_src }}" controls class="review-media"></video>
+                {% else %}
+                <img src="{{ post.image_url | media_src }}" class="review-media" alt="Post image">
+                {% endif %}
+              {% else %}
+                <div class="review-media-empty">
+                  <i class="bi bi-image display-3 opacity-25 d-block mb-2"></i>
+                  <span>No image attached yet</span>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Editable caption + talent sign-off -->
+          <div class="col-md-6 d-flex flex-column">
+            <label class="form-label fw-semibold small text-muted mb-1">Caption</label>
+            <textarea id="captionInput" class="form-control review-caption-input mb-2" rows="8"
+                      {% if review_locked %}disabled{% endif %}>{{ post.caption }}</textarea>
+            <input type="text" id="hashtagsInput" class="form-control form-control-sm mb-1"
+                   placeholder="Hashtags…" value="{{ post.hashtags or '' }}" {% if review_locked %}disabled{% endif %}>
+            <div id="saveStatus" class="small text-muted mb-3">&nbsp;</div>
+
+            {% if post.hook %}
+            <div class="mb-3 p-3 rounded border border-warning bg-warning bg-opacity-10">
+              <small class="fw-bold text-warning d-block mb-1"><i class="bi bi-lightning-fill me-1"></i>Video Hook</small>
+              <span class="fw-semibold">{{ post.hook }}</span>
+            </div>
+            {% endif %}
+
+            <div class="talent-approval-box mt-auto {% if post.talent_approved %}approved{% endif %}" id="talentApprovalBox">
+              <label class="d-flex align-items-center gap-2 mb-0" style="cursor:pointer">
+                <input type="checkbox" id="talentApprovedCheck" class="form-check-input" style="width:1.4em;height:1.4em"
+                       {% if post.talent_approved %}checked{% endif %} {% if review_locked %}disabled{% endif %}>
+                <span class="fw-semibold">Approved by talent</span>
+              </label>
+              <small class="text-muted d-block mt-1" id="talentApprovedMeta">
+                {% if post.talent_approved and post.talent_approved_at %}Approved {{ post.talent_approved_at }}{% else %}Not yet confirmed{% endif %}
+              </small>
+            </div>
+            {% if review_locked %}
+            <small class="text-muted mt-2"><i class="bi bi-lock-fill me-1"></i>This post has already gone out — contact your team for changes.</small>
+            {% endif %}
+          </div>
         </div>
-        {% endif %}
-
-        {% if post.hashtags %}
-        <div class="hashtag-box">{{ post.hashtags }}</div>
-        {% endif %}
 
         {% if post.scheduled_date %}
         <div class="mt-3">
@@ -71,24 +118,6 @@
           {% if post.posted_url %}
           <a href="{{ post.posted_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">
             <i class="bi bi-box-arrow-up-right me-1"></i>View Live Post
-          </a>
-          {% endif %}
-        </div>
-        {% endif %}
-        {% if post.image_url %}
-        {% set media_href = post.image_url | media_src %}
-        <div class="mt-3">
-          <small class="text-muted fw-semibold d-block mb-1">
-            <i class="bi bi-{% if post.image_url | is_video %}camera-video{% else %}image{% endif %} me-1"></i>
-            {% if post.image_url | is_video %}Video{% else %}Image{% endif %}
-          </small>
-          {% if post.image_url | is_video %}
-          <video src="{{ media_href }}" controls preload="metadata"
-                 class="img-thumbnail" style="max-height:180px"></video>
-          {% else %}
-          <a href="{{ media_href }}" target="_blank" rel="noopener">
-            <img src="{{ media_href }}" alt="Post image"
-                 class="img-thumbnail" style="max-height:180px;object-fit:cover">
           </a>
           {% endif %}
         </div>
@@ -540,6 +569,59 @@
 const POST_ID    = {{ post.id }};
 const CLIENT_ID  = {{ post.client_id }};
 const POST_CONTENT_TYPE = {{ (post.content_type or "post") | tojson }};
+
+// ── Caption / hashtags autosave ─────────────────────────────────────────────
+const captionInput  = document.getElementById('captionInput');
+const hashtagsInput = document.getElementById('hashtagsInput');
+const saveStatus    = document.getElementById('saveStatus');
+let reviewTimer;
+
+if (captionInput && !captionInput.disabled) {
+  function scheduleReviewSave() {
+    clearTimeout(reviewTimer);
+    saveStatus.textContent = 'Editing…';
+    reviewTimer = setTimeout(async () => {
+      saveStatus.textContent = 'Saving…';
+      try {
+        const res = await fetch(`/api/content/${POST_ID}/review`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caption: captionInput.value, hashtags: hashtagsInput.value }),
+        });
+        saveStatus.textContent = res.ok ? 'Saved' : 'Failed to save';
+      } catch (e) {
+        saveStatus.textContent = 'Failed to save';
+      }
+    }, 800);
+  }
+  captionInput.addEventListener('input', scheduleReviewSave);
+  hashtagsInput.addEventListener('input', scheduleReviewSave);
+}
+
+// ── Talent approval checkbox ────────────────────────────────────────────────
+const talentCheck = document.getElementById('talentApprovedCheck');
+const talentBox   = document.getElementById('talentApprovalBox');
+const talentMeta  = document.getElementById('talentApprovedMeta');
+if (talentCheck && !talentCheck.disabled) {
+  talentCheck.addEventListener('change', async () => {
+    const approved = talentCheck.checked;
+    talentBox.classList.toggle('approved', approved);
+    talentMeta.textContent = 'Saving…';
+    try {
+      const res = await fetch(`/api/content/${POST_ID}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ talent_approved: approved }),
+      });
+      if (!res.ok) throw new Error();
+      talentMeta.textContent = approved ? 'Approved just now' : 'Not yet confirmed';
+    } catch (e) {
+      talentMeta.textContent = 'Failed to save — try again';
+      talentCheck.checked = !approved;
+      talentBox.classList.toggle('approved', !approved);
+    }
+  });
+}
 
 // ── Preview modal ────────────────────────────────────────────────────────────
 document.getElementById('previewPostBtn').addEventListener('click', () => {
