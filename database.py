@@ -989,31 +989,51 @@ def get_performance(post_id):
 def get_repurpose_candidates(client_id):
     """Posted video/reel content for this client, with its latest performance
     snapshot — weakest reach first, since those are the most likely
-    repurposing candidates. Feeds the reel-repurposer picker."""
+    repurposing candidates. Feeds the reel-repurposer picker.
+
+    Exactly one snapshot per post: recorded_at has one-second resolution, so two
+    snapshots can share it, and matching on MAX(recorded_at) listed the post once
+    per tie. The later row wins a tie. Posts with no snapshot have NULL metrics
+    and sort last. Only the columns the picker shows are returned — not the
+    caption or a saved package."""
     conn = get_db()
     rows = conn.execute('''
-        SELECT p.*,
+        SELECT p.id, p.client_id, p.platform, p.content_type, p.topic, p.posted_date,
+               p.posted_url, lm.recorded_at AS metrics_recorded_at,
                lm.likes, lm.comments, lm.shares, lm.saves, lm.views, lm.reach, lm.impressions, lm.clicks
         FROM v_content_active p
-        LEFT JOIN (
-            SELECT m1.* FROM performance_metrics m1
-            WHERE m1.recorded_at = (
-                SELECT MAX(m2.recorded_at) FROM performance_metrics m2 WHERE m2.post_id = m1.post_id
-            )
-        ) lm ON lm.post_id = p.id
+        JOIN v_clients_active c ON c.id = p.client_id
+        LEFT JOIN performance_metrics lm ON lm.id = (
+            SELECT m.id FROM performance_metrics m WHERE m.post_id = p.id
+            ORDER BY m.recorded_at DESC, m.id DESC LIMIT 1
+        )
         WHERE p.client_id = ? AND p.status = 'posted' AND p.content_type IN ('video', 'reel')
-        ORDER BY (lm.reach IS NULL), lm.reach ASC, p.posted_date DESC
+        ORDER BY (lm.reach IS NULL), lm.reach ASC, p.posted_date DESC, p.id DESC
     ''', (client_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
+def get_latest_performance(post_id):
+    """A post's most recent metrics snapshot, or None. Same tie rule as
+    get_repurpose_candidates, so the picker and the prompt read the same row."""
+    conn = get_db()
+    row = conn.execute(
+        'SELECT * FROM performance_metrics WHERE post_id=? '
+        'ORDER BY recorded_at DESC, id DESC LIMIT 1', (post_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def set_repurpose_brief(post_id, brief):
+    # updated_at is left alone on purpose: it orders the Content Library, and a
+    # note about a published post is not an edit of the post. The package carries
+    # its own timestamp.
     with write_db() as conn:                                # guard raises -> must not leak
         _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
         conn.execute(
-            'UPDATE content_posts SET repurpose_brief=?, repurpose_brief_generated_at=?, '
-            'updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            'UPDATE content_posts SET repurpose_brief=?, repurpose_brief_generated_at=? '
+            'WHERE id=?',
             (brief, datetime.now().strftime('%Y-%m-%d %H:%M'), post_id)
         )
 

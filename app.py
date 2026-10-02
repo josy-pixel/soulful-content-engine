@@ -785,8 +785,7 @@ def api_reel_repurpose_generate():
                        or db.get_brand_voice(post['client_id'], 'general') or {})
     voice_document, sample_captions = db.get_client_voice(post['client_id'])
 
-    metrics = db.get_performance(int(post_id))
-    m = metrics[0] if metrics else {}
+    m = db.get_latest_performance(int(post_id)) or {}
     performance_summary = (
         'Topic: %s\nPlatform: %s\nPosted: %s\n'
         'Likes: %s, Comments: %s, Shares: %s, Saves: %s, Views: %s, Reach: %s, Impressions: %s'

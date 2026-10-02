@@ -236,3 +236,105 @@ def test_page_reads_each_response_once_and_handles_failures(client, data):
     assert "res.json()" not in script             # one read, then parse: never twice
     assert script.count("await readJson(") == 3  # candidates, generate, save
     assert "catch (e)" in html.split("saveBtn").pop()
+
+
+# ── the picker's query ───────────────────────────────────────────────────────
+
+def _snapshot(post_id, reach, recorded_at, views=1):
+    conn = db.get_db()
+    conn.execute("INSERT INTO performance_metrics (post_id, reach, views, recorded_at) "
+                 "VALUES (?, ?, ?, ?)", (post_id, reach, views, recorded_at))
+    conn.commit()
+    conn.close()
+
+
+def test_candidates_latest_snapshot_one_row_each_weakest_first(data):
+    post, ca = data["post"], data["ca"]
+    tie = post(ca, topic="tie")
+    two = post(ca, "video", topic="two snapshots")
+    weak = post(ca, topic="weak")
+    _snapshot(two, 50, "2026-08-01 10:00:00")
+    _snapshot(two, 5000, "2026-09-02 10:00:00")        # the later one counts
+    _snapshot(tie, 100, "2026-09-01 10:00:00")
+    _snapshot(tie, 200, "2026-09-01 10:00:00")         # same second: the later row wins
+    _snapshot(weak, 10, "2026-09-03 10:00:00")
+    rows = db.get_repurpose_candidates(ca)
+    ids = [r["id"] for r in rows]
+    assert len(ids) == len(set(ids)), "a post listed twice"
+    by_id = {r["id"]: r for r in rows}
+    assert by_id[two]["reach"] == 5000
+    assert by_id[tie]["reach"] == 200
+    assert ids[:3] == [weak, tie, two]                 # weakest reach first
+    assert ids[-1] == data["reel_a"]                   # no snapshot: listed, last
+    assert by_id[data["reel_a"]]["reach"] is None      # ...as no data, not as zero
+
+
+def test_candidates_only_posted_video_and_reel_of_live_posts_and_clients(data):
+    post, ca = data["post"], data["ca"]
+    story = post(ca, "story", topic="story")
+    draft_reel = post(ca, "reel", "draft", topic="draft reel")
+    approved = post(ca, "video", "approved", topic="approved video")
+    gone = post(ca, topic="soft-deleted")
+    conn = db.get_db()
+    conn.execute("UPDATE content_posts SET deleted_at='2026-09-30' WHERE id=?", (gone,))  # raw-query-ok: test setup, must reach the base table
+    conn.commit()
+    conn.close()
+    ids = [r["id"] for r in db.get_repurpose_candidates(ca)]
+    assert ids == [data["reel_a"]]
+    assert not {story, draft_reel, approved, gone, data["photo_a"]} & set(ids)
+    assert "repurpose_brief" not in db.get_repurpose_candidates(ca)[0]   # picker gets no bodies
+
+    db.soft_delete_client(data["cb"])
+    assert db.get_repurpose_candidates(data["cb"]) == []
+
+
+def test_candidates_route_returns_the_same_rows(client, data):
+    login_as(client, data["admin"])
+    r = client.get("/api/reel-repurpose/candidates/%d" % data["ca"])
+    assert r.status_code == 200
+    assert [c["id"] for c in r.get_json()] == [data["reel_a"]]
+
+
+def test_saving_a_package_does_not_reorder_the_content_library(client, data):
+    conn = db.get_db()
+    conn.execute("UPDATE content_posts SET updated_at='2026-01-01 00:00:00' WHERE id=?",  # raw-query-ok: test setup
+                 (data["reel_a"],))
+    conn.commit()
+    conn.close()
+    before = [p["id"] for p in db.get_posts(client_id=data["ca"])]
+    login_as(client, data["admin"])
+    assert _save(client, data["reel_a"]).status_code == 200
+    post = db.get_post(data["reel_a"])
+    assert post["updated_at"] == "2026-01-01 00:00:00"
+    assert post["repurpose_brief_generated_at"]
+    assert [p["id"] for p in db.get_posts(client_id=data["ca"])] == before
+
+
+def test_existing_database_gains_the_package_columns_on_boot(monkeypatch, tmp_path):
+    """The live database predates these columns; CREATE TABLE never runs on it.
+    Build one the way it is today — every column but these two — and boot."""
+    import sqlite3
+    if sqlite3.sqlite_version_info < (3, 35):
+        pytest.skip("needs ALTER TABLE DROP COLUMN to build the old schema")
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "live_like.db"))
+    db.init_db()
+    conn = db.get_db()
+    conn.executescript("""
+        DROP VIEW v_content_active;
+        ALTER TABLE content_posts DROP COLUMN repurpose_brief_generated_at;
+        ALTER TABLE content_posts DROP COLUMN repurpose_brief;
+    """)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(content_posts)")]
+    conn.close()
+    assert "repurpose_brief" not in cols
+
+    db.init_db()                                       # the deploy
+    conn = db.get_db()
+    view_cols = [r[1] for r in conn.execute("PRAGMA table_info(v_content_active)")]
+    conn.close()
+    assert {"repurpose_brief", "repurpose_brief_generated_at"} <= set(view_cols)
+    cid = db.create_client({"name": "Old DB client"})
+    pid = db.create_post({"client_id": cid, "platform": "facebook", "content_type": "reel",
+                          "topic": "t", "caption": "c"})
+    db.set_repurpose_brief(pid, "package")
+    assert db.get_post(pid)["repurpose_brief"] == "package"
