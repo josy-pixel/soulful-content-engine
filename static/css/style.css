@@ -467,6 +467,11 @@ body {
 
 .approval-check-label { cursor: pointer; }
 
+/* mobile.css gives every input a 48px min-height for touch; on a checkbox that
+   only stretches the box into a bar. The label around it is the tap target. */
+.talent-approval-box .form-check-input,
+.approval-check { min-height: 0; }
+
 /* ── Workflow stepper ───────────────────────────────────────────────────────── */
 .workflow-stepper {
   display: flex;
