@@ -2,8 +2,9 @@ import os
 import json
 import uuid
 import secrets
-import requests
+import tempfile
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ import config
 import webhooks
 import s3_media
 import media_rules
+import media_ingest
 import auth
 import security
 from security import (current_scope, enforce_client_id, require_content_access,
@@ -65,11 +67,6 @@ ALLOWED_VIDEOS = {'mp4', 'mov', 'avi', 'webm'}
 ALLOWED_EXTENSIONS = ALLOWED_IMAGES | ALLOWED_VIDEOS
 MAX_UPLOAD_MB = int(os.environ.get('MAX_UPLOAD_MB', '200'))
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
-# Fallback when a fetched media_url has no usable extension of its own.
-ALLOWED_MEDIA_MIME = {
-    'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
-    'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
-}
 
 
 def _allowed_file(filename):
@@ -971,7 +968,9 @@ def webhook_media_ingest():
     the X-Api-Key header; the key decides which client the file belongs to.
 
     Either send the file directly (multipart, field "file"), or a JSON body
-    with "media_url" for the server to fetch. Either way, these fields:
+    with "media_url" for the server to fetch — an https link on an allowed
+    media host (MEDIA_INGEST_ALLOWED_HOSTS; Meta's CDNs by default, see
+    media_ingest.py). Stored in S3 only. Either way, these fields:
         source       "instagram" | "tiktok" | "web" (default "web")
         source_url   the original post/page, for the editor's context
         caption_hint the original caption, if any
@@ -980,77 +979,72 @@ def webhook_media_ingest():
     # carries no client — accepting it here would let whoever holds it file media
     # under any client they name. Nothing calls this endpoint yet, so there is no
     # old scenario to keep working. A key in a body or a query string ends up in logs.
-    key = (request.headers.get('X-Api-Key') or '').strip()
-    cid = db.client_id_for_api_key(key) if key else None
+    api_key = (request.headers.get('X-Api-Key') or '').strip()
+    cid = db.client_id_for_api_key(api_key) if api_key else None
     if cid is None or not db.get_client(cid):     # unknown, revoked, or client deleted
         return jsonify({'error': 'Forbidden'}), 403
 
-    is_multipart = bool(request.files)
-    data = request.form.to_dict() if is_multipart else (request.get_json(silent=True) or {})
+    # The bucket or nowhere. The Render disk is 1 GB and holds the database too;
+    # raw reels landing there would fill it and take the database down with them.
+    if not s3_media.enabled():
+        return jsonify({'error': 'Media ingest is not configured on this server.'}), 503
+
+    is_multipart = request.mimetype == 'multipart/form-data'
+    data = request.form if is_multipart else (request.get_json(silent=True) or {})
 
     source = (data.get('source') or 'web').strip().lower()
     source_url = (data.get('source_url') or '').strip()
     caption_hint = (data.get('caption_hint') or '').strip()
 
-    filename = None
-    content_type = None
-    raw = None
+    # Neither path holds the file in memory: werkzeug spools a sizeable upload to a
+    # temp file, and a fetched link is streamed into one.
+    spool = None
+    try:
+        if is_multipart:
+            f = request.files.get('file')
+            if not f or not f.filename:
+                return jsonify({'error': 'No file provided.'}), 400
+            mime, ext = media_ingest.resolve_type(f.mimetype, media_ingest.ext_of(f.filename))
+            body = f.stream
+            body.seek(0, os.SEEK_END)
+            size = body.tell()
+            body.seek(0)
+            original = f.filename
+        else:
+            media_url = (data.get('media_url') or '').strip()
+            if not media_url:
+                return jsonify({'error': 'Provide either a "file" upload or a "media_url".'}), 400
+            spool = body = tempfile.TemporaryFile()
+            content_type, final_url, size = media_ingest.fetch_to_file(
+                media_url, spool, app.config['MAX_CONTENT_LENGTH'])
+            path = urlsplit(final_url).path
+            mime, ext = media_ingest.resolve_type(content_type, media_ingest.ext_of(path))
+            body.seek(0)
+            original = path.rsplit('/', 1)[-1]
+        if not size:
+            return jsonify({'error': 'No media data received.'}), 400
 
-    if is_multipart:
-        f = request.files.get('file')
-        if not f or not f.filename:
-            return jsonify({'error': 'No file provided.'}), 400
-        filename = f.filename
-        content_type = f.content_type
-        raw = f.read()
-    else:
-        media_url = (data.get('media_url') or '').strip()
-        if not media_url:
-            return jsonify({'error': 'Provide either a "file" upload or a "media_url".'}), 400
+        key = s3_media.build_key(cid, 'ingest.' + ext)          # server-side, from the key's client
         try:
-            resp = requests.get(media_url, stream=True, timeout=15,
-                                headers={'User-Agent': 'Mozilla/5.0 (compatible; SoulfulContentEngine/1.0)'})
-            resp.raise_for_status()
-        except requests.RequestException as e:
-            return jsonify({'error': 'Could not fetch media_url: %s' % e}), 400
-        content_type = resp.headers.get('Content-Type', '').split(';')[0].strip()
-        chunks, total = [], 0
-        for chunk in resp.iter_content(chunk_size=65536):
-            total += len(chunk)
-            if total > app.config['MAX_CONTENT_LENGTH']:
-                return jsonify({'error': 'File exceeds the maximum upload size.'}), 400
-            chunks.append(chunk)
-        raw = b''.join(chunks)
-        filename = media_url.rsplit('/', 1)[-1].split('?')[0] or 'media'
+            s3_media.upload(key, body, mime)
+        except Exception:                                        # noqa: BLE001 - boto raises many kinds
+            log.exception('media-ingest: storing %s for client %s failed', key, cid)
+            return jsonify({'error': 'Could not store the media file. Try again later.'}), 502
+    except media_ingest.Refused as e:
+        log.warning('media-ingest refused for client %s: %s (%s)', cid, e, e.detail)
+        return jsonify({'error': str(e)}), e.status
+    except media_ingest.FetchFailed as e:
+        log.warning('media-ingest fetch failed for client %s: %s', cid, e)
+        return jsonify({'error': 'Could not fetch the media file from media_url.'}), 502
+    finally:
+        if spool is not None:
+            spool.close()                                        # a TemporaryFile deletes itself
 
-    if not raw:
-        return jsonify({'error': 'No media data received.'}), 400
-
-    if not _allowed_file(filename):
-        # A fetched URL often has no real extension — fall back to Content-Type.
-        ext = ALLOWED_MEDIA_MIME.get((content_type or '').lower())
-        if not ext:
-            return jsonify({'error': 'Unrecognised or disallowed file type.'}), 400
-        filename = filename.rsplit('.', 1)[0] + '.' + ext
-
-    mtype = _media_type(filename)
-    ext = filename.rsplit('.', 1)[1].lower()
-    unique_name = '%s.%s' % (uuid.uuid4().hex, ext)
-
-    if s3_media.enabled():
-        key = s3_media.build_key(cid, unique_name)
-        s3_media.put(key, raw, content_type)
-        media_id = db.add_media(cid, key.rsplit('/', 1)[-1], filename, mtype, len(raw),
-                                caption_hint, '[]', storage='s3', s3_key=key,
-                                edit_status='needs_editing', source=source, source_url=source_url)
-    else:
-        save_dir = _upload_dir(cid)
-        with open(os.path.join(save_dir, unique_name), 'wb') as out:
-            out.write(raw)
-        media_id = db.add_media(cid, unique_name, filename, mtype, len(raw),
-                                caption_hint, '[]', storage='local', s3_key=None,
-                                edit_status='needs_editing', source=source, source_url=source_url)
-
+    filename = key.rsplit('/', 1)[-1]
+    media_id = db.add_media(cid, filename, secure_filename(original) or filename,
+                            media_rules.kind_of_filename(filename), size, caption_hint, '[]',
+                            storage='s3', s3_key=key,
+                            edit_status='needs_editing', source=source, source_url=source_url)
     return jsonify({'ok': True, 'media_id': media_id}), 201
 
 
