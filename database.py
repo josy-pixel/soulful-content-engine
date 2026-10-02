@@ -1160,6 +1160,20 @@ def get_report_data(start_date, end_date):
     }
 
 
+def get_client_trends(client_id, platform, limit=8):
+    """The trends a plan for this client may draw on: the org-wide ones
+    (client_id IS NULL) and the ones generated for this client — never a trend
+    generated for another client."""
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT * FROM trends WHERE platform = ? AND (client_id IS NULL OR client_id = ?) '
+        'ORDER BY created_at DESC, id DESC LIMIT ?',
+        (platform, client_id, limit),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def get_trends(platform=None, limit=50):
     conn = get_db()
     query = 'SELECT * FROM trends'

@@ -830,13 +830,18 @@ def api_bulk_plan():
         base_date = datetime.now()
 
     count = days * per_day
+    # The same voice the writer will use: the platform's settings, else general.
+    brand_voice = dict(db.get_brand_voice(client_id, platform) or db.get_brand_voice(client_id, 'general') or {})
+    voice_document, _ = db.get_client_voice(client_id)
     performance_rows = db.get_recent_performance(client_id, days=7) if data.get('include_performance', True) else []
-    trend_rows = db.get_trends(platform=platform, limit=8) if data.get('include_trends', True) else []
+    # Org-wide trends and this client's own — never one generated for another client.
+    trend_rows = db.get_client_trends(client_id, platform, limit=8) if data.get('include_trends', True) else []
     trend_texts = [t['trend_text'] for t in trend_rows]
 
     topics, err = ai.plan_week(client['name'], client.get('description') or '', theme,
                                platform, count, trends_list=trend_texts,
-                               performance_rows=performance_rows)
+                               performance_rows=performance_rows, content_type=content_type,
+                               voice_constraints=ve.planning_constraints(voice_document, brand_voice))
     if err:
         return jsonify({'error': err}), 500
 
@@ -854,7 +859,10 @@ def api_bulk_plan():
         day_offset, slot = divmod(i, per_day)
         when = (base_date + timedelta(days=day_offset)).replace(
             hour=BULK_HOUR_SLOTS[slot], minute=0, second=0, microsecond=0)
-        posts.append({'topic': topic, 'scheduled_date': when.strftime('%Y-%m-%dT%H:%M')})
+        # The planner is told the banned words; this is the check that it listened.
+        # A topic that slipped one in is held on the page for a person to edit.
+        posts.append({'topic': topic, 'scheduled_date': when.strftime('%Y-%m-%dT%H:%M'),
+                      'banned': ve.banned_in(topic, brand_voice)})
 
     return jsonify({
         'ok': True,

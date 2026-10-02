@@ -490,3 +490,71 @@ def test_a_batch_without_a_usable_client_id_is_400(client, data, claude, cid):
     assert post_json(client, "/api/bulk-plan", plan_body(cid)).status_code == 400
     assert post_json(client, "/api/bulk-save", save_body(cid)).status_code == 400
     assert claude.calls == [] and db.get_posts() == []
+
+
+# ── the plan hears this client's voice and trends, and nobody else's ──────────
+
+def _plan_call(claude):
+    return [c for c in claude.calls if c["kind"] == "plan"][0]
+
+
+def test_the_plan_uses_this_clients_trends_and_the_org_wide_ones_only(client, data, claude):
+    db.add_trends([
+        {"platform": "instagram", "trend_text": "ORG-WIDE quiet luxury"},
+        {"platform": "instagram", "trend_text": "ALPHA morning pages", "client_id": data["ca"]},
+        {"platform": "instagram", "trend_text": "BRAVO gym tour", "client_id": data["cb"]},
+        {"platform": "facebook", "trend_text": "ALPHA facebook-only", "client_id": data["ca"]},
+    ])
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"]))
+    used = r.get_json()["trends_used"]
+    assert sorted(used) == ["ALPHA morning pages", "ORG-WIDE quiet luxury"]
+    prompt = _plan_call(claude)["user"]
+    assert "BRAVO gym tour" not in prompt and "ALPHA facebook-only" not in prompt
+
+
+def test_the_plan_is_given_the_voice_document_and_banned_words(client, data, claude):
+    db.update_client_voice(data["ca"], "VOICE DOC: short, steady sentences.", ["A sample."])
+    db.upsert_brand_voice(data["ca"], "instagram", {"avoid_words": json.dumps(["journey", "unlock"])})
+    login_as(client, data["admin"])
+    post_json(client, "/api/bulk-plan", plan_body(data["ca"]))
+    system = _plan_call(claude)["system"]
+    assert "VOICE DOC: short, steady sentences." in system
+    assert "NEVER USE" in system and "journey, unlock" in system
+    assert "EMOJI:" not in system and "LENGTH:" not in system   # unset settings add nothing
+
+
+def test_a_client_with_no_voice_settings_gets_no_injected_rules(client, data, claude):
+    login_as(client, data["admin"])
+    post_json(client, "/api/bulk-plan", plan_body(data["cb"]))
+    system = _plan_call(claude)["system"]
+    for absent in ("BRAND VOICE DOCUMENT", "NEVER USE", "EMOJI", "LENGTH", "emoji"):
+        assert absent not in system
+
+
+def test_a_topic_that_carries_a_banned_word_is_flagged_for_an_edit(client, data, monkeypatch):
+    fake = FakeClaude(plan_reply=json.dumps([
+        {"day": 0, "topic": "Your Journey back to calm"},
+        {"day": 1, "topic": "The journeyman's quiet morning"},     # a different word
+        {"day": 2, "topic": "Unlock: three slow habits"},
+    ]))
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key-never-sent')
+    monkeypatch.setattr(anthropic, 'Anthropic', fake.client_cls)
+    db.upsert_brand_voice(data["ca"], "instagram", {"avoid_words": json.dumps(["journey", "unlock"])})
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"], days=3))
+    assert [p["banned"] for p in r.get_json()["posts"]] == [["journey"], [], ["unlock"]]
+
+
+def test_the_plan_prompt_carries_no_dead_cache_marker(client, data, claude, monkeypatch):
+    seen = {}
+    real = claude._create
+
+    def spy(system, messages):
+        seen["system"] = system
+        return real(system, messages)
+
+    monkeypatch.setattr(claude, "_create", spy)
+    login_as(client, data["admin"])
+    post_json(client, "/api/bulk-plan", plan_body(data["ca"]))
+    assert isinstance(seen["system"], str)       # a plain prompt, no cache_control block

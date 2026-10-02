@@ -187,11 +187,14 @@ def generate_trends(clients_summary, platform):
 
 
 def plan_week(client_name, description, theme, platform, count,
-              trends_list=None, performance_rows=None):
+              trends_list=None, performance_rows=None, content_type=None,
+              voice_constraints=''):
     """Break a week's direction into `count` distinct daily topics, informed by
     recent performance and current trends — the planning step ahead of writing
-    each post in the client's voice. Returns (topics, error) where topics is a
-    list of {"day": int, "topic": str}."""
+    each post in the client's voice. `voice_constraints` is the part of the
+    client's rulebook a topic must respect (voice_engine.planning_constraints);
+    empty adds nothing. Returns (topics, error) where topics is a list of
+    {"day": int, "topic": str}."""
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
         return None, 'ANTHROPIC_API_KEY not set.'
@@ -214,7 +217,8 @@ def plan_week(client_name, description, theme, platform, count,
 
     prompt = (
         f"You are planning a week of {platform} content for {client_name}"
-        f"{(' — ' + description) if description else ''}.\n\n"
+        f"{(' — ' + description) if description else ''}"
+        f"{(' — every post is a ' + content_type) if content_type else ''}.\n\n"
         f"THIS WEEK'S DIRECTION:\n{theme}\n\n"
         f"WHAT WORKED RECENTLY (last 7 days of performance):\n{perf_text}\n\n"
         f"CURRENT TRENDING THEMES TO CONSIDER (use only what genuinely fits — never force one):\n{trends_text}\n\n"
@@ -226,15 +230,21 @@ def plan_week(client_name, description, theme, platform, count,
         f"a copywriter could write a caption from directly — not a vague theme).\n"
         f'Example: [{{"day": 0, "topic": "..."}}, ...]'
     )
+    system_text = ('You are a social media content strategist. '
+                   'Return only a valid JSON array, no markdown, no explanation.')
+    if voice_constraints:
+        system_text += (
+            "\n\nEvery post will be written in the client's own voice under the rules "
+            "below. Plan only topics those rules allow, and never put a banned word or "
+            "phrase into a topic.\n\n" + voice_constraints)
+    # No cache_control: this runs once per batch, so a cache write would cost more
+    # and never be read back — and without a voice document the prompt is far
+    # below the model's minimum cacheable length anyway.
     try:
         response = client.messages.create(
             model='claude-sonnet-4-6',
             max_tokens=1536,
-            system=[{
-                'type': 'text',
-                'text': 'You are a social media content strategist. Return only a valid JSON array, no markdown, no explanation.',
-                'cache_control': {'type': 'ephemeral'},
-            }],
+            system=system_text,
             messages=[{'role': 'user', 'content': prompt}],
         )
         raw = response.content[0].text.strip()

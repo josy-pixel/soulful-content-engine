@@ -316,7 +316,14 @@ async function planWeek() {
       platform: data.platform,
       contentType: data.content_type,
       theme: data.theme,
-      items: data.posts.map(p => ({ topic: p.topic, scheduled_date: p.scheduled_date, state: 'queued' })),
+      // A topic carrying one of the client's banned words is held for an edit,
+      // not written: the writer would be asked to build a caption around it.
+      items: data.posts.map(p => ({
+        topic: p.topic,
+        scheduled_date: p.scheduled_date,
+        banned: p.banned || [],
+        state: (p.banned && p.banned.length) ? 'held' : 'queued',
+      })),
     };
     saved = false;
     renderBatch(data);
@@ -399,6 +406,7 @@ function stateBadge(item) {
     case 'queued':  return '<span class="badge bg-light text-muted border">Waiting</span>';
     case 'writing': return '<span class="badge bg-info text-dark">Writing…</span>';
     case 'failed':  return '<span class="badge bg-danger">Failed</span>';
+    case 'held':    return '<span class="badge bg-warning text-dark">Needs an edit</span>';
     default:        return '';
   }
 }
@@ -430,6 +438,10 @@ function paintItem(b, item) {
     body = `
       <p class="small text-danger mb-2">${escapeHtml(item.error)}</p>
       <button class="btn btn-sm btn-outline-primary retry-btn"><i class="bi bi-arrow-clockwise me-1"></i>Retry this post</button>`;
+  } else if (item.state === 'held') {
+    body = `
+      <p class="small text-danger mb-2">This topic uses ${item.banned.map(w => `"${escapeHtml(w)}"`).join(', ')}, on this client's banned list. Edit the topic, then write the post.</p>
+      <button class="btn btn-sm btn-outline-primary retry-btn"><i class="bi bi-pencil me-1"></i>Write this post</button>`;
   } else if (item.state === 'writing') {
     body = '<p class="small text-muted mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Writing and voice-checking…</p>';
   } else {
@@ -453,9 +465,20 @@ function paintItem(b, item) {
   if (retry) {
     retry.disabled = inFlight >= IN_FLIGHT;
     retry.addEventListener('click', () => {
-      if (inFlight < IN_FLIGHT) writeItem(b, item);
+      if (inFlight >= IN_FLIGHT) return;
+      const still = item.state === 'held' ? stillBanned(readTopic(item), item.banned) : [];
+      if (still.length) {
+        alert(`The topic still uses ${still.map(w => `"${w}"`).join(', ')}. Edit it first.`);
+        return;
+      }
+      writeItem(b, item);
     });
   }
+}
+
+function stillBanned(text, words) {
+  const escape = w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return words.filter(w => new RegExp(`(^|[^\\w])${escape(w)}($|[^\\w])`, 'i').test(text));
 }
 
 function removeItem(item) {
@@ -469,6 +492,7 @@ function updateBatchCounts() {
   const total = liveItems().length;
   const done = countOf('done');
   const failed = countOf('failed');
+  const held = countOf('held');
   const pending = countOf('queued') + countOf('writing');
 
   const badge = document.getElementById('batchCount');
@@ -479,8 +503,9 @@ function updateBatchCounts() {
   let line = `${done} of ${total} written`;
   if (pending) line += ' — writing the rest…';
   if (failed) line += ` · ${failed} failed: retry or remove ${failed === 1 ? 'it' : 'them'}`;
+  if (held) line += ` · ${held} need${held === 1 ? 's' : ''} an edited topic`;
   progress.textContent = total ? line : '';
-  progress.className = 'small fw-semibold mb-3 ' + (failed ? 'text-danger' : 'text-muted');
+  progress.className = 'small fw-semibold mb-3 ' + (failed || held ? 'text-danger' : 'text-muted');
 
   document.getElementById('saveCountLabel').textContent =
     `${done} post${done === 1 ? '' : 's'} will be created` + (pending ? ' (still writing…)' : '');
@@ -503,7 +528,7 @@ async function saveBatch() {
     return;
   }
   const left = items.length - ready.length;
-  if (left && !confirm(`${left} post${left === 1 ? '' : 's'} failed and will not be saved. Save the other ${ready.length}?`)) {
+  if (left && !confirm(`${left} post${left === 1 ? ' was' : 's were'} not written and will not be saved. Save the other ${ready.length}?`)) {
     return;
   }
 
