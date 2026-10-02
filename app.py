@@ -765,6 +765,24 @@ def _repurposable_post(raw_id):
     return post, None
 
 
+def _repurpose_performance_summary(post, snapshot):
+    """What the app measured for this post, as the prompt reads it. No snapshot
+    is said in words: printed as zeros it read to the model as a total flop."""
+    lines = ['Topic: %s' % post['topic'],
+             'Platform: %s' % post['platform'],
+             'Content type: %s' % post.get('content_type'),
+             'Posted: %s' % (post.get('posted_date') or 'unknown')]
+    if not snapshot:
+        lines.append('Metrics: no performance data recorded in the app for this post.')
+    else:
+        lines.append('Latest metrics snapshot (recorded %s): Likes: %s, Comments: %s, '
+                     'Shares: %s, Saves: %s, Views: %s, Reach: %s, Impressions: %s, Clicks: %s'
+                     % tuple([snapshot.get('recorded_at')] +
+                             [snapshot.get(k) for k in ('likes', 'comments', 'shares', 'saves',
+                                                        'views', 'reach', 'impressions', 'clicks')]))
+    return '\n'.join(lines)
+
+
 @app.route('/reel-repurposer')
 @roles_required(*REEL_REPURPOSER_ROLES)
 def reel_repurposer():
@@ -801,7 +819,6 @@ def api_reel_repurpose_generate():
     post, err = _repurposable_post(data.get('post_id'))
     if err:
         return err
-    post_id = post['id']
     if not source_material:
         return jsonify({'error': "Source material is required — Claude can't watch video, "
                                  'so paste a transcript or shot list first.'}), 400
@@ -810,18 +827,13 @@ def api_reel_repurpose_generate():
                        or db.get_brand_voice(post['client_id'], 'general') or {})
     voice_document, sample_captions = db.get_client_voice(post['client_id'])
 
-    m = db.get_latest_performance(int(post_id)) or {}
-    performance_summary = (
-        'Topic: %s\nPlatform: %s\nPosted: %s\n'
-        'Likes: %s, Comments: %s, Shares: %s, Saves: %s, Views: %s, Reach: %s, Impressions: %s'
-        % (post['topic'], post['platform'], post.get('posted_date') or 'unknown',
-           m.get('likes', 0), m.get('comments', 0), m.get('shares', 0),
-           m.get('saves', 0), m.get('views', 0), m.get('reach', 0), m.get('impressions', 0))
-    )
+    performance_summary = _repurpose_performance_summary(
+        post, db.get_latest_performance(post['id']))
 
     result = ve.build_reel_repurpose(post['client_name'], brand_voice, voice_document,
                                      sample_captions, source_material, performance_summary,
-                                     extra_context=extra_context, debug=config.DEBUG_ENGINE)
+                                     extra_context=extra_context, platform=post['platform'],
+                                     debug=config.DEBUG_ENGINE)
     if result.get('error'):
         return jsonify({'error': result['error']}), 500
     return jsonify({'ok': True, 'package': result['package'],

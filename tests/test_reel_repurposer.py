@@ -383,3 +383,103 @@ def test_source_material_and_package_are_required(client, data, claude):
     assert _generate(client, data["reel_a"], material="   ").status_code == 400
     assert _save(client, data["reel_a"], package="  ").status_code == 400
     assert claude.calls == []
+
+
+# ── what Claude is told ──────────────────────────────────────────────────────
+
+import json  # noqa: E402
+
+DOC = "Never say 'journey'. Reels stay under 45 seconds. Short, steady sentences."
+VOICE = {"tone": "TONE_MARK", "style": "STYLE_MARK", "target_audience": "AUDIENCE_MARK",
+         "keywords": json.dumps(["KEYWORD_MARK"]),
+         "avoid_words": json.dumps(["BANNED_ONE", "BANNED_TWO"])}
+FACEBOOK_ONLY = ("Content Monetization", "qualified views", "70-90s", "60-99s",
+                 "Sound Collection", "$0.00", "sub-60s", "trending", "earn")
+
+
+def _prompt(claude, voice=None, doc="", samples=(), platform="instagram"):
+    ve.build_reel_repurpose("Holly", voice or {}, doc, list(samples), "0:00 talking head",
+                            "Metrics: none", platform=platform)
+    return claude.system
+
+
+@pytest.mark.parametrize("doc,samples", [(DOC, []), ("", ["a real caption"]), ("", [])])
+def test_every_voice_setting_reaches_the_prompt(claude, doc, samples):
+    """Banned words used to be dropped whenever a document or captions existed,
+    and tone, style and audience with them."""
+    s = _prompt(claude, VOICE, doc, samples)
+    for mark in ("BANNED_ONE", "BANNED_TWO", "KEYWORD_MARK", "TONE_MARK", "STYLE_MARK",
+                 "AUDIENCE_MARK"):
+        assert mark in s, mark
+    if doc:
+        assert DOC in s                                # whole, never summarised
+    if samples:
+        assert "a real caption" in s
+
+
+def test_an_unset_voice_injects_nothing(claude):
+    s = _prompt(claude)
+    assert "=== TALENT VOICE" not in s
+    assert "warm, direct, honest" not in s
+    assert "Tone:" not in s and "NEVER USE" not in s
+
+
+def test_the_talents_voice_outranks_every_piece_of_guidance(claude):
+    s = _prompt(claude, VOICE, DOC, platform="facebook")
+    assert "=== PRECEDENCE ===" in s
+    assert s.index("=== PRECEDENCE ===") < s.index("=== STEP 1")
+    precedence = s.split("=== PRECEDENCE ===")[1].split("===")[0]
+    assert "top authority" in precedence
+    assert precedence.index("TALENT VOICE") < precedence.index("MEASURED DATA") \
+        < precedence.index("GUIDANCE below")
+    assert "not platform rules" in precedence
+    assert "not an official Meta, Facebook or Instagram policy" in precedence
+    assert "Never present any of it" in precedence     # ...to the talent as an official rule
+    assert "the post's own data wins" not in s         # data no longer outranks the voice
+
+
+def test_monetisation_guidance_is_facebook_only(claude):
+    fb = _prompt(claude, platform="facebook")
+    for text in FACEBOOK_ONLY:
+        assert text in fb, text
+    for platform in ("instagram", "tiktok", "youtube", "", None):
+        other = _prompt(claude, platform=platform)
+        for text in FACEBOOK_ONLY:
+            assert text not in other, (platform, text)
+        assert "STEP 4" in other and "STEP 5" in other   # the craft guidance stays
+
+
+def test_numbers_are_framed_as_guidance_and_unmeasured_data_as_unknown(claude):
+    """The fixed numbers and checks are unverified: they are offered as guidance,
+    attributed to no one, and never as Meta's rules."""
+    s = _prompt(claude, VOICE, DOC, platform="facebook")
+    assert "does NOT record video length" in s
+    assert "hypothesis to check" in s
+    assert "four compliance hard-stops" not in s and "hard stops" not in s
+    assert "known Facebook-specific failure modes" not in s
+    assert "agency" not in s.lower()                   # no one's name on unverified numbers
+    checks = s.split("=== STEP 5")[1].split("=== STEP 6")[0]
+    assert "guidance, not platform rules" in checks
+    assert "These figures are guidance, unverified for this account" in s
+
+
+def test_route_says_no_data_rather_than_zeros_and_passes_the_platform(client, data, claude):
+    insta = data["post"](data["ca"], "reel", platform="instagram", topic="insta reel")
+    login_as(client, data["admin"])
+    assert _generate(client, insta).status_code == 200
+    assert "no performance data recorded" in claude.user
+    assert "Reach: 0" not in claude.user and "Likes: 0" not in claude.user
+    assert "Content Monetization" not in claude.system
+
+    _snapshot(data["reel_a"], 452000, "2026-09-02 10:00:00", views=0)
+    assert _generate(client, data["reel_a"]).status_code == 200    # facebook
+    assert "Reach: 452000" in claude.user and "recorded 2026-09-02 10:00:00" in claude.user
+    assert "Content Monetization" in claude.system
+
+
+def test_route_injects_the_clients_banned_words(client, data, claude):
+    db.upsert_brand_voice(data["ca"], "facebook", {"avoid_words": json.dumps(["BANNED_ONE"])})
+    db.update_client_voice(data["ca"], DOC, ["a real caption"])
+    login_as(client, data["admin"])
+    assert _generate(client, data["reel_a"]).status_code == 200
+    assert "BANNED_ONE" in claude.system and DOC in claude.system
