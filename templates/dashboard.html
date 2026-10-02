@@ -9,6 +9,61 @@
 
 {% block content %}
 {% set status_colors = {'draft':'secondary','needs_review':'warning','approved':'info','scheduled':'primary','posted':'success'} %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+
+<!-- Ready for approval overview -->
+{% if pending_approval %}
+<div class="card mb-4" id="approvalOverviewSection">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-clipboard-check me-2"></i>Ready for Your Approval</span>
+    <span class="d-flex align-items-center gap-2">
+      {% if pending_total > pending_approval|length %}
+      <a href="{{ url_for('content_list', status='needs_review') }}" class="small">See all in review</a>
+      {% endif %}
+      <span class="badge bg-warning text-dark" id="pendingCount" data-total="{{ pending_total }}">{{ pending_total }} waiting</span>
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3" id="approvalGrid">
+      {% for post in pending_approval %}
+      <div class="col-6 col-md-4 col-xl-3 approval-item" data-postid="{{ post.id }}">
+        <div class="approval-card h-100">
+          <a href="{{ url_for('content_detail', post_id=post.id) }}" class="d-block text-decoration-none">
+            <div class="approval-thumb">
+              {% if post.hero_url %}
+                {% if post.hero_type == 'video' %}
+                <video src="{{ post.hero_url }}" muted preload="metadata"></video>
+                <span class="approval-play"><i class="bi bi-play-fill"></i></span>
+                {% else %}
+                <img src="{{ post.hero_url }}" alt="{{ post.topic }}" loading="lazy">
+                {% endif %}
+              {% else %}
+              <div class="approval-thumb-empty"><i class="bi bi-image"></i></div>
+              {% endif %}
+            </div>
+          </a>
+          <div class="p-2">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <div class="client-avatar sm" style="background:{{ post.logo_color }}">{{ post.client_name[0] }}</div>
+              <span class="small fw-semibold text-truncate">{{ post.client_name }}</span>
+              <i class="bi {{ platform_icons.get(post.platform,'bi-globe') }} ms-auto platform-icon platform-{{ post.platform }}"></i>
+            </div>
+            <a href="{{ url_for('content_detail', post_id=post.id) }}" class="text-decoration-none text-dark">
+              <p class="small fw-semibold mb-1 text-truncate" title="{{ post.topic }}">{{ post.topic }}</p>
+            </a>
+            <p class="small text-muted caption-preview mb-2">{{ post.caption }}</p>
+            <label class="d-flex align-items-center gap-2 approval-check-label mb-0">
+              <input type="checkbox" class="form-check-input approval-check" data-postid="{{ post.id }}">
+              <span class="small fw-semibold">Approved by talent</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- KPI row -->
 <div class="row g-3 mb-4">
@@ -166,4 +221,46 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.approval-check').forEach(cb => {
+  cb.addEventListener('change', async () => {
+    const id = cb.dataset.postid;
+    const item = cb.closest('.approval-item');
+    cb.disabled = true;
+    try {
+      const res = await fetch(`/api/content/${id}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ talent_approved: cb.checked }),
+      });
+      if (!res.ok) throw new Error();
+      if (cb.checked) {
+        item.style.transition = 'opacity .3s';
+        item.style.opacity = '0';
+        setTimeout(() => {
+          item.remove();
+          // The grid shows at most 20; the badge counts every post waiting.
+          const badge = document.getElementById('pendingCount');
+          const remaining = Math.max(0, Number(badge.dataset.total) - 1);
+          badge.dataset.total = remaining;
+          badge.textContent = remaining + ' waiting';
+          if (!document.querySelector('.approval-item')) {
+            if (remaining > 0) location.reload();   // bring in the next ones
+            else document.getElementById('approvalOverviewSection').remove();
+          }
+        }, 300);
+      } else {
+        cb.disabled = false;
+      }
+    } catch (e) {
+      cb.checked = !cb.checked;
+      cb.disabled = false;
+      alert('Failed to save — try again.');
+    }
+  });
+});
+</script>
 {% endblock %}

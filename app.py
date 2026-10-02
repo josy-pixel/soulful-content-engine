@@ -209,9 +209,22 @@ def inject_user_scope():
 @app.route('/')
 def dashboard():
     # scope=None for admin/manager (org-wide); the client's own id for a client user.
-    stats = db.get_dashboard_stats(scope=current_scope())
+    scope = current_scope()
+    stats = db.get_dashboard_stats(scope=scope)
+    pending_approval, pending_total = db.get_posts_pending_approval(scope=scope)
+    for p in pending_approval:
+        if p.get('hero_filename'):
+            p['hero_url'] = _media_display_url({
+                'storage': p['hero_storage'], 's3_key': p['hero_s3_key'],
+                'client_id': p['hero_client_id'], 'filename': p['hero_filename']})
+        elif p.get('image_url'):
+            p['hero_url'] = media_src(p['image_url'])
+            p['hero_type'] = 'video' if is_video(p['image_url']) else 'image'
+        else:
+            p['hero_url'] = None
     return render_template('dashboard.html', stats=stats, platforms=PLATFORMS, statuses=STATUSES,
-                           content_types=CONTENT_TYPES, scope=current_scope())
+                           content_types=CONTENT_TYPES, scope=scope, pending_approval=pending_approval,
+                           pending_total=pending_total)
 
 
 # ── Clients ────────────────────────────────────────────────────────────────────
@@ -559,7 +572,9 @@ def api_media_delete(media_id):
         file_path = os.path.join(UPLOAD_PATH, str(media['client_id']), media['filename'])
         if os.path.exists(file_path):
             os.remove(file_path)
-    db.delete_media(media_id)
+    for post_id in db.delete_media(media_id):
+        _audit_post({'id': post_id, 'client_id': media['client_id']},
+                    'talent_signoff_cleared', reason='media deleted')
     return jsonify({'ok': True})
 
 
@@ -594,7 +609,8 @@ def api_attach_media(post_id):
     if not ok:
         return jsonify({'error': why}), 409
 
-    db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0))
+    if db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0)):
+        _audit_post(post, 'talent_signoff_cleared', reason='media attached')
     media = db.get_media(media_id)
     if media:
         merged = db.get_post(post_id)
@@ -611,8 +627,10 @@ def api_attach_media(post_id):
 @app.route('/api/content/<int:post_id>/media/<int:media_id>', methods=['DELETE'])
 @require_content_access('post_id')
 def api_detach_media(post_id, media_id):
-    db.detach_media_from_post(post_id, media_id)
-    return jsonify({'ok': True})
+    cleared = db.detach_media_from_post(post_id, media_id)
+    if cleared:
+        _audit_post(g.content_row, 'talent_signoff_cleared', reason='media detached')
+    return jsonify({'ok': True, 'signoff_cleared': cleared})
 
 
 # ── Brand Voice ────────────────────────────────────────────────────────────────
@@ -809,14 +827,16 @@ def content_detail(post_id):
     allowed_transitions = STATUS_TRANSITIONS.get(post['status'], [])
     post_media = db.get_post_media(post_id)
     for m in post_media:
-        m['url'] = _media_url(m['client_id'], m['filename'])
+        m['url'] = _media_display_url(m)     # S3 media has no file under /uploads
     client_media = db.get_client_media(post['client_id'])
     for m in client_media:
         m['url'] = _media_url(m['client_id'], m['filename'])
     return render_template('content_detail.html', post=post, history=history,
                            metrics=metrics, allowed_transitions=allowed_transitions,
                            statuses=STATUSES, post_media=post_media,
-                           client_media=client_media)
+                           client_media=client_media,
+                           review_open=post['status'] in PRE_APPROVAL_STATUSES,
+                           signoff_label=_signoff_label(post))
 
 
 @app.route('/content/<int:post_id>/edit', methods=['GET', 'POST'])
@@ -837,7 +857,7 @@ def content_edit(post_id):
             'scheduled_date': request.form.get('scheduled_date') or None,
             'notes': request.form.get('notes', '').strip(),
         }
-        db.update_post(post_id, data)
+        _audit_change(post, db.update_post(post_id, data), 'edit form')
         flash('Post updated.', 'success')
         return redirect(url_for('content_detail', post_id=post_id))
     return render_template('content_form.html', post=post, clients=all_clients,
@@ -867,6 +887,83 @@ def content_status(post_id):
             flash(f'Dispatch failed: {msg}', 'warning')
 
     return redirect(url_for('content_detail', post_id=post_id))
+
+
+def _audit_post(post, action, reason=None, **metadata):
+    """Append a change to a post's caption or talent sign-off to audit_log, with
+    who made it. Machine routes have no signed-in user and are recorded as such."""
+    if getattr(current_user, 'is_authenticated', False):
+        actor, role = current_user.id, current_user.role
+    else:
+        actor, role = None, 'machine'
+    db.add_audit(actor, role, post['client_id'], 'content', post['id'], action,
+                 reason=reason, metadata=metadata or None, request_ip=request.remote_addr)
+
+
+def _audit_change(post, change, via):
+    """Audit what db.update_post / update_post_review reported: a caption or
+    hashtag edit, and the talent sign-off it voided."""
+    if change.get('before'):
+        _audit_post(post, 'caption_edit', fields=sorted(change['before']),
+                    before=change['before'], via=via)
+    if change.get('signoff_cleared'):
+        _audit_post(post, 'talent_signoff_cleared', reason=via)
+
+
+def _signoff_label(post):
+    """The line under the sign-off checkbox. The talent is the client user; staff
+    may tick it on the talent's behalf (an OK given on WhatsApp), and the line
+    then says so — the two must never read the same."""
+    if not post.get('talent_approved'):
+        return 'Not yet confirmed'
+    when = ' · %s' % post['talent_approved_at'] if post.get('talent_approved_at') else ''
+    who = db.get_user_by_id(post['talent_approved_by']) if post.get('talent_approved_by') else None
+    if who is None:
+        return 'Approved' + when
+    if who['role'] == 'client':
+        return 'Approved by talent' + when
+    return 'Marked approved by %s (agency)%s' % (who['email'], when)
+
+
+@app.route('/api/content/<int:post_id>/review', methods=['PATCH'])
+@require_content_access('post_id')
+def api_content_review(post_id):
+    """Inline caption/hashtags edit + talent sign-off, for the visual review UI
+    on the post detail page and dashboard. Separate from the admin/manager
+    status workflow — ticking this never triggers publish dispatch."""
+    post = g.content_row   # loaded + scope-checked by the decorator
+    # Only before the approval gate, for every role. Approving sends the caption
+    # to Make in the payload; an edit or a sign-off after that would change the
+    # app's record and nothing that is published.
+    if post.get('status') not in PRE_APPROVAL_STATUSES:
+        return jsonify({'error': 'This post is past the approval gate — its caption and '
+                                 'sign-off can no longer be changed here.'}), 409
+
+    # Refuse anything malformed rather than store it: bool("false") is True, and a
+    # non-text caption would be written as-is into what gets published.
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data.keys() & {'caption', 'hashtags', 'talent_approved'}:
+        return jsonify({'error': 'Send caption, hashtags or talent_approved.'}), 400
+    for field in ('caption', 'hashtags'):
+        if field in data and not isinstance(data[field], str):
+            return jsonify({'error': '%s must be text.' % field.capitalize()}), 400
+    if 'caption' in data and not data['caption'].strip():
+        return jsonify({'error': 'The caption cannot be empty.'}), 400
+    if 'talent_approved' in data and not isinstance(data['talent_approved'], bool):
+        return jsonify({'error': 'talent_approved must be true or false.'}), 400
+
+    if 'caption' in data or 'hashtags' in data:
+        change = db.update_post_review(post_id,
+                                       caption=data['caption'].strip() if 'caption' in data else None,
+                                       hashtags=data['hashtags'].strip() if 'hashtags' in data else None)
+        _audit_change(post, change, 'review')
+    if 'talent_approved' in data:
+        if db.set_talent_approval(post_id, data['talent_approved'], current_user.id):
+            _audit_post(post, 'talent_signoff' if data['talent_approved'] else 'talent_signoff_withdrawn')
+
+    fresh = db.get_post(post_id)
+    return jsonify({'ok': True, 'talent_approved': bool(fresh['talent_approved']),
+                    'signoff_label': _signoff_label(fresh)})
 
 
 # ── Webhooks ───────────────────────────────────────────────────────────────────
@@ -1107,7 +1204,7 @@ def api_content_patch(post_id):
             'scheduled_date': post.get('scheduled_date'),
             'notes':        patch.get('notes', post.get('notes', '')),
         }
-        db.update_post(post_id, merged)
+        _audit_change(post, db.update_post(post_id, merged), 'api')
 
     if 'error_message' in data:
         db.set_post_error(post_id, data['error_message'])
@@ -1137,7 +1234,7 @@ def api_generate_caption_for_post(post_id):
         'content_type': post.get('content_type', 'photo'),
         'scheduled_date': post.get('scheduled_date'), 'notes': post.get('notes', ''),
     }
-    db.update_post(post_id, merged)
+    _audit_change(post, db.update_post(post_id, merged), 'generated caption')
     return jsonify({'ok': True, 'caption': caption, 'hashtags': hashtags})
 
 

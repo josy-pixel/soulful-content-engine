@@ -301,6 +301,15 @@ def init_db():
         "ALTER TABLE clients ADD COLUMN deleted_reason TEXT",
         "ALTER TABLE clients ADD COLUMN purge_after TEXT",
         "ALTER TABLE clients ADD COLUMN erased_at TEXT",
+        # ── Talent sign-off — separate from the internal admin/manager status
+        # workflow and its publish dispatch (see content_status). A simple yes/no
+        # from whoever the content is about, independent of who on the team has
+        # reviewed it editorially.
+        "ALTER TABLE content_posts ADD COLUMN talent_approved INTEGER DEFAULT 0",
+        "ALTER TABLE content_posts ADD COLUMN talent_approved_at TEXT",
+        # Who ticked it: the talent (a client user), or staff marking it on the
+        # talent's behalf. The UI says which; the two must never read the same.
+        "ALTER TABLE content_posts ADD COLUMN talent_approved_by INTEGER",
         # ── Media storage backend ──
         # Existing rows stay 'local' and keep being served off the disk; only new
         # uploads go to S3. Nothing is migrated by this column alone.
@@ -905,15 +914,46 @@ def create_post(data):
     return post_id
 
 
+def _void_talent_signoff(conn, post_ids):
+    """Clear the talent sign-off on these posts, inside the caller's write.
+    A sign-off covers the caption, hashtags and media the talent saw; once any
+    of them changes it no longer covers what would be published. Every write
+    that changes one of them calls this, so no path can forget. Returns the ids
+    that actually had a sign-off."""
+    ids = [int(i) for i in post_ids]
+    if not ids:
+        return []
+    signed = [r['id'] for r in conn.execute(
+        'SELECT id FROM content_posts WHERE talent_approved = 1 AND id IN (%s)'
+        % ','.join('?' * len(ids)), ids)]
+    if signed:
+        conn.execute(
+            'UPDATE content_posts SET talent_approved=0, talent_approved_at=NULL, talent_approved_by=NULL '
+            'WHERE id IN (%s)' % ','.join('?' * len(signed)), signed)
+    return signed
+
+
 def update_post(post_id, data):
+    """Returns {'before': {field: previous value} for a changed caption/hashtags,
+    'signoff_cleared': bool} so the caller can audit the edit."""
     with write_db() as conn:                                # guard raises -> must not leak
         _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        old = conn.execute('SELECT caption, hashtags, image_url FROM content_posts WHERE id=?',
+                           (post_id,)).fetchone()
         conn.execute('''
             UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,content_type=?,hook=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
             WHERE id=?
         ''', (data['topic'], data['caption'], data.get('hashtags', ''), data.get('image_url', ''),
               data.get('content_type', 'photo'), data.get('hook', ''),
               data.get('scheduled_date') or None, data.get('notes', ''), post_id))
+        if old is None:
+            return {'before': {}, 'signoff_cleared': False}
+        new = {'caption': data['caption'], 'hashtags': data.get('hashtags', ''),
+               'image_url': data.get('image_url', '')}
+        changed = {f: old[f] for f in new if (new[f] or '') != (old[f] or '')}
+        cleared = _void_talent_signoff(conn, [post_id]) if changed else []
+        return {'before': {f: v for f, v in changed.items() if f != 'image_url'},
+                'signoff_cleared': bool(cleared)}
 
 
 def update_post_status(post_id, new_status, notes='', changed_by='user', posted_url=None):
@@ -950,6 +990,78 @@ def set_post_error(post_id, error_message):
             'UPDATE content_posts SET error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
             (error_message, post_id)
         )
+
+
+def update_post_review(post_id, caption=None, hashtags=None):
+    """Lightweight caption/hashtags save for the inline review UI — unlike
+    update_post(), doesn't require topic/content_type/scheduled_date/etc.
+    Returns the same shape as update_post(); 'before' is empty when the autosave
+    resent the same text, so only real edits are audited or void a sign-off."""
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        post = conn.execute('SELECT caption, hashtags FROM content_posts WHERE id=?', (post_id,)).fetchone()
+        if not post:
+            return {'before': {}, 'signoff_cleared': False}
+        new = {'caption': caption if caption is not None else post['caption'],
+               'hashtags': hashtags if hashtags is not None else post['hashtags']}
+        before = {f: post[f] for f in new if (new[f] or '') != (post[f] or '')}
+        cleared = []
+        if before:
+            conn.execute(
+                'UPDATE content_posts SET caption=?, hashtags=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+                (new['caption'], new['hashtags'], post_id)
+            )
+            cleared = _void_talent_signoff(conn, [post_id])
+        return {'before': before, 'signoff_cleared': bool(cleared)}
+
+
+def set_talent_approval(post_id, approved, user_id=None):
+    """Talent's own sign-off — independent of the admin/manager status
+    workflow (draft/needs_review/approved/...) and its publish dispatch.
+    user_id is whoever ticked it. Returns False when the post was already in
+    that state, so a double click is neither re-stamped nor audited twice."""
+    with write_db() as conn:                                # guard raises -> must not leak
+        _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        cur = conn.execute(
+            'UPDATE content_posts SET talent_approved=?, talent_approved_at=?, talent_approved_by=?, '
+            'updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(talent_approved, 0) != ?',
+            (1 if approved else 0,
+             datetime.now().strftime('%Y-%m-%d %H:%M') if approved else None,
+             user_id if approved else None, post_id, 1 if approved else 0)
+        )
+        return cur.rowcount > 0
+
+
+def get_posts_pending_approval(scope=None, limit=20):
+    """Posts talent hasn't signed off on yet — feeds the dashboard's 'Ready for
+    Your Approval' overview. scope mirrors get_dashboard_stats: None for the
+    org-wide admin/manager view, or a client_id for the client portal.
+    Returns (the first `limit` posts, how many are waiting in all) — the
+    admin view spans every client and would otherwise have no ceiling."""
+    conn = get_db()
+    pw = ' AND p.client_id = ?' if scope is not None else ''
+    params = (scope,) if scope is not None else ()
+    base = "FROM v_content_active p JOIN v_clients_active c ON c.id = p.client_id "
+    # needs_review only: an approved or scheduled post was already sent to Make,
+    # so asking for a sign-off on it would be asking after the fact.
+    where = "WHERE p.talent_approved = 0 AND p.status = 'needs_review'" + pw
+    total = conn.execute("SELECT COUNT(*) " + base + where, params).fetchone()[0]
+    # The hero is the first attached file in the order the post page uses
+    # (get_post_media), with what is needed to resolve it wherever it is stored.
+    rows = conn.execute(
+        "SELECT p.*, c.name AS client_name, c.logo_color, "
+        "m.filename AS hero_filename, m.media_type AS hero_type, "
+        "m.storage AS hero_storage, m.s3_key AS hero_s3_key, m.client_id AS hero_client_id "
+        + base +
+        "LEFT JOIN client_media m ON m.id = ("
+        " SELECT pm.media_id FROM post_media pm JOIN client_media m2 ON m2.id = pm.media_id"
+        " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC, m2.created_at ASC LIMIT 1) "
+        + where +
+        " ORDER BY (p.scheduled_date IS NULL), p.scheduled_date ASC, p.updated_at DESC LIMIT ?",
+        params + (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows], total
 
 
 def delete_post(post_id):
@@ -1318,28 +1430,40 @@ def update_media(media_id, caption_hint='', tags='[]'):
 
 
 def delete_media(media_id):
+    """Returns the ids of posts whose talent sign-off this voided — deleting the
+    file detaches it from every post that used it."""
     conn = get_db()
+    used_by = [r['post_id'] for r in conn.execute(
+        'SELECT post_id FROM post_media WHERE media_id=?', (media_id,))]
     conn.execute('DELETE FROM post_media WHERE media_id=?', (media_id,))
     conn.execute('DELETE FROM client_media WHERE id=?', (media_id,))
+    cleared = _void_talent_signoff(conn, used_by)
     conn.commit()
     conn.close()
+    return cleared
 
 
 def attach_media_to_post(post_id, media_id, sort_order=0):
+    """Returns True if this voided the post's talent sign-off."""
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         'INSERT OR IGNORE INTO post_media (post_id,media_id,sort_order) VALUES (?,?,?)',
         (post_id, media_id, sort_order)
     )
+    cleared = _void_talent_signoff(conn, [post_id]) if cur.rowcount else []
     conn.commit()
     conn.close()
+    return bool(cleared)
 
 
 def detach_media_from_post(post_id, media_id):
+    """Returns True if this voided the post's talent sign-off."""
     conn = get_db()
-    conn.execute('DELETE FROM post_media WHERE post_id=? AND media_id=?', (post_id, media_id))
+    cur = conn.execute('DELETE FROM post_media WHERE post_id=? AND media_id=?', (post_id, media_id))
+    cleared = _void_talent_signoff(conn, [post_id]) if cur.rowcount else []
     conn.commit()
     conn.close()
+    return bool(cleared)
 
 
 def get_post_media(post_id):
