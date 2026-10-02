@@ -896,11 +896,25 @@ def api_content_review(post_id):
         return jsonify({'error': 'This post is past the approval gate — its caption and '
                                  'sign-off can no longer be changed here.'}), 409
 
-    data = request.get_json(silent=True) or {}
+    # Refuse anything malformed rather than store it: bool("false") is True, and a
+    # non-text caption would be written as-is into what gets published.
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data.keys() & {'caption', 'hashtags', 'talent_approved'}:
+        return jsonify({'error': 'Send caption, hashtags or talent_approved.'}), 400
+    for field in ('caption', 'hashtags'):
+        if field in data and not isinstance(data[field], str):
+            return jsonify({'error': '%s must be text.' % field.capitalize()}), 400
+    if 'caption' in data and not data['caption'].strip():
+        return jsonify({'error': 'The caption cannot be empty.'}), 400
+    if 'talent_approved' in data and not isinstance(data['talent_approved'], bool):
+        return jsonify({'error': 'talent_approved must be true or false.'}), 400
+
     if 'caption' in data or 'hashtags' in data:
-        db.update_post_review(post_id, caption=data.get('caption'), hashtags=data.get('hashtags'))
+        db.update_post_review(post_id,
+                              caption=data['caption'].strip() if 'caption' in data else None,
+                              hashtags=data['hashtags'].strip() if 'hashtags' in data else None)
     if 'talent_approved' in data:
-        db.set_talent_approval(post_id, bool(data['talent_approved']))
+        db.set_talent_approval(post_id, data['talent_approved'])
 
     return jsonify({'ok': True})
 

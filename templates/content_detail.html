@@ -593,7 +593,8 @@ if (captionInput && !captionInput.disabled) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ caption: captionInput.value, hashtags: hashtagsInput.value }),
         });
-        saveStatus.textContent = res.ok ? 'Saved' : 'Failed to save';
+        const body = await res.json().catch(() => ({}));
+        saveStatus.textContent = res.ok ? 'Saved' : (body.error || 'Failed to save');
       } catch (e) {
         saveStatus.textContent = 'Failed to save';
       }
