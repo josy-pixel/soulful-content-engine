@@ -113,24 +113,47 @@ function show(id) {
   }
 }
 
+// Everything that came from the database is written with textContent, never as
+// markup: topics and platforms are typed by people, and this page is opened by
+// admins.
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function markActive() {
+  document.querySelectorAll('.candidate-item').forEach(item =>
+    item.classList.toggle('active', String(item.dataset.id) === String(selectedPostId)));
+}
+
 function selectPost(post) {
   selectedPostId = post.id;
   selectedPostLabel = post.topic;
-  document.querySelectorAll('.candidate-item').forEach(el => el.classList.remove('active'));
-  const el = document.querySelector(`.candidate-item[data-id="${post.id}"]`);
-  if (el) el.classList.add('active');
+  markActive();
   const badge = document.getElementById('selectedPostBadge');
+  const platform = el('span', 'badge ms-1', post.platform || '');
+  platform.style.background = platformColors[post.platform] || '#6366f1';
+  badge.replaceChildren(el('i', 'bi bi-check-circle me-1'), 'Repurposing: ',
+                        el('strong', '', post.topic || ''), ' ', platform);
   badge.classList.remove('d-none');
-  badge.innerHTML = `<i class="bi bi-check-circle me-1"></i>Repurposing: <strong>${escapeHtml(post.topic)}</strong>` +
-                    ` <span class="badge ms-1" style="background:${platformColors[post.platform]||'#6366f1'}">${post.platform}</span>`;
   document.getElementById('materialCard').style.display = '';
+}
+
+// A post with no snapshot is "no data", not zero reach — the two mean different things.
+function metricsLine(post) {
+  if (post.reach == null && post.views == null && post.likes == null) {
+    return 'no performance data recorded';
+  }
+  return `reach ${post.reach ?? 0} · views ${post.views ?? 0} · likes ${post.likes ?? 0}`;
 }
 
 function renderCandidates(list) {
   const wrap = document.getElementById('candidatesWrap');
   const box = document.getElementById('candidatesList');
   const none = document.getElementById('noCandidatesMsg');
-  box.innerHTML = '';
+  box.replaceChildren();
   if (!list.length) {
     wrap.classList.add('d-none');
     none.classList.remove('d-none');
@@ -139,19 +162,35 @@ function renderCandidates(list) {
   none.classList.add('d-none');
   wrap.classList.remove('d-none');
   list.forEach(post => {
-    const a = document.createElement('a');
+    const a = el('a', 'list-group-item list-group-item-action candidate-item py-2');
     a.href = '#';
-    a.className = 'list-group-item list-group-item-action candidate-item py-2';
     a.dataset.id = post.id;
-    a.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center">
-        <span class="small fw-semibold text-truncate" style="max-width:220px">${escapeHtml(post.topic)}</span>
-        <i class="bi ${platformIcons[post.platform] || 'bi-globe'}"></i>
-      </div>
-      <div class="small text-muted">reach ${post.reach ?? 0} · views ${post.views ?? 0} · likes ${post.likes ?? 0}</div>`;
+    const row = el('div', 'd-flex justify-content-between align-items-center');
+    const title = el('span', 'small fw-semibold text-truncate', post.topic || '');
+    title.style.maxWidth = '220px';
+    row.append(title, el('i', 'bi ' + (platformIcons[post.platform] || 'bi-globe')));
+    a.append(row, el('div', 'small text-muted', metricsLine(post)));
     a.addEventListener('click', e => { e.preventDefault(); selectPost(post); });
     box.appendChild(a);
   });
+  markActive();
+}
+
+// Reads the body exactly once, whatever it turns out to be, and turns a failure
+// into a sentence a person can act on. The CSRF guard's 400 and a 403 are HTML
+// pages, not JSON, and so is a gateway error from the host.
+async function readJson(res) {
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (_) {}
+  if (res.ok && data) return data;
+  const fallback = {
+    400: 'The request was refused. Reload the page and try again.',
+    403: "You don't have access to this post.",
+    404: 'That post no longer exists.',
+    409: 'This post cannot take a repurposing package.',
+  }[res.status] || `The server returned ${res.status}. Try again in a moment.`;
+  throw new Error((data && data.error) || fallback);
 }
 
 async function loadCandidates(clientId) {
@@ -161,9 +200,13 @@ async function loadCandidates(clientId) {
   document.getElementById('materialCard').style.display = 'none';
   selectedPostId = null;
   if (!clientId) return;
-  const res = await fetch(`/api/reel-repurpose/candidates/${clientId}`);
-  if (!res.ok) return;
-  renderCandidates(await res.json());
+  try {
+    const res = await fetch(`/api/reel-repurpose/candidates/${encodeURIComponent(clientId)}`);
+    renderCandidates(await readJson(res));
+  } catch (e) {
+    console.error('reel-repurpose candidates failed:', e);
+    alert('Could not load this client\'s posts.\n\n' + (e && e.message ? e.message : e));
+  }
 }
 
 document.getElementById('genClient').addEventListener('change', e => loadCandidates(e.target.value));
@@ -192,14 +235,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         extra_context: document.getElementById('genExtra').value.trim(),
       }),
     });
-    if (!res.ok) {
-      const bodyText = await res.text();
-      let detail = bodyText.slice(0, 400);
-      try { detail = JSON.parse(bodyText).error || detail; } catch (_) {}
-      throw new Error(`The server returned ${res.status}. ${detail}`.trim());
-    }
-    const data = await res.json();
-    if (data.error) { alert('Error: ' + data.error); show('emptyState'); return; }
+    const data = await readJson(res);
+    if (!data.package) throw new Error(data.error || 'Claude returned an empty package.');
 
     document.getElementById('packageResult').value = data.package;
     show('resultState');
@@ -232,20 +269,16 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ post_id: selectedPostId, package: pkg }),
     });
-    const data = await res.json();
-    if (data.ok) {
-      window.location.href = `/content/${selectedPostId}`;
-    } else {
-      alert('Error: ' + (data.error || 'Unknown'));
-    }
+    const data = await readJson(res);
+    if (!data.ok) throw new Error(data.error || 'The package was not saved.');
+    window.location.href = `/content/${encodeURIComponent(selectedPostId)}`;
+  } catch (e) {
+    console.error('reel-repurpose save failed:', e);
+    alert('Could not save this package — nothing was changed.\n\n' + (e && e.message ? e.message : e));
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-check-circle"></i> Save to This Post';
   }
 });
-
-function escapeHtml(s) {
-  return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-}
 </script>
 {% endblock %}

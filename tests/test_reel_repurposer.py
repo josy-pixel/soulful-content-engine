@@ -204,3 +204,35 @@ def test_opened_to_clients_their_own_post_works(client, data, claude, opened_to_
     assert client.get("/api/reel-repurpose/candidates/%d" % data["ca"]).status_code == 200
     assert _generate(client, data["reel_a"]).status_code == 200
     assert _save(client, data["reel_a"]).status_code == 200
+
+
+# ── the page writes stored values as text ───────────────────────────────────
+
+EVIL = '<img src=x onerror=alert(document.domain)>'
+
+
+def test_page_writes_stored_values_as_text_not_markup(client, data):
+    """A platform or topic holding markup — stored before the create routes
+    validated it, or by any path that still does not — must reach the page as
+    text. The admin's browser is the one that opens this page."""
+    evil = data["post"](data["ca"], platform=EVIL, topic=EVIL)   # repository layer: no validation
+    login_as(client, data["admin"])
+    r = client.get("/reel-repurposer?client_id=%d&post_id=%d" % (data["ca"], evil))
+    assert r.status_code == 200
+    html = r.data.decode()
+    assert EVIL not in html                       # the preselect is a JSON literal, escaped
+    assert "u003cimg" in html                    # ...as a JSON unicode escape
+    script = html.split("const platformColors")[-1]   # this page's own script
+    for line in script.splitlines():
+        if "innerHTML" in line:                   # only fixed strings may become markup
+            assert "${" not in line and "+" not in line, line
+    assert "textContent" in script
+
+
+def test_page_reads_each_response_once_and_handles_failures(client, data):
+    login_as(client, data["admin"])
+    html = client.get("/reel-repurposer").data.decode()
+    script = html.split("const platformColors")[-1]
+    assert "res.json()" not in script             # one read, then parse: never twice
+    assert script.count("await readJson(") == 3  # candidates, generate, save
+    assert "catch (e)" in html.split("saveBtn").pop()
