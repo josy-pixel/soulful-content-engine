@@ -709,7 +709,18 @@ def api_save_caption():
 # once per planned topic. The rulebook is identical across the whole batch, so
 # it's the cached prefix on every call after the first — see voice_engine.py.
 
+# Who may run a batch. A week is dozens of model calls, so it starts with the
+# agency; adding 'client' here opens every bulk route and the nav link to talents.
+BULK_GENERATE_ROLES = ('admin', 'manager')
+
+
+@app.context_processor
+def inject_bulk_access():
+    return {'can_bulk_generate': getattr(current_user, 'role', None) in BULK_GENERATE_ROLES}
+
+
 @app.route('/bulk-generate')
+@roles_required(*BULK_GENERATE_ROLES)
 def bulk_generate():
     all_clients = scoped_clients()
     preselect_client = current_scope() or request.args.get('client_id', type=int)
@@ -720,6 +731,7 @@ def bulk_generate():
 
 
 @app.route('/api/bulk-generate', methods=['POST'])
+@roles_required(*BULK_GENERATE_ROLES)
 def api_bulk_generate():
     data = request.get_json(silent=True) or {}
     # HARD RULE 1: never trust client_id from the body for a client user.
@@ -802,6 +814,7 @@ def api_bulk_generate():
 
 
 @app.route('/api/bulk-save', methods=['POST'])
+@roles_required(*BULK_GENERATE_ROLES)
 def api_bulk_save():
     data = request.get_json(silent=True) or {}
     # HARD RULE 1: a client user's posts are always created under THEIR client_id.

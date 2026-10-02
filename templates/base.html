@@ -51,9 +51,11 @@
     <a href="{{ url_for('caption_generator') }}" class="nav-link {% if request.endpoint == 'caption_generator' %}active{% endif %}">
       <i class="bi bi-magic"></i> Caption Generator
     </a>
+    {% if can_bulk_generate %}
     <a href="{{ url_for('bulk_generate') }}" class="nav-link {% if request.endpoint == 'bulk_generate' %}active{% endif %}">
       <i class="bi bi-calendar2-week"></i> Bulk Generate
     </a>
+    {% endif %}
     <a href="{{ url_for('content_list') }}" class="nav-link {% if 'content' in (request.endpoint or '') %}active{% endif %}">
       <i class="bi bi-collection-fill"></i> Content Library
     </a>
