@@ -48,7 +48,9 @@
 
         <h5 class="mb-3">{{ post.topic }}</h5>
 
-        {% set review_locked = current_user.role == 'client' and post.status == 'posted' %}
+        {# Inline edits and the sign-off close at the approval gate, for every role:
+           what is approved has already been sent to Make. #}
+        {% set review_locked = not review_open %}
         <div class="row g-4">
           <!-- Large media -->
           <div class="col-md-6">
@@ -102,7 +104,10 @@
               </small>
             </div>
             {% if review_locked %}
-            <small class="text-muted mt-2"><i class="bi bi-lock-fill me-1"></i>This post has already gone out — contact your team for changes.</small>
+            <small class="text-muted mt-2"><i class="bi bi-lock-fill me-1"></i>
+              {% if post.status == 'posted' %}This post has already gone out — contact your team for changes.
+              {% else %}This post is past the approval gate — the caption and sign-off are locked here.{% endif %}
+            </small>
             {% endif %}
           </div>
         </div>

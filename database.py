@@ -1002,7 +1002,9 @@ def get_posts_pending_approval(scope=None):
         "LEFT JOIN client_media m ON m.id = ("
         " SELECT pm.media_id FROM post_media pm JOIN client_media m2 ON m2.id = pm.media_id"
         " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC, m2.created_at ASC LIMIT 1) "
-        "WHERE p.talent_approved = 0 AND p.status IN ('needs_review','approved','scheduled')" + pw +
+        # needs_review only: an approved or scheduled post was already sent to Make,
+        # so asking for a sign-off on it would be asking after the fact.
+        "WHERE p.talent_approved = 0 AND p.status = 'needs_review'" + pw +
         " ORDER BY (p.scheduled_date IS NULL), p.scheduled_date ASC, p.updated_at DESC",
         params
     ).fetchall()

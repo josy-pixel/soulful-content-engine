@@ -828,7 +828,8 @@ def content_detail(post_id):
     return render_template('content_detail.html', post=post, history=history,
                            metrics=metrics, allowed_transitions=allowed_transitions,
                            statuses=STATUSES, post_media=post_media,
-                           client_media=client_media)
+                           client_media=client_media,
+                           review_open=post['status'] in PRE_APPROVAL_STATUSES)
 
 
 @app.route('/content/<int:post_id>/edit', methods=['GET', 'POST'])
@@ -888,10 +889,12 @@ def api_content_review(post_id):
     on the post detail page and dashboard. Separate from the admin/manager
     status workflow — ticking this never triggers publish dispatch."""
     post = g.content_row   # loaded + scope-checked by the decorator
-    # Same rule as content_edit: a client user may act on their own content
-    # only while it hasn't gone out yet.
-    if current_scope() is not None and post.get('status') == 'posted':
-        abort(403)
+    # Only before the approval gate, for every role. Approving sends the caption
+    # to Make in the payload; an edit or a sign-off after that would change the
+    # app's record and nothing that is published.
+    if post.get('status') not in PRE_APPROVAL_STATUSES:
+        return jsonify({'error': 'This post is past the approval gate — its caption and '
+                                 'sign-off can no longer be changed here.'}), 409
 
     data = request.get_json(silent=True) or {}
     if 'caption' in data or 'hashtags' in data:
