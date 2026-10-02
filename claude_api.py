@@ -244,6 +244,8 @@ def plan_week(client_name, description, theme, platform, count,
         if not isinstance(topics, list):
             return None, 'Claude did not return a JSON array'
         return topics, None
+    except IndexError:
+        return None, 'Claude returned an empty reply — try again.'
     except (json.JSONDecodeError, ValueError) as e:
         return None, f'JSON parse error: {str(e)}'
     except anthropic.APIError as e:

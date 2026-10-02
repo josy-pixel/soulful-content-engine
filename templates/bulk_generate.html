@@ -53,7 +53,7 @@
         <div class="row g-2 mb-3">
           <div class="col-6">
             <label class="form-label fw-semibold small">Days</label>
-            <input type="number" id="genDays" class="form-control form-control-sm" value="7" min="1" max="14">
+            <input type="number" id="genDays" class="form-control form-control-sm" value="7" min="1" max="{{ max_posts }}">
           </div>
           <div class="col-6">
             <label class="form-label fw-semibold small">Posts / Day</label>
@@ -108,16 +108,17 @@
           Pick a client and platform, set the direction, then click Generate Week.</p>
         </div>
 
-        <!-- Loading state -->
-        <div id="loadingState" class="d-none text-center my-auto">
+        <!-- Planning state -->
+        <div id="planningState" class="d-none text-center my-auto">
           <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem"></div>
-          <p class="text-muted mb-1">Claude is planning and writing this week's posts…</p>
-          <p class="small text-muted">A full week can take a minute or so — each post is voice-checked before it's shown.</p>
+          <p class="text-muted mb-1">Claude is planning this week's topics…</p>
+          <p class="small text-muted">Then each post is written and voice-checked on its own, and appears here as it's ready.</p>
         </div>
 
         <!-- Result -->
         <div id="resultState" class="d-none flex-column h-100">
-          <div id="contextUsed" class="small text-muted mb-3"></div>
+          <div id="contextUsed" class="small text-muted mb-1"></div>
+          <div id="batchProgress" class="small fw-semibold mb-3"></div>
 
           <div id="batchList" class="d-flex flex-column gap-3 mb-3" style="max-height:60vh;overflow-y:auto"></div>
 
@@ -135,7 +136,7 @@
                 <small class="text-muted" id="saveCountLabel">0 posts will be created</small>
               </div>
             </div>
-            <button id="saveBatchBtn" class="btn btn-success w-100">
+            <button id="saveBatchBtn" class="btn btn-success w-100" disabled>
               <i class="bi bi-check-circle"></i> Create Posts
             </button>
           </div>
@@ -149,8 +150,14 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/run_pool.js') }}"></script>
 <script>
 const CONTENT_TYPES = {{ content_types | tojson }};
+const MAX_POSTS = {{ max_posts }};
+// Posts being written at once. Each is its own request of a few model calls, so
+// none comes near the server's time limit, and other people's requests get a turn
+// between posts instead of waiting out the whole week.
+const IN_FLIGHT = 2;
 const platformColors = {
   instagram: '#e1306c', facebook: '#1877f2', tiktok: '#010101',
   linkedin: '#0077b5', youtube: '#ff0000'
@@ -174,187 +181,379 @@ function refreshContentTypes(platform) {
   sel.innerHTML = types.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('');
 }
 
-function updateTotalLabel() {
+// ── state ────────────────────────────────────────────────────────────────────
+// batch: what was planned, locked at plan time so the save can never pick up a
+// platform or content type changed in the form afterwards.
+let batch = null;      // { clientId, platform, contentType, theme, items: [...] }
+let planning = false;
+let saving = false;
+let saved = false;
+let inFlight = 0;      // per-post requests running right now
+
+function liveItems() { return batch ? batch.items.filter(i => !i.removed) : []; }
+function countOf(state) { return liveItems().filter(i => i.state === state).length; }
+
+function batchSize() {
   const days = parseInt(document.getElementById('genDays').value) || 0;
   const perDay = parseInt(document.getElementById('genPerDay').value) || 1;
-  document.getElementById('totalCountLabel').textContent = `= ${days * perDay} post${days * perDay === 1 ? '' : 's'} total`;
+  return { days, perDay, total: days * perDay };
+}
+
+function updateTotalLabel() {
+  const { total } = batchSize();
+  const label = document.getElementById('totalCountLabel');
+  const tooMany = total > MAX_POSTS;
+  label.textContent = tooMany
+    ? `= ${total} posts — a batch is at most ${MAX_POSTS}. Use fewer days or fewer posts a day.`
+    : `= ${total} post${total === 1 ? '' : 's'} total`;
+  label.classList.toggle('text-danger', tooMany);
+  label.classList.toggle('text-muted', !tooMany);
+  refreshButtons();
 }
 document.getElementById('genDays').addEventListener('input', updateTotalLabel);
 document.getElementById('genPerDay').addEventListener('change', updateTotalLabel);
 
-let currentBatch = { clientId: null, platform: null, posts: [] };
+function refreshButtons() {
+  const { total } = batchSize();
+  const busy = planning || inFlight > 0;
+  document.getElementById('generateBtn').disabled = busy || total < 1 || total > MAX_POSTS;
+  if (!saving) {
+    document.getElementById('saveBatchBtn').disabled = busy || countOf('done') === 0;
+  }
+  document.querySelectorAll('.retry-btn').forEach(b => { b.disabled = inFlight >= IN_FLIGHT; });
+}
 
-document.getElementById('generateBtn').addEventListener('click', generateWeek);
+// ── talking to the server ────────────────────────────────────────────────────
 
-async function generateWeek() {
+/** POST JSON and return the parsed reply, or throw an Error a person can act on.
+ *  The body is read once, as text, and parsed afterwards: a response body is a
+ *  stream, and reading it twice fails with "body stream already read". */
+async function postJson(url, payload) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (_) {
+    const err = new Error('Could not reach the server. Check the connection and try again.');
+    err.network = true;
+    throw err;
+  }
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (_) { /* not JSON — handled below */ }
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    if (res.ok && !data.error) return data;
+    throw new Error(data.error || httpMessage(res.status));
+  }
+  // An HTML page where JSON was expected: the access page, the CSRF guard,
+  // the sign-in page a lapsed session is redirected to, or a crash page.
+  if (res.status === 403) throw new Error(httpMessage(403));
+  if (res.redirected || res.ok || res.status === 400) {
+    throw new Error('Your session has expired or this page is out of date. ' +
+                    'Copy anything you want to keep, then reload the page and sign in again.');
+  }
+  throw new Error(httpMessage(res.status));
+}
+
+function httpMessage(status) {
+  switch (status) {
+    case 400: return 'The server could not accept that request. Reload the page and try again.';
+    case 403: return 'Your account does not have access to bulk generation.';
+    case 404: return 'Not found — the client may have been removed. Reload the page.';
+    case 502: case 503: case 504:
+      return 'The server did not answer in time, or was restarting. Wait a minute and try again.';
+    default:
+      return `Something went wrong on the server (error ${status}). Try again; if it keeps happening, tell the team.`;
+  }
+}
+
+// ── plan, then write each post ───────────────────────────────────────────────
+
+document.getElementById('generateBtn').addEventListener('click', planWeek);
+
+async function planWeek() {
   const clientId = document.getElementById('genClient').value;
   const platform = document.querySelector('input[name="platform"]:checked')?.value;
+  const contentType = document.getElementById('genContentType').value;
   const theme = document.getElementById('genTheme').value.trim();
-  const days = parseInt(document.getElementById('genDays').value) || 7;
-  const perDay = parseInt(document.getElementById('genPerDay').value) || 1;
+  const { days, perDay, total } = batchSize();
 
-  if (!clientId || !platform || !theme) {
-    alert('Please select a client, platform, and enter this week\'s direction.');
+  if (!clientId || !platform || !contentType || !theme) {
+    alert('Please select a client, platform and content type, and enter this week\'s direction.');
+    return;
+  }
+  if (total < 1 || total > MAX_POSTS) {
+    alert(`A batch is 1 to ${MAX_POSTS} posts.`);
+    return;
+  }
+  if (countOf('done') && !saved &&
+      !confirm('Replace the batch on screen? Posts that have not been saved will be lost.')) {
     return;
   }
 
-  show('loadingState');
-  document.getElementById('generateBtn').disabled = true;
-
+  planning = true;
+  refreshButtons();
+  show('planningState');
   try {
-    const res = await fetch('/api/bulk-generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: parseInt(clientId),
-        platform,
-        theme,
-        days,
-        posts_per_day: perDay,
-        start_date: document.getElementById('genStartDate').value,
-        include_performance: document.getElementById('genUsePerformance').checked,
-        include_trends: document.getElementById('genUseTrends').checked,
-      }),
+    const data = await postJson('/api/bulk-plan', {
+      client_id: parseInt(clientId),
+      platform,
+      content_type: contentType,
+      theme,
+      days,
+      posts_per_day: perDay,
+      start_date: document.getElementById('genStartDate').value,
+      include_performance: document.getElementById('genUsePerformance').checked,
+      include_trends: document.getElementById('genUseTrends').checked,
     });
-
-    if (!res.ok) {
-      const bodyText = await res.text();
-      let detail = bodyText.slice(0, 400);
-      try { detail = JSON.parse(bodyText).error || detail; } catch (_) {}
-      throw new Error(`The server returned ${res.status}. ${detail}`.trim());
-    }
-
-    const data = await res.json();
-    if (data.error) { alert('Error: ' + data.error); show('emptyState'); return; }
-
-    currentBatch = { clientId: parseInt(clientId), platform, posts: data.posts };
+    batch = {
+      clientId: data.client_id,
+      platform: data.platform,
+      contentType: contentType,
+      theme: data.theme,
+      items: data.posts.map(p => ({ topic: p.topic, scheduled_date: p.scheduled_date, state: 'queued' })),
+    };
+    saved = false;
     renderBatch(data);
     show('resultState');
   } catch (e) {
-    console.error('bulk-generate failed:', e);
-    alert('Could not generate this week.\n\n' + (e && e.message ? e.message : e));
-    show('emptyState');
+    alert('Could not plan this week.\n\n' + e.message);
+    show(batch ? 'resultState' : 'emptyState');
+    return;
   } finally {
-    document.getElementById('generateBtn').disabled = false;
+    planning = false;
+    refreshButtons();
   }
+  const b = batch;
+  await runPool(b.items.filter(i => i.state === 'queued'), IN_FLIGHT, item => writeItem(b, item));
 }
 
-function renderBatch(data) {
-  const list = document.getElementById('batchList');
-  list.innerHTML = '';
+/** Write one post through the single generator. Never throws: a failure stays on
+ *  its own card with a Retry button, and the rest of the week carries on. */
+async function writeItem(b, item) {
+  if (item.removed) return;
+  item.topic = readTopic(item) || item.topic;
+  item.state = 'writing';
+  item.error = '';
+  inFlight += 1;
+  paintItem(b, item);
+  updateBatchCounts();
+  refreshButtons();
+  try {
+    const data = await postJson('/api/generate-caption', {
+      client_id: b.clientId,
+      platform: b.platform,
+      topic: item.topic,
+      weekly_direction: b.theme,
+    });
+    Object.assign(item, {
+      state: 'done',
+      caption: data.caption || '',
+      hashtags: data.hashtags || '',
+      voice_score: data.voice_score,
+      voice_audit: data.voice_audit || '',
+    });
+  } catch (e) {
+    item.state = 'failed';
+    item.error = e.message;
+  } finally {
+    inFlight -= 1;
+  }
+  if (b === batch && !item.removed) paintItem(b, item);
+  updateBatchCounts();
+  refreshButtons();
+}
 
+// ── the batch on screen ──────────────────────────────────────────────────────
+
+function renderBatch(data) {
   const bits = [];
   bits.push(data.performance_used ? `${data.performance_used} recent post(s) informed this batch` : 'No recent performance used');
   bits.push(data.trends_used && data.trends_used.length ? `${data.trends_used.length} trending theme(s) considered` : 'No trends used');
+  if (data.posts.length < data.requested) bits.push(`Claude planned ${data.posts.length} of the ${data.requested} asked for`);
   document.getElementById('contextUsed').textContent = bits.join(' · ');
 
-  data.posts.forEach((post, i) => {
-    const card = document.createElement('div');
-    card.className = 'border rounded p-3 batch-item';
-    card.dataset.index = i;
-
-    if (post.error) {
-      card.innerHTML = `
-        <div class="d-flex justify-content-between align-items-start mb-2">
-          <span class="badge bg-danger">Failed</span>
-          <button class="btn btn-sm btn-outline-secondary remove-item-btn"><i class="bi bi-x-lg"></i></button>
-        </div>
-        <p class="small text-muted mb-0">${escapeHtml(post.topic)}</p>
-        <p class="small text-danger mb-0">${escapeHtml(post.error)}</p>`;
-      list.appendChild(card);
-      wireRemove(card);
-      return;
-    }
-
-    const scoreEl = post.voice_score != null
-      ? `<span class="badge ${post.voice_score >= 9 ? 'bg-success' : (post.voice_score >= 8 ? 'bg-primary' : 'bg-warning text-dark')}">Voice ${post.voice_score}/10</span>`
-      : '';
-    const dt = post.scheduled_date ? new Date(post.scheduled_date) : null;
-    const dateLabel = dt ? dt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-
-    card.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <div class="d-flex align-items-center gap-2">
-          <span class="badge" style="background:${platformColors[currentBatch.platform] || '#6366f1'}">${dateLabel}</span>
-          ${scoreEl}
-        </div>
-        <button class="btn btn-sm btn-outline-secondary remove-item-btn" title="Remove from batch"><i class="bi bi-x-lg"></i></button>
-      </div>
-      <input type="text" class="form-control form-control-sm fw-semibold mb-2 topic-input" value="${escapeAttr(post.topic)}">
-      <textarea class="form-control form-control-sm mb-2 caption-input" rows="4" style="font-size:.85rem">${escapeHtml(post.caption)}</textarea>
-      <textarea class="form-control form-control-sm hashtags-input" rows="1" style="font-size:.78rem;color:#6366f1">${escapeHtml(post.hashtags || '')}</textarea>
-      ${post.voice_audit ? `<p class="small text-muted mt-2 mb-0">${escapeHtml(post.voice_audit)}</p>` : ''}`;
-
-    card.dataset.scheduledDate = post.scheduled_date || '';
-    list.appendChild(card);
-    wireRemove(card);
+  const list = document.getElementById('batchList');
+  list.innerHTML = '';
+  batch.items.forEach(item => {
+    item.el = document.createElement('div');
+    item.el.className = 'border rounded p-3 batch-item';
+    list.appendChild(item.el);
+    paintItem(batch, item);
   });
-
   updateBatchCounts();
 }
 
-function wireRemove(card) {
-  card.querySelector('.remove-item-btn').addEventListener('click', () => {
-    card.remove();
-    updateBatchCounts();
-  });
+function readTopic(item) {
+  const input = item.el && item.el.querySelector('.topic-input');
+  return input ? input.value.trim() : item.topic;
+}
+
+function stateBadge(item) {
+  switch (item.state) {
+    case 'queued':  return '<span class="badge bg-light text-muted border">Waiting</span>';
+    case 'writing': return '<span class="badge bg-info text-dark">Writing…</span>';
+    case 'failed':  return '<span class="badge bg-danger">Failed</span>';
+    default:        return '';
+  }
+}
+
+function paintItem(b, item) {
+  const card = item.el;
+  if (!card) return;
+  // Keep what the person typed across a repaint.
+  if (card.querySelector('.topic-input')) item.topic = readTopic(item);
+  const captionEl = card.querySelector('.caption-input');
+  if (captionEl) item.caption = captionEl.value;
+  const hashtagsEl = card.querySelector('.hashtags-input');
+  if (hashtagsEl) item.hashtags = hashtagsEl.value;
+
+  const dt = item.scheduled_date ? new Date(item.scheduled_date) : null;
+  const dateLabel = dt ? dt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  const score = item.state === 'done' && item.voice_score != null
+    ? `<span class="badge ${item.voice_score >= 9 ? 'bg-success' : (item.voice_score >= 8 ? 'bg-primary' : 'bg-warning text-dark')}">Voice ${item.voice_score}/10</span>`
+    : '';
+  const locked = item.state === 'queued' || item.state === 'writing';
+
+  let body;
+  if (item.state === 'done') {
+    body = `
+      <textarea class="form-control form-control-sm mb-2 caption-input" rows="4" style="font-size:.85rem">${escapeHtml(item.caption)}</textarea>
+      <textarea class="form-control form-control-sm hashtags-input" rows="1" style="font-size:.78rem;color:#6366f1">${escapeHtml(item.hashtags || '')}</textarea>
+      ${item.voice_audit ? `<p class="small text-muted mt-2 mb-0">${escapeHtml(item.voice_audit)}</p>` : ''}`;
+  } else if (item.state === 'failed') {
+    body = `
+      <p class="small text-danger mb-2">${escapeHtml(item.error)}</p>
+      <button class="btn btn-sm btn-outline-primary retry-btn"><i class="bi bi-arrow-clockwise me-1"></i>Retry this post</button>`;
+  } else if (item.state === 'writing') {
+    body = '<p class="small text-muted mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Writing and voice-checking…</p>';
+  } else {
+    body = '<p class="small text-muted mb-0">Waiting for its turn…</p>';
+  }
+
+  card.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:${platformColors[b.platform] || '#6366f1'}">${escapeHtml(dateLabel)}</span>
+        ${stateBadge(item)}
+        ${score}
+      </div>
+      <button class="btn btn-sm btn-outline-secondary remove-item-btn" title="Remove from batch"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <input type="text" class="form-control form-control-sm fw-semibold mb-2 topic-input" value="${escapeAttr(item.topic)}" ${locked ? 'disabled' : ''}>
+    ${body}`;
+
+  card.querySelector('.remove-item-btn').addEventListener('click', () => removeItem(item));
+  const retry = card.querySelector('.retry-btn');
+  if (retry) {
+    retry.disabled = inFlight >= IN_FLIGHT;
+    retry.addEventListener('click', () => {
+      if (inFlight < IN_FLIGHT) writeItem(b, item);
+    });
+  }
+}
+
+function removeItem(item) {
+  item.removed = true;
+  if (item.el) item.el.remove();
+  updateBatchCounts();
+  refreshButtons();
 }
 
 function updateBatchCounts() {
-  const remaining = document.querySelectorAll('.batch-item').length;
+  const total = liveItems().length;
+  const done = countOf('done');
+  const failed = countOf('failed');
+  const pending = countOf('queued') + countOf('writing');
+
   const badge = document.getElementById('batchCount');
-  badge.textContent = remaining + (remaining === 1 ? ' post' : ' posts');
-  badge.classList.toggle('d-none', remaining === 0);
-  document.getElementById('saveCountLabel').textContent = `${remaining} post${remaining === 1 ? '' : 's'} will be created`;
+  badge.textContent = total + (total === 1 ? ' post' : ' posts');
+  badge.classList.toggle('d-none', total === 0);
+
+  const progress = document.getElementById('batchProgress');
+  let line = `${done} of ${total} written`;
+  if (pending) line += ' — writing the rest…';
+  if (failed) line += ` · ${failed} failed: retry or remove ${failed === 1 ? 'it' : 'them'}`;
+  progress.textContent = total ? line : '';
+  progress.className = 'small fw-semibold mb-3 ' + (failed ? 'text-danger' : 'text-muted');
+
+  document.getElementById('saveCountLabel').textContent =
+    `${done} post${done === 1 ? '' : 's'} will be created` + (pending ? ' (still writing…)' : '');
 }
 
-document.getElementById('saveBatchBtn').addEventListener('click', async () => {
-  const cards = document.querySelectorAll('.batch-item');
-  const posts = [];
-  cards.forEach(card => {
-    const captionEl = card.querySelector('.caption-input');
-    if (!captionEl) return;   // a failed item has no editable fields — skip it
-    posts.push({
-      topic: card.querySelector('.topic-input').value.trim(),
-      caption: captionEl.value.trim(),
-      hashtags: card.querySelector('.hashtags-input').value.trim(),
-      scheduled_date: card.dataset.scheduledDate || null,
-    });
-  });
+// ── save ─────────────────────────────────────────────────────────────────────
 
-  if (!posts.length) { alert('Nothing left to save — every post was removed.'); return; }
+document.getElementById('saveBatchBtn').addEventListener('click', saveBatch);
+
+async function saveBatch() {
+  if (!batch || saving) return;
+  const items = liveItems();
+  if (items.some(i => i.state === 'queued' || i.state === 'writing')) {
+    alert('Some posts are still being written. Save once they are done.');
+    return;
+  }
+  const ready = items.filter(i => i.state === 'done');
+  if (!ready.length) {
+    alert('Nothing to save yet — no post in this batch has been written.');
+    return;
+  }
+  const left = items.length - ready.length;
+  if (left && !confirm(`${left} post${left === 1 ? '' : 's'} failed and will not be saved. Save the other ${ready.length}?`)) {
+    return;
+  }
+
+  const posts = ready.map(i => ({
+    topic: readTopic(i),
+    caption: i.el.querySelector('.caption-input').value.trim(),
+    hashtags: i.el.querySelector('.hashtags-input').value.trim(),
+    scheduled_date: i.scheduled_date || null,
+  }));
+  if (posts.some(p => !p.topic || !p.caption)) {
+    alert('Every post needs a topic and a caption. Fill in the empty one, or remove it.');
+    return;
+  }
 
   const btn = document.getElementById('saveBatchBtn');
+  saving = true;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
-
   try {
-    const res = await fetch('/api/bulk-save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: currentBatch.clientId,
-        platform: currentBatch.platform,
-        content_type: document.getElementById('genContentType').value,
-        status: document.getElementById('saveStatus').value,
-        posts,
-      }),
+    await postJson('/api/bulk-save', {
+      client_id: batch.clientId,
+      platform: batch.platform,
+      content_type: batch.contentType,
+      status: document.getElementById('saveStatus').value,
+      posts,
     });
-    const data = await res.json();
-    if (data.ok) {
-      window.location.href = `/content?client_id=${currentBatch.clientId}`;
-    } else {
-      alert('Error: ' + (data.error || 'Unknown'));
-    }
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Posts';
+    saved = true;
+    window.location.href = `/content?client_id=${batch.clientId}`;
+    return;   // the button stays disabled while the page changes: no second save
+  } catch (e) {
+    alert((e.network
+      ? 'The save may not have reached the server. Check the Content Library before saving again.\n\n'
+      : 'Nothing was saved.\n\n') + e.message);
+  }
+  saving = false;
+  btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Posts';
+  refreshButtons();
+}
+
+// Written posts live only on this page until they are saved.
+window.addEventListener('beforeunload', e => {
+  if (!saved && (countOf('done') || inFlight)) {
+    e.preventDefault();
+    e.returnValue = '';
   }
 });
 
 function show(id) {
-  ['emptyState', 'loadingState', 'resultState'].forEach(s => {
+  ['emptyState', 'planningState', 'resultState'].forEach(s => {
     const el = document.getElementById(s);
+    if (el) el.classList.remove('d-flex');
     if (el) el.classList.add('d-none');
   });
   const target = document.getElementById(id);

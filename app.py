@@ -647,6 +647,10 @@ def api_generate_caption():
     platform = data.get('platform')
     topic = data.get('topic', '').strip()
     extra = data.get('extra_context', '').strip()
+    # A bulk week sends its direction with every post. It belongs in the rulebook,
+    # not the user turn, so the auditor judges against it too — and being the same
+    # for the whole batch, it keeps the cached prefix identical post to post.
+    direction = (data.get('weekly_direction') or '').strip()
 
     if not all([client_id, platform, topic]):
         return jsonify({'error': 'client_id, platform, and topic are required.'}), 400
@@ -664,6 +668,7 @@ def api_generate_caption():
     result = ve.generate_post(client['name'], brand_voice, topic,
                               voice_document=voice_document,
                               sample_captions=sample_captions,
+                              weekly_direction=direction,
                               extra_context=extra,
                               debug=config.DEBUG_ENGINE)
     if result.get('error'):
@@ -705,13 +710,29 @@ def api_save_caption():
 
 
 # ── Bulk Content Generator ───────────────────────────────────────────────────
-# Same voice-faithful pipeline as the single generator (ve.generate_post), run
-# once per planned topic. The rulebook is identical across the whole batch, so
-# it's the cached prefix on every call after the first — see voice_engine.py.
+# A week is planned in one request and written one post per request:
+#
+#   /api/bulk-plan          one model call: the week's topics, each with its slot
+#   /api/generate-caption   the single generator, once per topic, called by the
+#                           page two at a time — the same voice-faithful pipeline
+#   /api/bulk-save          the batch a person reviewed
+#
+# Writing the whole week inside one request meant 22 to 36 model calls in a row
+# on the app's single gunicorn worker, which is killed at 180 seconds. The
+# captions died with the worker, the tokens were still spent, and every other
+# request — Make's publish callbacks included — waited behind it. One post is a
+# handful of calls, well inside the limit, and a post that fails is retried on
+# its own instead of sinking the week.
+#
+# Every post in a batch carries the same weekly direction, so the rulebook is
+# identical across the batch and is the cached prefix after the first post.
 
 # Who may run a batch. A week is dozens of model calls, so it starts with the
 # agency; adding 'client' here opens every bulk route and the nav link to talents.
 BULK_GENERATE_ROLES = ('admin', 'manager')
+# Posts in one batch, enforced on plan and on save: two a day for a week.
+BULK_MAX_POSTS = 14
+BULK_HOUR_SLOTS = [9, 13, 17]   # posting times on a day with more than one post
 
 
 @app.context_processor
@@ -726,28 +747,45 @@ def bulk_generate():
     preselect_client = current_scope() or request.args.get('client_id', type=int)
     return render_template('bulk_generate.html', clients=all_clients,
                            platforms=PLATFORMS, content_types=CONTENT_TYPES,
-                           create_statuses=CREATE_STATUSES,
+                           create_statuses=CREATE_STATUSES, max_posts=BULK_MAX_POSTS,
                            preselect_client=preselect_client)
 
 
-@app.route('/api/bulk-generate', methods=['POST'])
+def _bulk_batch_size(data):
+    """(days, per_day, error). A batch bigger than the cap is refused, not
+    quietly trimmed — the person asked for a number and should hear why not."""
+    try:
+        days = int(data.get('days', 7))
+        per_day = int(data.get('posts_per_day', 1))
+    except (TypeError, ValueError):
+        return None, None, 'Days and posts per day must be whole numbers.'
+    if days < 1 or not 1 <= per_day <= len(BULK_HOUR_SLOTS):
+        return None, None, ('Pick at least one day, and 1 to %d posts a day.'
+                            % len(BULK_HOUR_SLOTS))
+    if days * per_day > BULK_MAX_POSTS:
+        return None, None, ('A batch is at most %d posts — %d days at %d a day is %d.'
+                            % (BULK_MAX_POSTS, days, per_day, days * per_day))
+    return days, per_day, None
+
+
+@app.route('/api/bulk-plan', methods=['POST'])
 @roles_required(*BULK_GENERATE_ROLES)
-def api_bulk_generate():
-    data = request.get_json(silent=True) or {}
+def api_bulk_plan():
+    """One model call: the week's topics, each with its posting slot. Nothing is
+    stored — the page writes each post next, and a person reviews before saving."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Send the plan request as a JSON object.'}), 400
     # HARD RULE 1: never trust client_id from the body for a client user.
     client_id = enforce_client_id(data.get('client_id'))
     platform = data.get('platform')
-    theme = (data.get('theme') or '').strip()
-
-    try:
-        days = max(1, min(14, int(data.get('days', 7))))
-        per_day = max(1, min(3, int(data.get('posts_per_day', 1))))
-    except (TypeError, ValueError):
-        return jsonify({'error': 'days and posts_per_day must be numbers.'}), 400
-    count = days * per_day
+    theme = str(data.get('theme') or '').strip()
 
     if not all([client_id, platform, theme]) or platform not in PLATFORMS:
         return jsonify({'error': 'client_id, a valid platform, and a theme are required.'}), 400
+    days, per_day, err = _bulk_batch_size(data)
+    if err:
+        return jsonify({'error': err}), 400
 
     client = db.get_client(client_id)
     if not client:
@@ -755,59 +793,43 @@ def api_bulk_generate():
 
     try:
         base_date = datetime.strptime(data.get('start_date') or '', '%Y-%m-%d')
-    except ValueError:
+    except (TypeError, ValueError):
         base_date = datetime.now()
 
-    brand_voice = dict(db.get_brand_voice(client_id, platform) or db.get_brand_voice(client_id, 'general') or {})
-    brand_voice['platform'] = platform
-    voice_document, sample_captions = db.get_client_voice(client_id)
-
+    count = days * per_day
     performance_rows = db.get_recent_performance(client_id, days=7) if data.get('include_performance', True) else []
     trend_rows = db.get_trends(platform=platform, limit=8) if data.get('include_trends', True) else []
     trend_texts = [t['trend_text'] for t in trend_rows]
 
-    topics, err = ai.plan_week(client['name'], client.get('description', ''), theme,
+    topics, err = ai.plan_week(client['name'], client.get('description') or '', theme,
                                platform, count, trends_list=trend_texts,
                                performance_rows=performance_rows)
     if err:
         return jsonify({'error': err}), 500
-    if not topics:
+
+    texts = []
+    for t in topics or []:
+        text = str((t.get('topic') if isinstance(t, dict) else t) or '').strip()
+        if text:
+            texts.append(text)
+    texts = texts[:count]   # a long list is trimmed; a short one is shown as it came
+    if not texts:
         return jsonify({'error': 'Claude returned no topics — try again.'}), 500
-    topics = topics[:count]   # defend against a short/long/malformed list
 
-    hour_slots = [9, 13, 17]   # simple, deterministic spacing when posts_per_day > 1
     posts = []
-    for i, t in enumerate(topics):
-        topic = (t.get('topic') or '').strip() if isinstance(t, dict) else str(t).strip()
-        if not topic:
-            continue
+    for i, topic in enumerate(texts):
         day_offset, slot = divmod(i, per_day)
-        post_date = base_date + timedelta(days=day_offset)
-        scheduled = post_date.replace(hour=hour_slots[slot % len(hour_slots)], minute=0,
-                                      second=0, microsecond=0).strftime('%Y-%m-%dT%H:%M')
-
-        result = ve.generate_post(client['name'], brand_voice, topic,
-                                  voice_document=voice_document,
-                                  sample_captions=sample_captions,
-                                  weekly_direction=theme, debug=False)
-        if result.get('error'):
-            posts.append({'topic': topic, 'scheduled_date': scheduled, 'error': result['error']})
-            continue
-
-        posts.append({
-            'topic': topic,
-            'caption': result['caption'],
-            'hashtags': result['hashtags'],
-            'voice_score': result.get('voice_score'),
-            'voice_audit': result.get('voice_audit', ''),
-            'scheduled_date': scheduled,
-        })
+        when = (base_date + timedelta(days=day_offset)).replace(
+            hour=BULK_HOUR_SLOTS[slot], minute=0, second=0, microsecond=0)
+        posts.append({'topic': topic, 'scheduled_date': when.strftime('%Y-%m-%dT%H:%M')})
 
     return jsonify({
         'ok': True,
         'client_id': client_id,
         'platform': platform,
+        'theme': theme,
         'posts': posts,
+        'requested': count,
         'performance_used': len(performance_rows),
         'trends_used': trend_texts,
     })

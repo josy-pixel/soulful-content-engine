@@ -27,6 +27,8 @@ CSRF = "test-csrf-token"
 class FakeClaude:
     """Stands in for anthropic.Anthropic. Answers by recognising the prompt."""
 
+    EMPTY = object()   # a reply with no content blocks at all
+
     def __init__(self, plan_reply=None, audit_score=9):
         self.calls = []                 # dicts: kind, system, user
         self.plan_reply = plan_reply    # None = a well-formed plan for the asked count
@@ -55,7 +57,9 @@ class FakeClaude:
         user = messages[0]['content']
         if 'content strategist' in system_text:
             kind = 'plan'
-            if self.plan_reply is not None:
+            if self.plan_reply is FakeClaude.EMPTY:
+                text = None
+            elif self.plan_reply is not None:
                 text = self.plan_reply
             else:
                 n = int(re.search(r'exactly (\d+) objects', user).group(1))
@@ -131,6 +135,14 @@ ITEM = {"topic": "A topic", "caption": "A caption", "hashtags": "#a",
         "scheduled_date": "2026-10-05T09:00"}
 
 
+def plan_body(cid, **over):
+    body = {"client_id": cid, "platform": "instagram", "content_type": "photo",
+            "theme": "Autumn reset", "days": 7, "posts_per_day": 1,
+            "start_date": "2026-10-05"}
+    body.update(over)
+    return body
+
+
 def save_body(cid, **over):
     body = {"client_id": cid, "platform": "instagram", "content_type": "photo",
             "status": "draft", "posts": [dict(ITEM), dict(ITEM)]}
@@ -155,10 +167,126 @@ def test_a_client_user_cannot_open_the_page_or_see_the_link(client, data):
     assert b"Bulk Generate" not in client.get("/").data
 
 
-@pytest.mark.parametrize("url", ["/api/bulk-generate", "/api/bulk-save"])
+@pytest.mark.parametrize("url", ["/api/bulk-plan", "/api/bulk-save"])
 def test_a_client_user_is_refused_by_every_bulk_endpoint(client, data, claude, url):
     login_as(client, data["member"])
     r = post_json(client, url, save_body(data["ca"]))
     assert r.status_code == 403
     assert db.get_posts() == []
     assert claude.calls == []
+
+
+# ── one request, one small piece of work ──────────────────────────────────────
+
+def test_the_whole_week_in_one_request_is_gone(client, data, claude):
+    """The route that wrote every post inside one request — killed by the worker
+    timeout with the tokens already spent — no longer exists."""
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-generate", plan_body(data["ca"]))
+    assert r.status_code == 404
+    assert claude.calls == []
+
+
+def test_the_plan_is_one_model_call_and_dates_each_topic(client, data, claude):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"], days=7, posts_per_day=2))
+    assert r.status_code == 200, r.data
+    body = r.get_json()
+    assert claude.kinds() == ["plan"]
+    assert body["client_id"] == data["ca"] and body["theme"] == "Autumn reset"
+    assert len(body["posts"]) == 14 and body["requested"] == 14
+    slots = [p["scheduled_date"] for p in body["posts"]]
+    assert slots[:3] == ["2026-10-05T09:00", "2026-10-05T13:00", "2026-10-06T09:00"]
+    assert slots[-1] == "2026-10-11T13:00"
+    assert db.get_posts() == []                       # planning stores nothing
+
+
+def test_each_post_is_its_own_request_of_a_few_calls(client, data, monkeypatch):
+    """Worst case for one post: draft, three audits, hashtags — five calls, well
+    inside the worker's 180 seconds, however long the week is."""
+    fake = FakeClaude(audit_score=5)                  # every audit asks for a rewrite
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key-never-sent')
+    monkeypatch.setattr(anthropic, 'Anthropic', fake.client_cls)
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/generate-caption",
+                  {"client_id": data["ca"], "platform": "instagram",
+                   "topic": "Planned topic 0", "weekly_direction": "Autumn reset"})
+    assert r.status_code == 200, r.data
+    assert len(fake.calls) <= 5
+
+
+def test_the_weekly_direction_is_the_same_cached_rulebook_for_every_post(client, data, claude):
+    login_as(client, data["admin"])
+    for topic in ("First topic", "Second topic"):
+        r = post_json(client, "/api/generate-caption",
+                      {"client_id": data["ca"], "platform": "instagram",
+                       "topic": topic, "weekly_direction": "Autumn reset"})
+        assert r.status_code == 200, r.data
+    writer = [c["system"] for c in claude.calls if c["kind"] == "caption"]
+    auditor = [c["system"] for c in claude.calls if c["kind"] == "audit"]
+    assert len(set(writer)) == 1 and len(set(auditor)) == 1   # byte-identical prefix
+    assert "THIS WEEK'S CREATIVE DIRECTION" in writer[0] and "Autumn reset" in writer[0]
+    assert "Autumn reset" in auditor[0]                       # the auditor sees it too
+
+
+def test_the_single_generator_is_unchanged_without_a_direction(client, data, claude):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/generate-caption",
+                  {"client_id": data["ca"], "platform": "instagram", "topic": "A topic"})
+    assert r.status_code == 200
+    assert all("THIS WEEK'S CREATIVE DIRECTION" not in c["system"] for c in claude.calls)
+
+
+@pytest.mark.parametrize("days,per_day", [(15, 1), (5, 3), (8, 2), (0, 1), (7, 4), ("x", 1)])
+def test_a_plan_over_the_cap_is_refused_before_any_call(client, data, claude, days, per_day):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"], days=days, posts_per_day=per_day))
+    assert r.status_code == 400
+    assert r.get_json()["error"]
+    assert claude.calls == []
+
+
+def test_the_cap_itself_is_allowed(client, data, claude):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"], days=14, posts_per_day=1))
+    assert r.status_code == 200 and len(r.get_json()["posts"]) == 14
+
+
+@pytest.mark.parametrize("reply", ["Sure! Here are some ideas.", FakeClaude.EMPTY, "{}"])
+def test_a_failed_plan_answers_in_json(client, data, monkeypatch, reply):
+    """The page reads one JSON body; a broken model reply must not become an HTML 500."""
+    fake = FakeClaude(plan_reply=reply)
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key-never-sent')
+    monkeypatch.setattr(anthropic, 'Anthropic', fake.client_cls)
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"]))
+    assert r.status_code == 500
+    assert r.is_json and r.get_json()["error"]
+
+
+def test_planning_for_a_deleted_client_is_404(client, data, claude):
+    db.soft_delete_client(data["cb"])
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["cb"]))
+    assert r.status_code == 404 and r.is_json
+    assert claude.calls == []
+
+
+def test_a_plan_request_that_is_not_an_object_is_400(client, data, claude):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", ["not", "an", "object"])
+    assert r.status_code == 400 and r.is_json
+
+
+def test_the_page_writes_post_by_post_through_the_shared_pool(client, data):
+    login_as(client, data["admin"])
+    page = client.get("/bulk-generate").data.decode()
+    assert "js/run_pool.js" in page
+    assert "/api/bulk-plan" in page and "/api/generate-caption" in page
+    assert "/api/bulk-generate" not in page
+    js = client.get("/static/js/run_pool.js")
+    assert js.status_code == 200 and b"async function runPool" in js.data
+    js.close()
+    gallery = client.get("/clients/%d/gallery" % data["ca"]).data.decode()
+    assert "js/run_pool.js" in gallery                        # extracted, not copied
+    assert "async function runPool" not in gallery
