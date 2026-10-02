@@ -109,7 +109,11 @@ img, video, table, pre { max-width: 100%; }
 /* Inputs: 16px exactly, or iOS auto-zooms on focus */
 input, select, textarea {
   font-size: 16px !important;
-  min-height: 48px;
+}
+/* Tall fields are easy to tap. A checkbox or radio stretched to 48px is a bar,
+   not a box — its label is the tap target instead. */
+input:where(:not([type="checkbox"], [type="radio"])), select, textarea {
+  min-height: 48px;   /* :where keeps this as easy to override as plain `input` */
 }
 textarea { min-height: 120px; }
 
