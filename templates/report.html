@@ -117,7 +117,7 @@ document.getElementById('generateReport').addEventListener('click', async () => 
     // Quick stats
     const s = data.stats;
     const pf = s.performance || {};
-    const platforms = (s.platform_breakdown || []).map(p => `${p.platform}: ${p.cnt}`).join(', ');
+    const platforms = (s.platform_breakdown || []).map(p => `${escapeHtml(p.platform)}: ${p.cnt}`).join(', ');
     document.getElementById('statsContent').innerHTML = `
       <div class="row g-2 text-center">
         <div class="col-6"><div class="p-2 bg-light rounded"><div class="fw-bold">${s.total_created}</div><small>Created</small></div></div>
@@ -154,8 +154,16 @@ function show(id) {
   document.getElementById(id).classList.remove('d-none');
 }
 
+// The report is model output built from post topics and captions that client users
+// wrote, so it is escaped before any markup is added — only the markdown below
+// becomes HTML.
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function markdownToHtml(md) {
-  return md
+  return escapeHtml(md)
     .replace(/^### (.+)$/gm, '<h5>$1</h5>')
     .replace(/^## (.+)$/gm, '<h4>$1</h4>')
     .replace(/^# (.+)$/gm, '<h3>$1</h3>')
