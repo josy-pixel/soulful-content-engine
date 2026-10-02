@@ -58,6 +58,9 @@ _MIME_ALIASES = {'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg',
 _GENERIC_MIME = {'', 'application/octet-stream', 'binary/octet-stream'}
 _EXT_RE = re.compile(r'^[a-z0-9]{2,5}$')
 
+# Where a file came from — the values the gallery and the queue know how to show.
+SOURCES = ('instagram', 'tiktok', 'web')
+
 _URL_RULE = 'media_url must be an https link on an allowed media host.'
 _UNSUPPORTED = ('Unsupported file type. Images: JPG, PNG, GIF, WebP. '
                 'Video: MP4, MOV, WebM, AVI.')
@@ -89,6 +92,33 @@ class TooLarge(Refused):
 class FetchFailed(Exception):
     """The far end did not hand over a usable file. The message is for the log only —
     it names hosts and errors the caller has no business seeing."""
+
+
+# ── metadata ─────────────────────────────────────────────────────────────────
+
+def clean_source(value):
+    source = (value or 'web').strip().lower()
+    if source not in SOURCES:
+        raise Refused('source must be one of: %s.' % ', '.join(SOURCES))
+    return source
+
+
+def clean_source_url(value):
+    """The original post's link, shown as a clickable "original" — so http(s) only.
+    A javascript: link there would run in the app's own origin."""
+    value = (value or '').strip()
+    if not value:
+        return ''
+    rule = 'source_url must be an http(s) link to the original post.'
+    if len(value) > 2048 or any(ord(ch) < 32 for ch in value):
+        raise Refused(rule)
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        raise Refused(rule)
+    if parts.scheme.lower() not in ('http', 'https') or not parts.netloc:
+        raise Refused(rule)
+    return value
 
 
 # ── type ─────────────────────────────────────────────────────────────────────

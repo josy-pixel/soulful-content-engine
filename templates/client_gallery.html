@@ -114,7 +114,8 @@
           <span class="badge bg-light text-dark border" style="font-size:.68rem">
             <i class="bi bi-cloud-download me-1"></i>from {{ m.source|capitalize }}
           </span>
-          {% if m.source_url %}
+          {# A web link only: anything else in an href (javascript:) runs in our origin. #}
+          {% if m.source_url and m.source_url.lower().startswith(('http://', 'https://')) %}
           <a href="{{ m.source_url }}" target="_blank" rel="noopener" class="small ms-1">original</a>
           {% endif %}
         </div>

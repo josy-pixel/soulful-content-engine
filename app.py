@@ -992,8 +992,11 @@ def webhook_media_ingest():
     is_multipart = request.mimetype == 'multipart/form-data'
     data = request.form if is_multipart else (request.get_json(silent=True) or {})
 
-    source = (data.get('source') or 'web').strip().lower()
-    source_url = (data.get('source_url') or '').strip()
+    try:
+        source = media_ingest.clean_source(data.get('source'))
+        source_url = media_ingest.clean_source_url(data.get('source_url'))
+    except media_ingest.Refused as e:
+        return jsonify({'error': str(e)}), e.status
     caption_hint = (data.get('caption_hint') or '').strip()
 
     # Neither path holds the file in memory: werkzeug spools a sizeable upload to a

@@ -35,7 +35,8 @@ to the client's gallery as usual, then mark the raw source here as ready (or del
         {% endif %}
         <div class="d-flex justify-content-between align-items-center mb-2">
           <small class="text-muted">{{ m.created_at[:10] }}</small>
-          {% if m.source_url %}
+          {# A web link only: anything else in an href (javascript:) runs in our origin. #}
+          {% if m.source_url and m.source_url.lower().startswith(('http://', 'https://')) %}
           <a href="{{ m.source_url }}" target="_blank" rel="noopener" class="small">original</a>
           {% endif %}
         </div>
