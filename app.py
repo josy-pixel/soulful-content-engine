@@ -214,7 +214,9 @@ def dashboard():
     pending_approval = db.get_posts_pending_approval(scope=scope)
     for p in pending_approval:
         if p.get('hero_filename'):
-            p['hero_url'] = _media_url(p['client_id'], p['hero_filename'])
+            p['hero_url'] = _media_display_url({
+                'storage': p['hero_storage'], 's3_key': p['hero_s3_key'],
+                'client_id': p['hero_client_id'], 'filename': p['hero_filename']})
         elif p.get('image_url'):
             p['hero_url'] = media_src(p['image_url'])
             p['hero_type'] = 'video' if is_video(p['image_url']) else 'image'

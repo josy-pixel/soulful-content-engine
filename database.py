@@ -992,13 +992,16 @@ def get_posts_pending_approval(scope=None):
     conn = get_db()
     pw = ' AND p.client_id = ?' if scope is not None else ''
     params = (scope,) if scope is not None else ()
+    # The hero is the first attached file in the order the post page uses
+    # (get_post_media), with what is needed to resolve it wherever it is stored.
     rows = conn.execute(
         "SELECT p.*, c.name AS client_name, c.logo_color, "
-        "(SELECT m.filename FROM post_media pm JOIN client_media m ON m.id = pm.media_id "
-        " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC LIMIT 1) AS hero_filename, "
-        "(SELECT m.media_type FROM post_media pm JOIN client_media m ON m.id = pm.media_id "
-        " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC LIMIT 1) AS hero_type "
+        "m.filename AS hero_filename, m.media_type AS hero_type, "
+        "m.storage AS hero_storage, m.s3_key AS hero_s3_key, m.client_id AS hero_client_id "
         "FROM v_content_active p JOIN v_clients_active c ON c.id = p.client_id "
+        "LEFT JOIN client_media m ON m.id = ("
+        " SELECT pm.media_id FROM post_media pm JOIN client_media m2 ON m2.id = pm.media_id"
+        " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC, m2.created_at ASC LIMIT 1) "
         "WHERE p.talent_approved = 0 AND p.status IN ('needs_review','approved','scheduled')" + pw +
         " ORDER BY (p.scheduled_date IS NULL), p.scheduled_date ASC, p.updated_at DESC",
         params
