@@ -593,6 +593,8 @@ if (captionInput && !captionInput.disabled) {
         });
         const body = await res.json().catch(() => ({}));
         saveStatus.textContent = res.ok ? 'Saved' : (body.error || 'Failed to save');
+        // A changed caption voids the sign-off — show that, not a stale tick.
+        if (res.ok) showSignoff(body.talent_approved, body.signoff_label);
       } catch (e) {
         saveStatus.textContent = 'Failed to save';
       }
@@ -670,7 +672,9 @@ document.querySelectorAll('.detach-media-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
     const mediaId = btn.dataset.id;
     const res = await fetch(`/api/content/${POST_ID}/media/${mediaId}`, { method: 'DELETE' });
-    if ((await res.json()).ok) btn.closest('.media-attached-item').remove();
+    const body = await res.json();
+    if (body.ok) btn.closest('.media-attached-item').remove();
+    if (body.signoff_cleared) showSignoff(false, 'Not yet confirmed');
   });
 });
 

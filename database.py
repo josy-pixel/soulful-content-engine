@@ -914,15 +914,46 @@ def create_post(data):
     return post_id
 
 
+def _void_talent_signoff(conn, post_ids):
+    """Clear the talent sign-off on these posts, inside the caller's write.
+    A sign-off covers the caption, hashtags and media the talent saw; once any
+    of them changes it no longer covers what would be published. Every write
+    that changes one of them calls this, so no path can forget. Returns the ids
+    that actually had a sign-off."""
+    ids = [int(i) for i in post_ids]
+    if not ids:
+        return []
+    signed = [r['id'] for r in conn.execute(
+        'SELECT id FROM content_posts WHERE talent_approved = 1 AND id IN (%s)'
+        % ','.join('?' * len(ids)), ids)]
+    if signed:
+        conn.execute(
+            'UPDATE content_posts SET talent_approved=0, talent_approved_at=NULL, talent_approved_by=NULL '
+            'WHERE id IN (%s)' % ','.join('?' * len(signed)), signed)
+    return signed
+
+
 def update_post(post_id, data):
+    """Returns {'before': {field: previous value} for a changed caption/hashtags,
+    'signoff_cleared': bool} so the caller can audit the edit."""
     with write_db() as conn:                                # guard raises -> must not leak
         _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
+        old = conn.execute('SELECT caption, hashtags, image_url FROM content_posts WHERE id=?',
+                           (post_id,)).fetchone()
         conn.execute('''
             UPDATE content_posts SET topic=?,caption=?,hashtags=?,image_url=?,content_type=?,hook=?,scheduled_date=?,notes=?,updated_at=CURRENT_TIMESTAMP
             WHERE id=?
         ''', (data['topic'], data['caption'], data.get('hashtags', ''), data.get('image_url', ''),
               data.get('content_type', 'photo'), data.get('hook', ''),
               data.get('scheduled_date') or None, data.get('notes', ''), post_id))
+        if old is None:
+            return {'before': {}, 'signoff_cleared': False}
+        new = {'caption': data['caption'], 'hashtags': data.get('hashtags', ''),
+               'image_url': data.get('image_url', '')}
+        changed = {f: old[f] for f in new if (new[f] or '') != (old[f] or '')}
+        cleared = _void_talent_signoff(conn, [post_id]) if changed else []
+        return {'before': {f: v for f, v in changed.items() if f != 'image_url'},
+                'signoff_cleared': bool(cleared)}
 
 
 def update_post_status(post_id, new_status, notes='', changed_by='user', posted_url=None):
@@ -964,22 +995,24 @@ def set_post_error(post_id, error_message):
 def update_post_review(post_id, caption=None, hashtags=None):
     """Lightweight caption/hashtags save for the inline review UI — unlike
     update_post(), doesn't require topic/content_type/scheduled_date/etc.
-    Returns {field: previous value} for what actually changed — empty when the
-    autosave resent the same text — so the caller can audit real edits only."""
+    Returns the same shape as update_post(); 'before' is empty when the autosave
+    resent the same text, so only real edits are audited or void a sign-off."""
     with write_db() as conn:                                # guard raises -> must not leak
         _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
         post = conn.execute('SELECT caption, hashtags FROM content_posts WHERE id=?', (post_id,)).fetchone()
         if not post:
-            return {}
+            return {'before': {}, 'signoff_cleared': False}
         new = {'caption': caption if caption is not None else post['caption'],
                'hashtags': hashtags if hashtags is not None else post['hashtags']}
         before = {f: post[f] for f in new if (new[f] or '') != (post[f] or '')}
+        cleared = []
         if before:
             conn.execute(
                 'UPDATE content_posts SET caption=?, hashtags=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
                 (new['caption'], new['hashtags'], post_id)
             )
-        return before
+            cleared = _void_talent_signoff(conn, [post_id])
+        return {'before': before, 'signoff_cleared': bool(cleared)}
 
 
 def set_talent_approval(post_id, approved, user_id=None):
@@ -1392,28 +1425,40 @@ def update_media(media_id, caption_hint='', tags='[]'):
 
 
 def delete_media(media_id):
+    """Returns the ids of posts whose talent sign-off this voided — deleting the
+    file detaches it from every post that used it."""
     conn = get_db()
+    used_by = [r['post_id'] for r in conn.execute(
+        'SELECT post_id FROM post_media WHERE media_id=?', (media_id,))]
     conn.execute('DELETE FROM post_media WHERE media_id=?', (media_id,))
     conn.execute('DELETE FROM client_media WHERE id=?', (media_id,))
+    cleared = _void_talent_signoff(conn, used_by)
     conn.commit()
     conn.close()
+    return cleared
 
 
 def attach_media_to_post(post_id, media_id, sort_order=0):
+    """Returns True if this voided the post's talent sign-off."""
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         'INSERT OR IGNORE INTO post_media (post_id,media_id,sort_order) VALUES (?,?,?)',
         (post_id, media_id, sort_order)
     )
+    cleared = _void_talent_signoff(conn, [post_id]) if cur.rowcount else []
     conn.commit()
     conn.close()
+    return bool(cleared)
 
 
 def detach_media_from_post(post_id, media_id):
+    """Returns True if this voided the post's talent sign-off."""
     conn = get_db()
-    conn.execute('DELETE FROM post_media WHERE post_id=? AND media_id=?', (post_id, media_id))
+    cur = conn.execute('DELETE FROM post_media WHERE post_id=? AND media_id=?', (post_id, media_id))
+    cleared = _void_talent_signoff(conn, [post_id]) if cur.rowcount else []
     conn.commit()
     conn.close()
+    return bool(cleared)
 
 
 def get_post_media(post_id):

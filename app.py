@@ -571,7 +571,9 @@ def api_media_delete(media_id):
         file_path = os.path.join(UPLOAD_PATH, str(media['client_id']), media['filename'])
         if os.path.exists(file_path):
             os.remove(file_path)
-    db.delete_media(media_id)
+    for post_id in db.delete_media(media_id):
+        _audit_post({'id': post_id, 'client_id': media['client_id']},
+                    'talent_signoff_cleared', reason='media deleted')
     return jsonify({'ok': True})
 
 
@@ -606,7 +608,8 @@ def api_attach_media(post_id):
     if not ok:
         return jsonify({'error': why}), 409
 
-    db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0))
+    if db.attach_media_to_post(post_id, media_id, data.get('sort_order', 0)):
+        _audit_post(post, 'talent_signoff_cleared', reason='media attached')
     media = db.get_media(media_id)
     if media:
         merged = db.get_post(post_id)
@@ -623,8 +626,10 @@ def api_attach_media(post_id):
 @app.route('/api/content/<int:post_id>/media/<int:media_id>', methods=['DELETE'])
 @require_content_access('post_id')
 def api_detach_media(post_id, media_id):
-    db.detach_media_from_post(post_id, media_id)
-    return jsonify({'ok': True})
+    cleared = db.detach_media_from_post(post_id, media_id)
+    if cleared:
+        _audit_post(g.content_row, 'talent_signoff_cleared', reason='media detached')
+    return jsonify({'ok': True, 'signoff_cleared': cleared})
 
 
 # ── Brand Voice ────────────────────────────────────────────────────────────────
@@ -851,7 +856,7 @@ def content_edit(post_id):
             'scheduled_date': request.form.get('scheduled_date') or None,
             'notes': request.form.get('notes', '').strip(),
         }
-        db.update_post(post_id, data)
+        _audit_change(post, db.update_post(post_id, data), 'edit form')
         flash('Post updated.', 'success')
         return redirect(url_for('content_detail', post_id=post_id))
     return render_template('content_form.html', post=post, clients=all_clients,
@@ -883,7 +888,7 @@ def content_status(post_id):
     return redirect(url_for('content_detail', post_id=post_id))
 
 
-def _audit_post(post, action, **metadata):
+def _audit_post(post, action, reason=None, **metadata):
     """Append a change to a post's caption or talent sign-off to audit_log, with
     who made it. Machine routes have no signed-in user and are recorded as such."""
     if getattr(current_user, 'is_authenticated', False):
@@ -891,7 +896,17 @@ def _audit_post(post, action, **metadata):
     else:
         actor, role = None, 'machine'
     db.add_audit(actor, role, post['client_id'], 'content', post['id'], action,
-                 metadata=metadata or None, request_ip=request.remote_addr)
+                 reason=reason, metadata=metadata or None, request_ip=request.remote_addr)
+
+
+def _audit_change(post, change, via):
+    """Audit what db.update_post / update_post_review reported: a caption or
+    hashtag edit, and the talent sign-off it voided."""
+    if change.get('before'):
+        _audit_post(post, 'caption_edit', fields=sorted(change['before']),
+                    before=change['before'], via=via)
+    if change.get('signoff_cleared'):
+        _audit_post(post, 'talent_signoff_cleared', reason=via)
 
 
 def _signoff_label(post):
@@ -937,11 +952,10 @@ def api_content_review(post_id):
         return jsonify({'error': 'talent_approved must be true or false.'}), 400
 
     if 'caption' in data or 'hashtags' in data:
-        before = db.update_post_review(post_id,
+        change = db.update_post_review(post_id,
                                        caption=data['caption'].strip() if 'caption' in data else None,
                                        hashtags=data['hashtags'].strip() if 'hashtags' in data else None)
-        if before:
-            _audit_post(post, 'caption_edit', fields=sorted(before), before=before)
+        _audit_change(post, change, 'review')
     if 'talent_approved' in data:
         if db.set_talent_approval(post_id, data['talent_approved'], current_user.id):
             _audit_post(post, 'talent_signoff' if data['talent_approved'] else 'talent_signoff_withdrawn')
@@ -1188,7 +1202,7 @@ def api_content_patch(post_id):
             'scheduled_date': post.get('scheduled_date'),
             'notes':        patch.get('notes', post.get('notes', '')),
         }
-        db.update_post(post_id, merged)
+        _audit_change(post, db.update_post(post_id, merged), 'api')
 
     if 'error_message' in data:
         db.set_post_error(post_id, data['error_message'])
@@ -1218,7 +1232,7 @@ def api_generate_caption_for_post(post_id):
         'content_type': post.get('content_type', 'photo'),
         'scheduled_date': post.get('scheduled_date'), 'notes': post.get('notes', ''),
     }
-    db.update_post(post_id, merged)
+    _audit_change(post, db.update_post(post_id, merged), 'generated caption')
     return jsonify({'ok': True, 'caption': caption, 'hashtags': hashtags})
 
 
