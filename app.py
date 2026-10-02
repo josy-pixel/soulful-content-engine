@@ -691,7 +691,7 @@ def api_generate_caption():
     # A bulk week sends its direction with every post. It belongs in the rulebook,
     # not the user turn, so the auditor judges against it too — and being the same
     # for the whole batch, it keeps the cached prefix identical post to post.
-    direction = (data.get('weekly_direction') or '').strip()
+    direction = str(data.get('weekly_direction') or '').strip()
 
     if not all([client_id, platform, topic]):
         return jsonify({'error': 'client_id, platform, and topic are required.'}), 400
