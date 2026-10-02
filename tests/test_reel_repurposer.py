@@ -338,3 +338,48 @@ def test_existing_database_gains_the_package_columns_on_boot(monkeypatch, tmp_pa
                           "topic": "t", "caption": "c"})
     db.set_repurpose_brief(pid, "package")
     assert db.get_post(pid)["repurpose_brief"] == "package"
+
+
+# ── only a posted video can be repurposed ────────────────────────────────────
+
+@pytest.mark.parametrize("content_type,status", [
+    ("photo", "posted"), ("story", "posted"), ("carousel", "posted"),
+    ("reel", "draft"), ("video", "approved"), ("reel", "error"),
+])
+def test_generate_and_save_refuse_anything_but_a_posted_video(
+        client, data, claude, content_type, status):
+    pid = data["post"](data["ca"], content_type, status)
+    login_as(client, data["admin"])
+    r = _generate(client, pid)
+    assert r.status_code == 409 and "Only a posted reel or video" in r.get_json()["error"]
+    r = _save(client, pid)
+    assert r.status_code == 409
+    assert claude.calls == []                          # no tokens spent on it
+    assert db.get_post(pid)["repurpose_brief"] == ""
+
+
+@pytest.mark.parametrize("raw", ["abc", "12abc", 1.5, True, [1], {"id": 1}, "", None])
+def test_a_malformed_post_id_is_a_400_not_a_500(client, data, claude, raw):
+    login_as(client, data["admin"])
+    assert _generate(client, raw).status_code == 400
+    assert _save(client, raw).status_code == 400
+    assert claude.calls == []
+
+
+def test_unknown_post_is_404(client, data):
+    login_as(client, data["admin"])
+    assert _generate(client, 999999).status_code == 404
+    assert _save(client, "999999").status_code == 404
+
+
+def test_page_does_not_preselect_a_post_that_cannot_be_repurposed(client, data):
+    login_as(client, data["admin"])
+    html = client.get("/reel-repurposer?post_id=%d" % data["photo_a"]).data.decode()
+    assert "A photo" not in html
+
+
+def test_source_material_and_package_are_required(client, data, claude):
+    login_as(client, data["admin"])
+    assert _generate(client, data["reel_a"], material="   ").status_code == 400
+    assert _save(client, data["reel_a"], package="  ").status_code == 400
+    assert claude.calls == []

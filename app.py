@@ -737,6 +737,32 @@ def api_save_caption():
 # the post page to anyone who can already see the post.
 REEL_REPURPOSER_ROLES = ('admin', 'manager')
 app.jinja_env.globals['REEL_REPURPOSER_ROLES'] = REEL_REPURPOSER_ROLES
+# What can be repurposed: something already published, that is a video.
+REPURPOSABLE_CONTENT_TYPES = ('video', 'reel')
+
+
+def _repurposable_post(raw_id):
+    """Resolve the post a Reel Repurposer request names, telling the caller what
+    is wrong in this order: no usable id (400), no such post (404), not theirs
+    (403), not a posted video (409). Returns (post, error_response)."""
+    if raw_id is None or raw_id == '':
+        return None, (jsonify({'error': 'post_id is required.'}), 400)
+    if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+        post_id = raw_id
+    elif isinstance(raw_id, str) and raw_id.strip().isdigit():
+        post_id = int(raw_id)
+    else:
+        return None, (jsonify({'error': 'post_id must be a whole number.'}), 400)
+    post = db.get_post(post_id)
+    if not post:
+        return None, (jsonify({'error': 'Post not found.'}), 404)
+    if not security.can_see_client(post['client_id']):
+        abort(403)
+    if post.get('status') != 'posted' or post.get('content_type') not in REPURPOSABLE_CONTENT_TYPES:
+        return None, (jsonify({'error': 'Only a posted reel or video can be repurposed. This '
+                                        'post is a %s %s.' % ((post.get('status') or '').replace('_', ' '),
+                                                              post.get('content_type') or 'post')}), 409)
+    return post, None
 
 
 @app.route('/reel-repurposer')
@@ -750,6 +776,9 @@ def reel_repurposer():
         post = db.get_post(post_id)
         if post and not security.can_see_client(post['client_id']):
             post = None   # not this user's post — behave as if none was picked
+        elif post and (post.get('status') != 'posted'
+                       or post.get('content_type') not in REPURPOSABLE_CONTENT_TYPES):
+            post = None   # nothing to repurpose — don't preselect what generate refuses
     return render_template('reel_repurposer.html', clients=all_clients,
                            preselect_client=preselect_client, post=post)
 
@@ -766,17 +795,13 @@ def api_repurpose_candidates(client_id):
 @roles_required(*REEL_REPURPOSER_ROLES)
 def api_reel_repurpose_generate():
     data = request.get_json(silent=True) or {}
-    post_id = data.get('post_id')
     source_material = (data.get('source_material') or '').strip()
     extra_context = (data.get('extra_context') or '').strip()
 
-    if not post_id:
-        return jsonify({'error': 'post_id is required.'}), 400
-    post = db.get_post(int(post_id))
-    if not post:
-        return jsonify({'error': 'Post not found.'}), 404
-    if not security.can_see_client(post['client_id']):
-        abort(403)
+    post, err = _repurposable_post(data.get('post_id'))
+    if err:
+        return err
+    post_id = post['id']
     if not source_material:
         return jsonify({'error': "Source material is required — Claude can't watch video, "
                                  'so paste a transcript or shot list first.'}), 400
@@ -807,16 +832,13 @@ def api_reel_repurpose_generate():
 @roles_required(*REEL_REPURPOSER_ROLES)
 def api_reel_repurpose_save():
     data = request.get_json(silent=True) or {}
-    post_id = data.get('post_id')
     package = (data.get('package') or '').strip()
-    if not post_id or not package:
-        return jsonify({'error': 'post_id and package are required.'}), 400
-    post = db.get_post(int(post_id))
-    if not post:
-        return jsonify({'error': 'Post not found.'}), 404
-    if not security.can_see_client(post['client_id']):
-        abort(403)
-    db.set_repurpose_brief(int(post_id), package)
+    post, err = _repurposable_post(data.get('post_id'))
+    if err:
+        return err
+    if not package:
+        return jsonify({'error': 'There is no package to save.'}), 400
+    db.set_repurpose_brief(post['id'], package)
     return jsonify({'ok': True})
 
 
