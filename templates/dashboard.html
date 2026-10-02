@@ -16,7 +16,12 @@
 <div class="card mb-4" id="approvalOverviewSection">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span><i class="bi bi-clipboard-check me-2"></i>Ready for Your Approval</span>
-    <span class="badge bg-warning text-dark" id="pendingCount">{{ pending_approval|length }} waiting</span>
+    <span class="d-flex align-items-center gap-2">
+      {% if pending_total > pending_approval|length %}
+      <a href="{{ url_for('content_list', status='needs_review') }}" class="small">See all in review</a>
+      {% endif %}
+      <span class="badge bg-warning text-dark" id="pendingCount" data-total="{{ pending_total }}">{{ pending_total }} waiting</span>
+    </span>
   </div>
   <div class="card-body">
     <div class="row g-3" id="approvalGrid">
@@ -237,12 +242,14 @@ document.querySelectorAll('.approval-check').forEach(cb => {
         item.style.opacity = '0';
         setTimeout(() => {
           item.remove();
-          const remaining = document.querySelectorAll('.approval-item').length;
+          // The grid shows at most 20; the badge counts every post waiting.
           const badge = document.getElementById('pendingCount');
-          if (badge) badge.textContent = remaining + ' waiting';
-          if (remaining === 0) {
-            const section = document.getElementById('approvalOverviewSection');
-            if (section) section.remove();
+          const remaining = Math.max(0, Number(badge.dataset.total) - 1);
+          badge.dataset.total = remaining;
+          badge.textContent = remaining + ' waiting';
+          if (!document.querySelector('.approval-item')) {
+            if (remaining > 0) location.reload();   // bring in the next ones
+            else document.getElementById('approvalOverviewSection').remove();
           }
         }, 300);
       } else {

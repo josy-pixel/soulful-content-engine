@@ -1032,31 +1032,36 @@ def set_talent_approval(post_id, approved, user_id=None):
         return cur.rowcount > 0
 
 
-def get_posts_pending_approval(scope=None):
+def get_posts_pending_approval(scope=None, limit=20):
     """Posts talent hasn't signed off on yet — feeds the dashboard's 'Ready for
     Your Approval' overview. scope mirrors get_dashboard_stats: None for the
-    org-wide admin/manager view, or a client_id for the client portal."""
+    org-wide admin/manager view, or a client_id for the client portal.
+    Returns (the first `limit` posts, how many are waiting in all) — the
+    admin view spans every client and would otherwise have no ceiling."""
     conn = get_db()
     pw = ' AND p.client_id = ?' if scope is not None else ''
     params = (scope,) if scope is not None else ()
+    base = "FROM v_content_active p JOIN v_clients_active c ON c.id = p.client_id "
+    # needs_review only: an approved or scheduled post was already sent to Make,
+    # so asking for a sign-off on it would be asking after the fact.
+    where = "WHERE p.talent_approved = 0 AND p.status = 'needs_review'" + pw
+    total = conn.execute("SELECT COUNT(*) " + base + where, params).fetchone()[0]
     # The hero is the first attached file in the order the post page uses
     # (get_post_media), with what is needed to resolve it wherever it is stored.
     rows = conn.execute(
         "SELECT p.*, c.name AS client_name, c.logo_color, "
         "m.filename AS hero_filename, m.media_type AS hero_type, "
         "m.storage AS hero_storage, m.s3_key AS hero_s3_key, m.client_id AS hero_client_id "
-        "FROM v_content_active p JOIN v_clients_active c ON c.id = p.client_id "
+        + base +
         "LEFT JOIN client_media m ON m.id = ("
         " SELECT pm.media_id FROM post_media pm JOIN client_media m2 ON m2.id = pm.media_id"
         " WHERE pm.post_id = p.id ORDER BY pm.sort_order ASC, m2.created_at ASC LIMIT 1) "
-        # needs_review only: an approved or scheduled post was already sent to Make,
-        # so asking for a sign-off on it would be asking after the fact.
-        "WHERE p.talent_approved = 0 AND p.status = 'needs_review'" + pw +
-        " ORDER BY (p.scheduled_date IS NULL), p.scheduled_date ASC, p.updated_at DESC",
-        params
+        + where +
+        " ORDER BY (p.scheduled_date IS NULL), p.scheduled_date ASC, p.updated_at DESC LIMIT ?",
+        params + (limit,)
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [dict(r) for r in rows], total
 
 
 def delete_post(post_id):

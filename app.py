@@ -211,7 +211,7 @@ def dashboard():
     # scope=None for admin/manager (org-wide); the client's own id for a client user.
     scope = current_scope()
     stats = db.get_dashboard_stats(scope=scope)
-    pending_approval = db.get_posts_pending_approval(scope=scope)
+    pending_approval, pending_total = db.get_posts_pending_approval(scope=scope)
     for p in pending_approval:
         if p.get('hero_filename'):
             p['hero_url'] = _media_display_url({
@@ -223,7 +223,8 @@ def dashboard():
         else:
             p['hero_url'] = None
     return render_template('dashboard.html', stats=stats, platforms=PLATFORMS, statuses=STATUSES,
-                           content_types=CONTENT_TYPES, scope=scope, pending_approval=pending_approval)
+                           content_types=CONTENT_TYPES, scope=scope, pending_approval=pending_approval,
+                           pending_total=pending_total)
 
 
 # ── Clients ────────────────────────────────────────────────────────────────────
