@@ -689,6 +689,26 @@ def api_generate_caption():
     return jsonify(payload)
 
 
+def _refuse_unknown_platform(data):
+    """Normalise platform and content_type on a post about to be created, and
+    refuse a value the app does not know. Both are written into pages and into
+    the payload sent to the publishing scenario, so an arbitrary string here is a
+    post nothing can publish and, worse, markup running in an admin's browser.
+    content_type stays optional: absent, it defaults downstream as it always has.
+    Returns an error message, or None (and leaves `data` normalised)."""
+    platform = str(data.get('platform') or '').strip().lower()
+    if platform not in PLATFORMS:
+        return 'Unknown platform. Use one of: %s.' % ', '.join(PLATFORMS)
+    data['platform'] = platform
+    if data.get('content_type'):
+        content_type = str(data['content_type']).strip().lower()
+        if content_type not in media_rules.ACCEPTS:
+            return ('Unknown content type. Use one of: %s.'
+                    % ', '.join(sorted(media_rules.ACCEPTS)))
+        data['content_type'] = content_type
+    return None
+
+
 @app.route('/api/save-caption', methods=['POST'])
 def api_save_caption():
     data = request.get_json()
@@ -698,6 +718,9 @@ def api_save_caption():
     required = ['client_id', 'platform', 'topic', 'caption']
     if not all(data.get(k) for k in required):
         return jsonify({'error': 'Missing required fields.'}), 400
+    problem = _refuse_unknown_platform(data)
+    if problem:
+        return jsonify({'error': problem}), 400
     if data.get('status', 'draft') not in PRE_APPROVAL_STATUSES:
         return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
     post_id = db.create_post(data)
@@ -1257,6 +1280,9 @@ def api_content_create():
         return jsonify({'error': 'client_id, platform, topic are required'}), 400
     if not db.get_client(int(data['client_id'])):
         return jsonify({'error': 'Client not found'}), 404
+    problem = _refuse_unknown_platform(data)
+    if problem:
+        return jsonify({'error': problem}), 400
     if data.get('status', 'raw') not in PRE_APPROVAL_STATUSES:
         return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
     post_data = {
