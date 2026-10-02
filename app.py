@@ -1060,8 +1060,9 @@ def api_performance_inbound():
 # ── Pipeline REST API ──────────────────────────────────────────────────────────
 
 def _check_secret(request):
-    secret = request.headers.get('X-Secret', '') or request.args.get('secret', '')
-    return webhooks.verify_secret(secret)
+    # Header only — a secret in the query string ends up in access logs, proxies
+    # and browser history (the same rule _inbound_caller follows).
+    return webhooks.verify_secret(request.headers.get('X-Secret', ''))
 
 
 @app.route('/api/content/<int:post_id>', methods=['GET'])
@@ -1216,7 +1217,18 @@ def api_client_config(client_id):
 def api_trends_generate():
     if not _check_secret(request):
         return jsonify({'error': 'Forbidden'}), 403
-    data = request.get_json(silent=True) or {}
+    return _generate_trends(request.get_json(silent=True) or {})
+
+
+@app.route('/trends/generate', methods=['POST'])
+@roles_required('admin', 'manager')   # org-wide and spends Claude credits: staff only
+def trends_generate():
+    """The Trends page's own button. Session login + CSRF, so the page never has
+    to carry the machine secret into the browser."""
+    return _generate_trends(request.get_json(silent=True) or {})
+
+
+def _generate_trends(data):
     platform = data.get('platform', 'instagram')
     client_id = data.get('client_id')
 
@@ -1244,10 +1256,8 @@ def trends():
     platform = request.args.get('platform', '')
     all_clients = db.get_clients()
     trend_rows = db.get_trends(platform=platform or None, limit=100)
-    webhook_secret = os.environ.get('MAKE_WEBHOOK_SECRET', '')
     return render_template('trends.html', trends=trend_rows, platforms=PLATFORMS,
-                           clients=all_clients, filter_platform=platform,
-                           webhook_secret=webhook_secret)
+                           clients=all_clients, filter_platform=platform)
 
 
 # ── Report ─────────────────────────────────────────────────────────────────────

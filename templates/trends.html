@@ -2,9 +2,11 @@
 {% block title %}Trends Intelligence — Soulful Content Engine{% endblock %}
 {% block page_title %}Trends Intelligence{% endblock %}
 {% block topbar_actions %}
+  {% if current_user.role in ('admin', 'manager') %}
   <button class="btn btn-primary btn-sm" id="generateBtn" data-platform="{{ filter_platform }}">
     <i class="bi bi-stars me-1"></i> Generate This Week's Trends
   </button>
+  {% endif %}
 {% endblock %}
 
 {% block content %}
@@ -75,34 +77,37 @@
 
 {% block scripts %}
 <script>
-document.getElementById('generateBtn').addEventListener('click', async function () {
+const generateBtn = document.getElementById('generateBtn');
+function showTrendsError(banner, message) {
+  // textContent, not innerHTML: the message can carry upstream error text.
+  banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>';
+  banner.appendChild(document.createTextNode(message));
+  banner.classList.replace('alert-info', 'alert-danger');
+}
+if (generateBtn) generateBtn.addEventListener('click', async function () {
   const platform = this.dataset.platform || '';
   const banner   = document.getElementById('generatingBanner');
   this.disabled  = true;
   banner.classList.remove('d-none');
 
   try {
-    const res = await fetch('/api/trends/generate', {
+    // Session + CSRF (added by the fetch wrapper in base.html) — no machine secret.
+    const res = await fetch('/trends/generate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Secret': '{{ webhook_secret }}'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ platform: platform || 'instagram' }),
     });
-    const data = await res.json();
-    if (data.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
       window.location.href = platform
         ? '/trends?platform=' + platform
         : '/trends';
     } else {
-      banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>Error: ' + (data.error || 'Unknown error');
-      banner.classList.replace('alert-info', 'alert-danger');
+      showTrendsError(banner, 'Error: ' + (data.error || ('the server returned ' + res.status)));
       this.disabled = false;
     }
   } catch (e) {
-    banner.innerHTML = '<i class="bi bi-x-circle me-2"></i>Request failed';
-    banner.classList.replace('alert-info', 'alert-danger');
+    showTrendsError(banner, 'Request failed');
     this.disabled = false;
   }
 });
