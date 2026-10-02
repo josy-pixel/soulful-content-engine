@@ -819,7 +819,7 @@ def content_detail(post_id):
     allowed_transitions = STATUS_TRANSITIONS.get(post['status'], [])
     post_media = db.get_post_media(post_id)
     for m in post_media:
-        m['url'] = _media_url(m['client_id'], m['filename'])
+        m['url'] = _media_display_url(m)     # S3 media has no file under /uploads
     client_media = db.get_client_media(post['client_id'])
     for m in client_media:
         m['url'] = _media_url(m['client_id'], m['filename'])
