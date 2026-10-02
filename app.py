@@ -1006,6 +1006,136 @@ def api_bulk_save():
     return jsonify({'ok': True, 'created': created, 'count': len(created)})
 
 
+# ── Reel Repurposer ───────────────────────────────────────────────────────────
+# The reel-repurposer skill: diagnose and re-cut an EXISTING/underperforming
+# video using its own measured performance, rather than scripting a new one.
+#
+# Admin and manager only for now. Opening it to client users is adding 'client'
+# here: every route below still checks the post's own client, and the nav link
+# and the post-page button read this same tuple. A saved package stays visible on
+# the post page to anyone who can already see the post.
+REEL_REPURPOSER_ROLES = ('admin', 'manager')
+app.jinja_env.globals['REEL_REPURPOSER_ROLES'] = REEL_REPURPOSER_ROLES
+# What can be repurposed: something already published, that is a video.
+REPURPOSABLE_CONTENT_TYPES = ('video', 'reel')
+
+
+def _repurposable_post(raw_id):
+    """Resolve the post a Reel Repurposer request names, telling the caller what
+    is wrong in this order: no usable id (400), no such post (404), not theirs
+    (403), not a posted video (409). Returns (post, error_response)."""
+    if raw_id is None or raw_id == '':
+        return None, (jsonify({'error': 'post_id is required.'}), 400)
+    if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+        post_id = raw_id
+    elif isinstance(raw_id, str) and raw_id.strip().isdigit():
+        post_id = int(raw_id)
+    else:
+        return None, (jsonify({'error': 'post_id must be a whole number.'}), 400)
+    post = db.get_post(post_id)
+    if not post:
+        return None, (jsonify({'error': 'Post not found.'}), 404)
+    if not security.can_see_client(post['client_id']):
+        abort(403)
+    if post.get('status') != 'posted' or post.get('content_type') not in REPURPOSABLE_CONTENT_TYPES:
+        return None, (jsonify({'error': 'Only a posted reel or video can be repurposed. This '
+                                        'post is a %s %s.' % ((post.get('status') or '').replace('_', ' '),
+                                                              post.get('content_type') or 'post')}), 409)
+    return post, None
+
+
+def _repurpose_performance_summary(post, snapshot):
+    """What the app measured for this post, as the prompt reads it. No snapshot
+    is said in words: printed as zeros it read to the model as a total flop."""
+    lines = ['Topic: %s' % post['topic'],
+             'Platform: %s' % post['platform'],
+             'Content type: %s' % post.get('content_type'),
+             'Posted: %s' % (post.get('posted_date') or 'unknown')]
+    if not snapshot:
+        lines.append('Metrics: no performance data recorded in the app for this post.')
+    else:
+        lines.append('Latest metrics snapshot (recorded %s): Likes: %s, Comments: %s, '
+                     'Shares: %s, Saves: %s, Views: %s, Reach: %s, Impressions: %s, Clicks: %s'
+                     % tuple([snapshot.get('recorded_at')] +
+                             [snapshot.get(k) for k in ('likes', 'comments', 'shares', 'saves',
+                                                        'views', 'reach', 'impressions', 'clicks')]))
+    return '\n'.join(lines)
+
+
+@app.route('/reel-repurposer')
+@roles_required(*REEL_REPURPOSER_ROLES)
+def reel_repurposer():
+    all_clients = scoped_clients()
+    preselect_client = current_scope() or request.args.get('client_id', type=int)
+    post_id = request.args.get('post_id', type=int)
+    post = None
+    if post_id:
+        post = db.get_post(post_id)
+        if post and not security.can_see_client(post['client_id']):
+            post = None   # not this user's post — behave as if none was picked
+        elif post and (post.get('status') != 'posted'
+                       or post.get('content_type') not in REPURPOSABLE_CONTENT_TYPES):
+            post = None   # nothing to repurpose — don't preselect what generate refuses
+    return render_template('reel_repurposer.html', clients=all_clients,
+                           preselect_client=preselect_client, post=post)
+
+
+@app.route('/api/reel-repurpose/candidates/<int:client_id>')
+@roles_required(*REEL_REPURPOSER_ROLES)
+@require_client_access('client_id')
+def api_repurpose_candidates(client_id):
+    candidates = db.get_repurpose_candidates(client_id)
+    return jsonify(candidates)
+
+
+@app.route('/api/reel-repurpose/generate', methods=['POST'])
+@roles_required(*REEL_REPURPOSER_ROLES)
+def api_reel_repurpose_generate():
+    data = request.get_json(silent=True) or {}
+    source_material = (data.get('source_material') or '').strip()
+    extra_context = (data.get('extra_context') or '').strip()
+
+    post, err = _repurposable_post(data.get('post_id'))
+    if err:
+        return err
+    if not source_material:
+        return jsonify({'error': "Source material is required — Claude can't watch video, "
+                                 'so paste a transcript or shot list first.'}), 400
+
+    brand_voice = dict(db.get_brand_voice(post['client_id'], post['platform'])
+                       or db.get_brand_voice(post['client_id'], 'general') or {})
+    voice_document, sample_captions = db.get_client_voice(post['client_id'])
+
+    performance_summary = _repurpose_performance_summary(
+        post, db.get_latest_performance(post['id']))
+
+    result = ve.build_reel_repurpose(post['client_name'], brand_voice, voice_document,
+                                     sample_captions, source_material, performance_summary,
+                                     extra_context=extra_context, platform=post['platform'],
+                                     debug=config.DEBUG_ENGINE)
+    if result.get('error'):
+        # 504: gave up waiting on Claude. 502: Claude's answer was cut off. Either
+        # way the body is JSON the page can show, never a worker killed mid-request.
+        status = 504 if result.get('timeout') else 502 if result.get('incomplete') else 500
+        return jsonify({'error': result['error']}), status
+    return jsonify({'ok': True, 'package': result['package'],
+                    'performance_summary': performance_summary})
+
+
+@app.route('/api/reel-repurpose/save', methods=['POST'])
+@roles_required(*REEL_REPURPOSER_ROLES)
+def api_reel_repurpose_save():
+    data = request.get_json(silent=True) or {}
+    package = (data.get('package') or '').strip()
+    post, err = _repurposable_post(data.get('post_id'))
+    if err:
+        return err
+    if not package:
+        return jsonify({'error': 'There is no package to save.'}), 400
+    db.set_repurpose_brief(post['id'], package)
+    return jsonify({'ok': True})
+
+
 # ── Content Library ────────────────────────────────────────────────────────────
 
 @app.route('/content')
