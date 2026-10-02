@@ -186,6 +186,88 @@ def generate_trends(clients_summary, platform):
         return None, f'Claude API error: {str(e)}'
 
 
+def plan_week(client_name, description, theme, platform, count,
+              trends_list=None, performance_rows=None, content_type=None,
+              voice_constraints=''):
+    """Break a week's direction into `count` distinct daily topics, informed by
+    recent performance and current trends — the planning step ahead of writing
+    each post in the client's voice. `voice_constraints` is the part of the
+    client's rulebook a topic must respect (voice_engine.planning_constraints);
+    empty adds nothing. Returns (topics, error) where topics is a list of
+    {"day": int, "topic": str}."""
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        return None, 'ANTHROPIC_API_KEY not set.'
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    if performance_rows:
+        # Rows arrive best-performing first (db.get_recent_performance).
+        perf_lines = []
+        for r in performance_rows[:10]:
+            if r.get('likes') is None and r.get('reach') is None:
+                stats = 'no metrics yet'
+            else:
+                stats = ', '.join(
+                    f'{k}={r[k]}' for k in ('likes', 'comments', 'shares', 'saves', 'reach', 'views')
+                    if r.get(k) is not None
+                )
+                if r.get('engagement_rate') is not None:
+                    stats += f", engagement rate={r['engagement_rate']}%"
+            perf_lines.append(f"- [{(r.get('posted_date') or '')[:10]}] {r.get('topic', '')} ({stats})")
+        perf_text = '\n'.join(perf_lines)
+    else:
+        perf_text = 'No recent performance data available.'
+
+    trends_text = '\n'.join(f'- {t}' for t in (trends_list or [])) or 'None supplied.'
+
+    prompt = (
+        f"You are planning a week of {platform} content for {client_name}"
+        f"{(' — ' + description) if description else ''}"
+        f"{(' — every post is a ' + content_type) if content_type else ''}.\n\n"
+        f"THIS WEEK'S DIRECTION:\n{theme}\n\n"
+        f"WHAT WORKED RECENTLY (last 7 days, best-performing first):\n{perf_text}\n\n"
+        f"CURRENT TRENDING THEMES TO CONSIDER (use only what genuinely fits — never force one):\n{trends_text}\n\n"
+        f"Plan {count} distinct posts across the week — one clear, specific topic per post, "
+        f"each different enough that the week doesn't repeat itself, together forming one "
+        f"coherent through-line rather than {count} disconnected ideas.\n\n"
+        f"Return a JSON array ONLY, no other text, exactly {count} objects, each with fields "
+        f'"day" (integer, 0-indexed position in the week) and "topic" (one specific sentence '
+        f"a copywriter could write a caption from directly — not a vague theme).\n"
+        f'Example: [{{"day": 0, "topic": "..."}}, ...]'
+    )
+    system_text = ('You are a social media content strategist. '
+                   'Return only a valid JSON array, no markdown, no explanation.')
+    if voice_constraints:
+        system_text += (
+            "\n\nEvery post will be written in the client's own voice under the rules "
+            "below. Plan only topics those rules allow, and never put a banned word or "
+            "phrase into a topic.\n\n" + voice_constraints)
+    # No cache_control: this runs once per batch, so a cache write would cost more
+    # and never be read back — and without a voice document the prompt is far
+    # below the model's minimum cacheable length anyway.
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1536,
+            system=system_text,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith('```'):
+            raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+        topics = json.loads(raw)
+        if not isinstance(topics, list):
+            return None, 'Claude did not return a JSON array'
+        return topics, None
+    except IndexError:
+        return None, 'Claude returned an empty reply — try again.'
+    except (json.JSONDecodeError, ValueError) as e:
+        return None, f'JSON parse error: {str(e)}'
+    except anthropic.APIError as e:
+        return None, f'Claude API error: {str(e)}'
+
+
 def generate_report(report_data):
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:

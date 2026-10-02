@@ -1,0 +1,601 @@
+{% extends "base.html" %}
+{% block title %}Bulk Generate — Soulful Content Engine{% endblock %}
+{% block page_title %}Bulk Generate a Week{% endblock %}
+
+{% block content %}
+{% set platform_icons = {'instagram':'bi-instagram','facebook':'bi-facebook','tiktok':'bi-tiktok','linkedin':'bi-linkedin','youtube':'bi-youtube'} %}
+{% set platform_colors = {'instagram':'#e1306c','facebook':'#1877f2','tiktok':'#010101','linkedin':'#0077b5','youtube':'#ff0000'} %}
+
+<div class="row g-4">
+
+  <!-- Builder form -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-magic me-2"></i>Plan &amp; Write a Week</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Client *</label>
+          <select id="genClient" class="form-select">
+            <option value="">Select client…</option>
+            {% for c in clients %}
+            <option value="{{ c.id }}" {% if preselect_client==c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Platform *</label>
+          <div class="platform-grid">
+            {% for p in bulk_content_types %}
+            <label class="platform-tile" data-platform="{{ p }}">
+              <input type="radio" name="platform" value="{{ p }}" hidden>
+              <i class="bi {{ platform_icons.get(p,'bi-globe') }}" style="color:{{ platform_colors.get(p,'#6366f1') }}"></i>
+              <span>{{ p|capitalize }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <small class="text-muted">Only the platforms and post types this system can publish.</small>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Content Type</label>
+          <select id="genContentType" class="form-select form-select-sm">
+            <option value="">Select a platform first…</option>
+          </select>
+          <small class="text-muted">Applies to every post in this batch.</small>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">This Week's Direction *</label>
+          <textarea id="genTheme" class="form-control" rows="3"
+                    placeholder="What to lean into this week — a theme, an angle, anything going on that should shape the posts…"></textarea>
+        </div>
+
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Days</label>
+            <input type="number" id="genDays" class="form-control form-control-sm" value="7" min="1" max="{{ max_posts }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Posts / Day</label>
+            <select id="genPerDay" class="form-select form-select-sm">
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Starting</label>
+          <input type="date" id="genStartDate" class="form-control form-control-sm">
+        </div>
+
+        <div class="form-check mb-2">
+          <input type="checkbox" class="form-check-input" id="genUsePerformance" checked>
+          <label class="form-check-label small" for="genUsePerformance">
+            Use this client's last 7 days of performance
+          </label>
+        </div>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" id="genUseTrends" checked>
+          <label class="form-check-label small" for="genUseTrends">
+            Use current trending themes for this platform
+          </label>
+        </div>
+
+        <p class="small text-muted mb-3" id="totalCountLabel">= 7 posts total</p>
+
+        <button id="generateBtn" class="btn btn-primary w-100">
+          <i class="bi bi-magic me-1"></i> Generate Week
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result panel -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-calendar2-week me-2"></i>This Week's Batch</span>
+        <span id="batchCount" class="badge bg-primary d-none"></span>
+      </div>
+      <div class="card-body d-flex flex-column">
+
+        <!-- Empty state -->
+        <div id="emptyState" class="empty-state my-auto">
+          <i class="bi bi-calendar2-week display-4 text-muted"></i>
+          <p class="mt-3 text-muted">Your generated week will appear here.<br>
+          Pick a client and platform, set the direction, then click Generate Week.</p>
+        </div>
+
+        <!-- Planning state -->
+        <div id="planningState" class="d-none text-center my-auto">
+          <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem"></div>
+          <p class="text-muted mb-1">Claude is planning this week's topics…</p>
+          <p class="small text-muted">Then each post is written and voice-checked on its own, and appears here as it's ready.</p>
+        </div>
+
+        <!-- Result -->
+        <div id="resultState" class="d-none flex-column h-100">
+          <div id="contextUsed" class="small text-muted mb-1"></div>
+          <div id="batchProgress" class="small fw-semibold mb-3"></div>
+
+          <div id="batchList" class="d-flex flex-column gap-3 mb-3" style="max-height:60vh;overflow-y:auto"></div>
+
+          <div class="border rounded p-3 bg-light mt-auto">
+            <p class="fw-semibold mb-2"><i class="bi bi-floppy-fill me-1"></i>Save This Batch</p>
+            <div class="row g-2 mb-2">
+              <div class="col-md-6">
+                <select id="saveStatus" class="form-select form-select-sm">
+                  {% for s in create_statuses %}
+                  <option value="{{ s }}">{{ 'Save as Draft' if s == 'draft' else s.replace('_',' ')|capitalize }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6 text-md-end">
+                <small class="text-muted" id="saveCountLabel">0 posts will be created</small>
+              </div>
+            </div>
+            <button id="saveBatchBtn" class="btn btn-success w-100" disabled>
+              <i class="bi bi-check-circle"></i> Create Posts
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/run_pool.js') }}"></script>
+<script>
+const CONTENT_TYPES = {{ bulk_content_types | tojson }};
+const MAX_POSTS = {{ max_posts }};
+// Posts being written at once. Each is its own request of a few model calls, so
+// none comes near the server's time limit, and other people's requests get a turn
+// between posts instead of waiting out the whole week.
+const IN_FLIGHT = 2;
+const platformColors = {
+  instagram: '#e1306c', facebook: '#1877f2', tiktok: '#010101',
+  linkedin: '#0077b5', youtube: '#ff0000'
+};
+
+document.getElementById('genStartDate').value = new Date().toISOString().slice(0, 10);
+
+const platformTiles = document.querySelectorAll('.platform-tile');
+platformTiles.forEach(tile => {
+  tile.addEventListener('click', () => {
+    platformTiles.forEach(t => t.classList.remove('selected'));
+    tile.classList.add('selected');
+    tile.querySelector('input').checked = true;
+    refreshContentTypes(tile.dataset.platform);
+  });
+});
+
+function refreshContentTypes(platform) {
+  const sel = document.getElementById('genContentType');
+  const types = CONTENT_TYPES[platform] || [];
+  sel.innerHTML = types.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('');
+}
+
+// ── state ────────────────────────────────────────────────────────────────────
+// batch: what was planned, locked at plan time so the save can never pick up a
+// platform or content type changed in the form afterwards.
+let batch = null;      // { clientId, platform, contentType, theme, items: [...] }
+let planning = false;
+let saving = false;
+let saved = false;
+let inFlight = 0;      // per-post requests running right now
+
+function liveItems() { return batch ? batch.items.filter(i => !i.removed) : []; }
+function countOf(state) { return liveItems().filter(i => i.state === state).length; }
+
+function batchSize() {
+  const days = parseInt(document.getElementById('genDays').value) || 0;
+  const perDay = parseInt(document.getElementById('genPerDay').value) || 1;
+  return { days, perDay, total: days * perDay };
+}
+
+function updateTotalLabel() {
+  const { total } = batchSize();
+  const label = document.getElementById('totalCountLabel');
+  const tooMany = total > MAX_POSTS;
+  label.textContent = tooMany
+    ? `= ${total} posts — a batch is at most ${MAX_POSTS}. Use fewer days or fewer posts a day.`
+    : `= ${total} post${total === 1 ? '' : 's'} total`;
+  label.classList.toggle('text-danger', tooMany);
+  label.classList.toggle('text-muted', !tooMany);
+  refreshButtons();
+}
+document.getElementById('genDays').addEventListener('input', updateTotalLabel);
+document.getElementById('genPerDay').addEventListener('change', updateTotalLabel);
+
+function refreshButtons() {
+  const { total } = batchSize();
+  const busy = planning || inFlight > 0;
+  document.getElementById('generateBtn').disabled = busy || total < 1 || total > MAX_POSTS;
+  if (!saving) {
+    document.getElementById('saveBatchBtn').disabled = busy || countOf('done') === 0;
+  }
+  document.querySelectorAll('.retry-btn').forEach(b => { b.disabled = inFlight >= IN_FLIGHT; });
+}
+
+// ── talking to the server ────────────────────────────────────────────────────
+
+/** POST JSON and return the parsed reply, or throw an Error a person can act on.
+ *  The body is read once, as text, and parsed afterwards: a response body is a
+ *  stream, and reading it twice fails with "body stream already read". */
+async function postJson(url, payload) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (_) {
+    const err = new Error('Could not reach the server. Check the connection and try again.');
+    err.network = true;
+    throw err;
+  }
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (_) { /* not JSON — handled below */ }
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    if (res.ok && !data.error) return data;
+    throw new Error(data.error || httpMessage(res.status));
+  }
+  // An HTML page where JSON was expected: the access page, the CSRF guard,
+  // the sign-in page a lapsed session is redirected to, or a crash page.
+  if (res.status === 403) throw new Error(httpMessage(403));
+  if (res.redirected || res.ok || res.status === 400) {
+    throw new Error('Your session has expired or this page is out of date. ' +
+                    'Copy anything you want to keep, then reload the page and sign in again.');
+  }
+  throw new Error(httpMessage(res.status));
+}
+
+function httpMessage(status) {
+  switch (status) {
+    case 400: return 'The server could not accept that request. Reload the page and try again.';
+    case 403: return 'Your account does not have access to bulk generation.';
+    case 404: return 'Not found — the client may have been removed. Reload the page.';
+    case 502: case 503: case 504:
+      return 'The server did not answer in time, or was restarting. Wait a minute and try again.';
+    default:
+      return `Something went wrong on the server (error ${status}). Try again; if it keeps happening, tell the team.`;
+  }
+}
+
+// ── plan, then write each post ───────────────────────────────────────────────
+
+document.getElementById('generateBtn').addEventListener('click', planWeek);
+
+async function planWeek() {
+  const clientId = document.getElementById('genClient').value;
+  const platform = document.querySelector('input[name="platform"]:checked')?.value;
+  const contentType = document.getElementById('genContentType').value;
+  const theme = document.getElementById('genTheme').value.trim();
+  const { days, perDay, total } = batchSize();
+
+  if (!clientId || !platform || !contentType || !theme) {
+    alert('Please select a client, platform and content type, and enter this week\'s direction.');
+    return;
+  }
+  if (total < 1 || total > MAX_POSTS) {
+    alert(`A batch is 1 to ${MAX_POSTS} posts.`);
+    return;
+  }
+  if (countOf('done') && !saved &&
+      !confirm('Replace the batch on screen? Posts that have not been saved will be lost.')) {
+    return;
+  }
+
+  planning = true;
+  refreshButtons();
+  show('planningState');
+  try {
+    const data = await postJson('/api/bulk-plan', {
+      client_id: parseInt(clientId),
+      platform,
+      content_type: contentType,
+      theme,
+      days,
+      posts_per_day: perDay,
+      start_date: document.getElementById('genStartDate').value,
+      include_performance: document.getElementById('genUsePerformance').checked,
+      include_trends: document.getElementById('genUseTrends').checked,
+    });
+    batch = {
+      clientId: data.client_id,
+      platform: data.platform,
+      contentType: data.content_type,
+      theme: data.theme,
+      // A topic carrying one of the client's banned words is held for an edit,
+      // not written: the writer would be asked to build a caption around it.
+      items: data.posts.map(p => ({
+        topic: p.topic,
+        scheduled_date: p.scheduled_date,
+        banned: p.banned || [],
+        state: (p.banned && p.banned.length) ? 'held' : 'queued',
+      })),
+    };
+    saved = false;
+    renderBatch(data);
+    show('resultState');
+  } catch (e) {
+    alert('Could not plan this week.\n\n' + e.message);
+    show(batch ? 'resultState' : 'emptyState');
+    return;
+  } finally {
+    planning = false;
+    refreshButtons();
+  }
+  const b = batch;
+  await runPool(b.items.filter(i => i.state === 'queued'), IN_FLIGHT, item => writeItem(b, item));
+}
+
+/** Write one post through the single generator. Never throws: a failure stays on
+ *  its own card with a Retry button, and the rest of the week carries on. */
+async function writeItem(b, item) {
+  if (item.removed) return;
+  item.topic = readTopic(item) || item.topic;
+  item.state = 'writing';
+  item.error = '';
+  inFlight += 1;
+  paintItem(b, item);
+  updateBatchCounts();
+  refreshButtons();
+  try {
+    const data = await postJson('/api/generate-caption', {
+      client_id: b.clientId,
+      platform: b.platform,
+      topic: item.topic,
+      weekly_direction: b.theme,
+    });
+    Object.assign(item, {
+      state: 'done',
+      caption: data.caption || '',
+      hashtags: data.hashtags || '',
+      voice_score: data.voice_score,
+      voice_audit: data.voice_audit || '',
+    });
+  } catch (e) {
+    item.state = 'failed';
+    item.error = e.message;
+  } finally {
+    inFlight -= 1;
+  }
+  if (b === batch && !item.removed) paintItem(b, item);
+  updateBatchCounts();
+  refreshButtons();
+}
+
+// ── the batch on screen ──────────────────────────────────────────────────────
+
+function renderBatch(data) {
+  const bits = [];
+  bits.push(data.performance_used ? `${data.performance_used} recent post(s) informed this batch` : 'No recent performance used');
+  bits.push(data.trends_used && data.trends_used.length ? `${data.trends_used.length} trending theme(s) considered` : 'No trends used');
+  if (data.posts.length < data.requested) bits.push(`Claude planned ${data.posts.length} of the ${data.requested} asked for`);
+  document.getElementById('contextUsed').textContent = bits.join(' · ');
+
+  const list = document.getElementById('batchList');
+  list.innerHTML = '';
+  batch.items.forEach(item => {
+    item.el = document.createElement('div');
+    item.el.className = 'border rounded p-3 batch-item';
+    list.appendChild(item.el);
+    paintItem(batch, item);
+  });
+  updateBatchCounts();
+}
+
+function readTopic(item) {
+  const input = item.el && item.el.querySelector('.topic-input');
+  return input ? input.value.trim() : item.topic;
+}
+
+function stateBadge(item) {
+  switch (item.state) {
+    case 'queued':  return '<span class="badge bg-light text-muted border">Waiting</span>';
+    case 'writing': return '<span class="badge bg-info text-dark">Writing…</span>';
+    case 'failed':  return '<span class="badge bg-danger">Failed</span>';
+    case 'held':    return '<span class="badge bg-warning text-dark">Needs an edit</span>';
+    default:        return '';
+  }
+}
+
+function paintItem(b, item) {
+  const card = item.el;
+  if (!card) return;
+  // Keep what the person typed across a repaint.
+  if (card.querySelector('.topic-input')) item.topic = readTopic(item);
+  const captionEl = card.querySelector('.caption-input');
+  if (captionEl) item.caption = captionEl.value;
+  const hashtagsEl = card.querySelector('.hashtags-input');
+  if (hashtagsEl) item.hashtags = hashtagsEl.value;
+
+  const dt = item.scheduled_date ? new Date(item.scheduled_date) : null;
+  const dateLabel = dt ? dt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  const score = item.state === 'done' && item.voice_score != null
+    ? `<span class="badge ${item.voice_score >= 9 ? 'bg-success' : (item.voice_score >= 8 ? 'bg-primary' : 'bg-warning text-dark')}">Voice ${item.voice_score}/10</span>`
+    : '';
+  const locked = item.state === 'queued' || item.state === 'writing';
+
+  let body;
+  if (item.state === 'done') {
+    body = `
+      <textarea class="form-control form-control-sm mb-2 caption-input" rows="4" style="font-size:.85rem">${escapeHtml(item.caption)}</textarea>
+      <textarea class="form-control form-control-sm hashtags-input" rows="1" style="font-size:.78rem;color:#6366f1">${escapeHtml(item.hashtags || '')}</textarea>
+      ${item.voice_audit ? `<p class="small text-muted mt-2 mb-0">${escapeHtml(item.voice_audit)}</p>` : ''}`;
+  } else if (item.state === 'failed') {
+    body = `
+      <p class="small text-danger mb-2">${escapeHtml(item.error)}</p>
+      <button class="btn btn-sm btn-outline-primary retry-btn"><i class="bi bi-arrow-clockwise me-1"></i>Retry this post</button>`;
+  } else if (item.state === 'held') {
+    body = `
+      <p class="small text-danger mb-2">This topic uses ${item.banned.map(w => `"${escapeHtml(w)}"`).join(', ')}, on this client's banned list. Edit the topic, then write the post.</p>
+      <button class="btn btn-sm btn-outline-primary retry-btn"><i class="bi bi-pencil me-1"></i>Write this post</button>`;
+  } else if (item.state === 'writing') {
+    body = '<p class="small text-muted mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Writing and voice-checking…</p>';
+  } else {
+    body = '<p class="small text-muted mb-0">Waiting for its turn…</p>';
+  }
+
+  card.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:${platformColors[b.platform] || '#6366f1'}">${escapeHtml(dateLabel)}</span>
+        ${stateBadge(item)}
+        ${score}
+      </div>
+      <button class="btn btn-sm btn-outline-secondary remove-item-btn" title="Remove from batch"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <input type="text" class="form-control form-control-sm fw-semibold mb-2 topic-input" value="${escapeAttr(item.topic)}" ${locked ? 'disabled' : ''}>
+    ${body}`;
+
+  card.querySelector('.remove-item-btn').addEventListener('click', () => removeItem(item));
+  const retry = card.querySelector('.retry-btn');
+  if (retry) {
+    retry.disabled = inFlight >= IN_FLIGHT;
+    retry.addEventListener('click', () => {
+      if (inFlight >= IN_FLIGHT) return;
+      const still = item.state === 'held' ? stillBanned(readTopic(item), item.banned) : [];
+      if (still.length) {
+        alert(`The topic still uses ${still.map(w => `"${w}"`).join(', ')}. Edit it first.`);
+        return;
+      }
+      writeItem(b, item);
+    });
+  }
+}
+
+function stillBanned(text, words) {
+  const escape = w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return words.filter(w => new RegExp(`(^|[^\\w])${escape(w)}($|[^\\w])`, 'i').test(text));
+}
+
+function removeItem(item) {
+  item.removed = true;
+  if (item.el) item.el.remove();
+  updateBatchCounts();
+  refreshButtons();
+}
+
+function updateBatchCounts() {
+  const total = liveItems().length;
+  const done = countOf('done');
+  const failed = countOf('failed');
+  const held = countOf('held');
+  const pending = countOf('queued') + countOf('writing');
+
+  const badge = document.getElementById('batchCount');
+  badge.textContent = total + (total === 1 ? ' post' : ' posts');
+  badge.classList.toggle('d-none', total === 0);
+
+  const progress = document.getElementById('batchProgress');
+  let line = `${done} of ${total} written`;
+  if (pending) line += ' — writing the rest…';
+  if (failed) line += ` · ${failed} failed: retry or remove ${failed === 1 ? 'it' : 'them'}`;
+  if (held) line += ` · ${held} need${held === 1 ? 's' : ''} an edited topic`;
+  progress.textContent = total ? line : '';
+  progress.className = 'small fw-semibold mb-3 ' + (failed || held ? 'text-danger' : 'text-muted');
+
+  document.getElementById('saveCountLabel').textContent =
+    `${done} post${done === 1 ? '' : 's'} will be created` + (pending ? ' (still writing…)' : '');
+}
+
+// ── save ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('saveBatchBtn').addEventListener('click', saveBatch);
+
+async function saveBatch() {
+  if (!batch || saving) return;
+  const items = liveItems();
+  if (items.some(i => i.state === 'queued' || i.state === 'writing')) {
+    alert('Some posts are still being written. Save once they are done.');
+    return;
+  }
+  const ready = items.filter(i => i.state === 'done');
+  if (!ready.length) {
+    alert('Nothing to save yet — no post in this batch has been written.');
+    return;
+  }
+  const left = items.length - ready.length;
+  if (left && !confirm(`${left} post${left === 1 ? ' was' : 's were'} not written and will not be saved. Save the other ${ready.length}?`)) {
+    return;
+  }
+
+  const posts = ready.map(i => ({
+    topic: readTopic(i),
+    caption: i.el.querySelector('.caption-input').value.trim(),
+    hashtags: i.el.querySelector('.hashtags-input').value.trim(),
+    scheduled_date: i.scheduled_date || null,
+  }));
+  if (posts.some(p => !p.topic || !p.caption)) {
+    alert('Every post needs a topic and a caption. Fill in the empty one, or remove it.');
+    return;
+  }
+
+  const btn = document.getElementById('saveBatchBtn');
+  saving = true;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+  try {
+    await postJson('/api/bulk-save', {
+      client_id: batch.clientId,
+      platform: batch.platform,
+      content_type: batch.contentType,
+      status: document.getElementById('saveStatus').value,
+      posts,
+    });
+    saved = true;
+    window.location.href = `/content?client_id=${batch.clientId}`;
+    return;   // the button stays disabled while the page changes: no second save
+  } catch (e) {
+    alert((e.network
+      ? 'The save may not have reached the server. Check the Content Library before saving again.\n\n'
+      : 'Nothing was saved.\n\n') + e.message);
+  }
+  saving = false;
+  btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Posts';
+  refreshButtons();
+}
+
+// Written posts live only on this page until they are saved.
+window.addEventListener('beforeunload', e => {
+  if (!saved && (countOf('done') || inFlight)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+function show(id) {
+  ['emptyState', 'planningState', 'resultState'].forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.classList.remove('d-flex');
+    if (el) el.classList.add('d-none');
+  });
+  const target = document.getElementById(id);
+  if (target) {
+    target.classList.remove('d-none');
+    if (id === 'resultState') target.classList.add('d-flex');
+  }
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/"/g, '&quot;');
+}
+
+updateTotalLabel();
+</script>
+{% endblock %}

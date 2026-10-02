@@ -26,6 +26,7 @@ The rulebook is the cached prefix for both the writer and the auditor, so every
 post after the first in a batch reads it back at ~10% of input cost.
 """
 import os
+import re
 import json
 import logging
 
@@ -153,6 +154,31 @@ def build_rulebook(client_name, voice_document, sample_captions, brand_voice,
         parts.append("EMOJI: " + EMOJI_GUIDE['moderate'])
 
     return "\n".join(parts), deferred
+
+
+def planning_constraints(voice_document, brand_voice):
+    """The part of the rulebook a topic planner must respect: the voice document
+    and the banned words, each only if the client set it. Nothing else — an
+    unset setting adds nothing, so the planner is never handed a default that
+    the document contradicts."""
+    parts = []
+    if voice_document:
+        parts.append("=== BRAND VOICE DOCUMENT (authoritative) ===\n" + voice_document)
+    banned = _json_list((brand_voice or {}).get('avoid_words'))
+    if banned:
+        parts.append("=== NEVER USE THESE WORDS/PHRASES ===\n" + ", ".join(str(w) for w in banned))
+    return "\n\n".join(parts)
+
+
+def banned_in(text, brand_voice):
+    """The client's banned words/phrases that appear in `text` as whole words,
+    ignoring case. Empty when none are set or none appear."""
+    found = []
+    for word in _json_list((brand_voice or {}).get('avoid_words')):
+        word = str(word).strip()
+        if word and re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', text or '', re.IGNORECASE):
+            found.append(word)
+    return found
 
 
 def generate_caption(client_name, brand_voice, topic, voice_document='',

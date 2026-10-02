@@ -893,10 +893,10 @@ def add_audit(actor_user_id, actor_role, tenant_client_id, entity_type, entity_i
     conn.close()
 
 
-def create_post(data):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''
+def _insert_post(conn, data):
+    """One post and its 'Post created' history row, on the caller's connection
+    and inside the caller's transaction."""
+    c = conn.execute('''
         INSERT INTO content_posts (client_id,platform,content_type,topic,caption,hashtags,image_url,hook,status,scheduled_date,notes)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)
     ''', (
@@ -909,9 +909,22 @@ def create_post(data):
     post_id = c.lastrowid
     conn.execute('INSERT INTO approval_history (post_id,from_status,to_status,notes) VALUES (?,?,?,?)',
                  (post_id, None, data.get('status', 'draft'), 'Post created'))
+    return post_id
+
+
+def create_post(data):
+    conn = get_db()
+    post_id = _insert_post(conn, data)
     conn.commit()
     conn.close()
     return post_id
+
+
+def create_posts(rows):
+    """Create several posts as one unit: every row, or — if any insert fails —
+    none. A batch that half-saved would be doubled by the save that retries it."""
+    with write_db() as conn:
+        return [_insert_post(conn, data) for data in rows]
 
 
 def _void_talent_signoff(conn, post_ids):
@@ -1093,6 +1106,40 @@ def get_performance(post_id):
     return [dict(r) for r in rows]
 
 
+def get_recent_performance(client_id, days=7):
+    """Posted content for this client in the last N days, each with its latest
+    metrics snapshot — the 'what worked' input for planning a new batch.
+
+    One row per post: its latest snapshot by recorded_at, the higher id breaking
+    a tie. Matching on MAX(recorded_at) alone returned a post twice whenever two
+    snapshots landed in the same second. Best first, by the engagement rate the
+    Performance page shows — (likes + comments + shares) / reach — then by raw
+    engagement; posts with no metrics yet come last, still listed so the plan
+    knows what was just posted."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT p.topic, p.platform, p.content_type, p.posted_date,
+               m.likes, m.comments, m.shares, m.saves, m.views, m.reach, m.impressions,
+               CASE WHEN m.reach > 0 THEN ROUND(
+                   (COALESCE(m.likes, 0) + COALESCE(m.comments, 0) + COALESCE(m.shares, 0))
+                   * 100.0 / m.reach, 2) END AS engagement_rate
+        FROM v_content_active p
+        LEFT JOIN performance_metrics m ON m.id = (
+            SELECT m2.id FROM performance_metrics m2
+            WHERE m2.post_id = p.id
+            ORDER BY m2.recorded_at DESC, m2.id DESC
+            LIMIT 1
+        )
+        WHERE p.client_id = ? AND p.status = 'posted' AND p.posted_date >= datetime('now', ?)
+        ORDER BY m.id IS NULL,
+                 engagement_rate DESC,
+                 COALESCE(m.likes, 0) + COALESCE(m.comments, 0) + COALESCE(m.shares, 0) DESC,
+                 p.posted_date DESC
+    ''', (client_id, f'-{int(days)} days')).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def add_performance(post_id, data):
     conn = get_db()
     conn.execute('''
@@ -1234,6 +1281,20 @@ def get_report_data(start_date, end_date):
         'start_date': start_date,
         'end_date': end_date,
     }
+
+
+def get_client_trends(client_id, platform, limit=8):
+    """The trends a plan for this client may draw on: the org-wide ones
+    (client_id IS NULL) and the ones generated for this client — never a trend
+    generated for another client."""
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT * FROM trends WHERE platform = ? AND (client_id IS NULL OR client_id = ?) '
+        'ORDER BY created_at DESC, id DESC LIMIT ?',
+        (platform, client_id, limit),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def get_trends(platform=None, limit=50):

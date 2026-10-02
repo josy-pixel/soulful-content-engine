@@ -665,6 +665,10 @@ def api_generate_caption():
     platform = data.get('platform')
     topic = data.get('topic', '').strip()
     extra = data.get('extra_context', '').strip()
+    # A bulk week sends its direction with every post. It belongs in the rulebook,
+    # not the user turn, so the auditor judges against it too — and being the same
+    # for the whole batch, it keeps the cached prefix identical post to post.
+    direction = (data.get('weekly_direction') or '').strip()
 
     if not all([client_id, platform, topic]):
         return jsonify({'error': 'client_id, platform, and topic are required.'}), 400
@@ -682,6 +686,7 @@ def api_generate_caption():
     result = ve.generate_post(client['name'], brand_voice, topic,
                               voice_document=voice_document,
                               sample_captions=sample_captions,
+                              weekly_direction=direction,
                               extra_context=extra,
                               debug=config.DEBUG_ENGINE)
     if result.get('error'):
@@ -720,6 +725,239 @@ def api_save_caption():
         return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
     post_id = db.create_post(data)
     return jsonify({'ok': True, 'post_id': post_id})
+
+
+# ── Bulk Content Generator ───────────────────────────────────────────────────
+# A week is planned in one request and written one post per request:
+#
+#   /api/bulk-plan          one model call: the week's topics, each with its slot
+#   /api/generate-caption   the single generator, once per topic, called by the
+#                           page two at a time — the same voice-faithful pipeline
+#   /api/bulk-save          the batch a person reviewed
+#
+# Writing the whole week inside one request meant 22 to 36 model calls in a row
+# on the app's single gunicorn worker, which is killed at 180 seconds. The
+# captions died with the worker, the tokens were still spent, and every other
+# request — Make's publish callbacks included — waited behind it. One post is a
+# handful of calls, well inside the limit, and a post that fails is retried on
+# its own instead of sinking the week.
+#
+# Every post in a batch carries the same weekly direction, so the rulebook is
+# identical across the batch and is the cached prefix after the first post.
+
+# Who may run a batch. A week is dozens of model calls, so it starts with the
+# agency; adding 'client' here opens every bulk route and the nav link to talents.
+BULK_GENERATE_ROLES = ('admin', 'manager')
+# Posts in one batch, enforced on plan and on save: two a day for a week.
+BULK_MAX_POSTS = 14
+BULK_HOUR_SLOTS = [9, 13, 17]   # posting times on a day with more than one post
+
+
+@app.context_processor
+def inject_bulk_access():
+    return {'can_bulk_generate': getattr(current_user, 'role', None) in BULK_GENERATE_ROLES}
+
+
+@app.route('/bulk-generate')
+@roles_required(*BULK_GENERATE_ROLES)
+def bulk_generate():
+    all_clients = scoped_clients()
+    preselect_client = current_scope() or request.args.get('client_id', type=int)
+    return render_template('bulk_generate.html', clients=all_clients,
+                           bulk_content_types=_bulk_content_types(),
+                           create_statuses=CREATE_STATUSES, max_posts=BULK_MAX_POSTS,
+                           preselect_client=preselect_client)
+
+
+def _bulk_content_types():
+    """Platform -> the content types a batch may use: what the app offers that
+    the publishing scenarios can actually send (media_rules). A week of posts
+    nothing downstream can publish would look ready and never go out."""
+    return {p: [t for t in CONTENT_TYPES.get(p, []) if media_rules.can_publish(p, t)[0]]
+            for p in PLATFORMS if p in media_rules.PUBLISHABLE}
+
+
+def _bulk_combo_error(platform, content_type):
+    """The plan and the save refuse the same combinations the page never offers."""
+    allowed = _bulk_content_types()
+    if not isinstance(platform, str) or platform not in allowed:
+        return ('Bulk generation covers %s only — nothing publishes %s posts from here yet.'
+                % (' and '.join(p.title() for p in allowed), str(platform or 'those').title()))
+    if content_type not in allowed[platform]:
+        return ('%s %s posts are not published by this system. Pick one of: %s.'
+                % (platform.title(), content_type or 'untyped', ', '.join(allowed[platform])))
+    return None
+
+
+def _bulk_client_id(data):
+    """The batch's client as an int, or None. HARD RULE 1: a client user's id
+    always comes from their session (enforce_client_id), never from the body."""
+    try:
+        return int(enforce_client_id(data.get('client_id')))
+    except (TypeError, ValueError):
+        return None
+
+
+def _bulk_batch_size(data):
+    """(days, per_day, error). A batch bigger than the cap is refused, not
+    quietly trimmed — the person asked for a number and should hear why not."""
+    try:
+        days = int(data.get('days', 7))
+        per_day = int(data.get('posts_per_day', 1))
+    except (TypeError, ValueError):
+        return None, None, 'Days and posts per day must be whole numbers.'
+    if days < 1 or not 1 <= per_day <= len(BULK_HOUR_SLOTS):
+        return None, None, ('Pick at least one day, and 1 to %d posts a day.'
+                            % len(BULK_HOUR_SLOTS))
+    if days * per_day > BULK_MAX_POSTS:
+        return None, None, ('A batch is at most %d posts — %d days at %d a day is %d.'
+                            % (BULK_MAX_POSTS, days, per_day, days * per_day))
+    return days, per_day, None
+
+
+@app.route('/api/bulk-plan', methods=['POST'])
+@roles_required(*BULK_GENERATE_ROLES)
+def api_bulk_plan():
+    """One model call: the week's topics, each with its posting slot. Nothing is
+    stored — the page writes each post next, and a person reviews before saving."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Send the plan request as a JSON object.'}), 400
+    # HARD RULE 1: never trust client_id from the body for a client user.
+    client_id = _bulk_client_id(data)
+    platform = data.get('platform')
+    content_type = data.get('content_type')
+    theme = str(data.get('theme') or '').strip()
+
+    if not all([client_id, platform, theme]):
+        return jsonify({'error': 'client_id, a platform, and a theme are required.'}), 400
+    err = _bulk_combo_error(platform, content_type)
+    if err:
+        return jsonify({'error': err}), 400
+    days, per_day, err = _bulk_batch_size(data)
+    if err:
+        return jsonify({'error': err}), 400
+
+    client = db.get_client(client_id)
+    if not client:
+        return jsonify({'error': 'Client not found.'}), 404
+
+    try:
+        base_date = datetime.strptime(data.get('start_date') or '', '%Y-%m-%d')
+    except (TypeError, ValueError):
+        base_date = datetime.now()
+
+    count = days * per_day
+    # The same voice the writer will use: the platform's settings, else general.
+    brand_voice = dict(db.get_brand_voice(client_id, platform) or db.get_brand_voice(client_id, 'general') or {})
+    voice_document, _ = db.get_client_voice(client_id)
+    performance_rows = db.get_recent_performance(client_id, days=7) if data.get('include_performance', True) else []
+    # Org-wide trends and this client's own — never one generated for another client.
+    trend_rows = db.get_client_trends(client_id, platform, limit=8) if data.get('include_trends', True) else []
+    trend_texts = [t['trend_text'] for t in trend_rows]
+
+    topics, err = ai.plan_week(client['name'], client.get('description') or '', theme,
+                               platform, count, trends_list=trend_texts,
+                               performance_rows=performance_rows, content_type=content_type,
+                               voice_constraints=ve.planning_constraints(voice_document, brand_voice))
+    if err:
+        return jsonify({'error': err}), 500
+
+    texts = []
+    for t in topics or []:
+        text = str((t.get('topic') if isinstance(t, dict) else t) or '').strip()
+        if text:
+            texts.append(text)
+    texts = texts[:count]   # a long list is trimmed; a short one is shown as it came
+    if not texts:
+        return jsonify({'error': 'Claude returned no topics — try again.'}), 500
+
+    posts = []
+    for i, topic in enumerate(texts):
+        day_offset, slot = divmod(i, per_day)
+        when = (base_date + timedelta(days=day_offset)).replace(
+            hour=BULK_HOUR_SLOTS[slot], minute=0, second=0, microsecond=0)
+        # The planner is told the banned words; this is the check that it listened.
+        # A topic that slipped one in is held on the page for a person to edit.
+        posts.append({'topic': topic, 'scheduled_date': when.strftime('%Y-%m-%dT%H:%M'),
+                      'banned': ve.banned_in(topic, brand_voice)})
+
+    return jsonify({
+        'ok': True,
+        'client_id': client_id,
+        'platform': platform,
+        'content_type': content_type,
+        'theme': theme,
+        'posts': posts,
+        'requested': count,
+        'performance_used': len(performance_rows),
+        'trends_used': trend_texts,
+    })
+
+
+def _bulk_post_row(p):
+    """(row, problem) for one post of a batch. Only its own words and slot are
+    read from it: status, client, platform and type belong to the batch."""
+    if not isinstance(p, dict):
+        return None, 'is not a post'
+    topic, caption, hashtags = p.get('topic'), p.get('caption'), p.get('hashtags') or ''
+    if not (isinstance(topic, str) and topic.strip() and isinstance(caption, str) and caption.strip()):
+        return None, 'needs a topic and a caption'
+    if not isinstance(hashtags, str):
+        return None, 'has hashtags that are not text'
+    when = p.get('scheduled_date') or None
+    if when is not None:
+        try:
+            when = datetime.strptime(str(when), '%Y-%m-%dT%H:%M').strftime('%Y-%m-%dT%H:%M')
+        except ValueError:
+            return None, 'has a scheduled date that is not a date and time'
+    return {'topic': topic.strip(), 'caption': caption.strip(),
+            'hashtags': hashtags.strip(), 'scheduled_date': when}, None
+
+
+@app.route('/api/bulk-save', methods=['POST'])
+@roles_required(*BULK_GENERATE_ROLES)
+def api_bulk_save():
+    """Create the reviewed batch: every post, or — if any of them is wrong —
+    none, with the reason. A half-saved week is easy to miss and is doubled by
+    the save that retries it."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Send the batch as a JSON object.'}), 400
+    # HARD RULE 1: a client user's posts are always created under THEIR client_id.
+    client_id = _bulk_client_id(data)
+    platform = data.get('platform')
+    content_type = data.get('content_type')
+    status = data.get('status', 'draft')
+    posts = data.get('posts')
+
+    if not client_id or not platform:
+        return jsonify({'error': 'client_id and a platform are required.'}), 400
+    err = _bulk_combo_error(platform, content_type)
+    if err:
+        return jsonify({'error': err}), 400
+    if status not in CREATE_STATUSES:
+        return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
+    if not isinstance(posts, list) or not posts:
+        return jsonify({'error': 'No posts to save — send them as a list.'}), 400
+    if len(posts) > BULK_MAX_POSTS:
+        return jsonify({'error': 'A batch is at most %d posts; this one has %d.'
+                                 % (BULK_MAX_POSTS, len(posts))}), 400
+
+    rows = []
+    for n, p in enumerate(posts, 1):
+        row, problem = _bulk_post_row(p)
+        if problem:
+            return jsonify({'error': 'Post %d %s. Nothing was saved.' % (n, problem)}), 400
+        rows.append(dict(row, client_id=client_id, platform=platform,
+                         content_type=content_type, status=status,
+                         notes='Created via bulk weekly build.'))
+
+    if not db.get_client(client_id):          # v_clients_active: a deleted client is gone
+        return jsonify({'error': 'Client not found.'}), 404
+
+    created = db.create_posts(rows)
+    return jsonify({'ok': True, 'created': created, 'count': len(created)})
 
 
 # ── Content Library ────────────────────────────────────────────────────────────
