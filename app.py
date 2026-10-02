@@ -813,8 +813,8 @@ def api_repurpose_candidates(client_id):
 @roles_required(*REEL_REPURPOSER_ROLES)
 def api_reel_repurpose_generate():
     data = request.get_json(silent=True) or {}
-    source_material = (data.get('source_material') or '').strip()
-    extra_context = (data.get('extra_context') or '').strip()
+    source_material = str(data.get('source_material') or '').strip()
+    extra_context = str(data.get('extra_context') or '').strip()
 
     post, err = _repurposable_post(data.get('post_id'))
     if err:
@@ -847,7 +847,7 @@ def api_reel_repurpose_generate():
 @roles_required(*REEL_REPURPOSER_ROLES)
 def api_reel_repurpose_save():
     data = request.get_json(silent=True) or {}
-    package = (data.get('package') or '').strip()
+    package = str(data.get('package') or '').strip()
     post, err = _repurposable_post(data.get('post_id'))
     if err:
         return err

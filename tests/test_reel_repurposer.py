@@ -385,6 +385,12 @@ def test_source_material_and_package_are_required(client, data, claude):
     assert claude.calls == []
 
 
+def test_a_field_sent_as_a_number_is_read_as_text_not_a_crash(client, data, claude):
+    login_as(client, data["admin"])
+    assert _generate(client, data["reel_a"], material=123).status_code == 200
+    assert _save(client, data["reel_a"], package=5).status_code == 200
+
+
 # ── what Claude is told ──────────────────────────────────────────────────────
 
 import json  # noqa: E402
