@@ -586,7 +586,8 @@ def api_media_delete(media_id):
 @require_client_access('client_id')
 def api_client_media(client_id):
     media_type = request.args.get('type')
-    media = db.get_client_media(client_id, media_type or None)
+    # Feeds the post pickers, so finished files only: raw media waits in the editing queue.
+    media = db.get_client_media(client_id, media_type or None, edit_status='ready')
     for m in media:
         m['url'] = _media_display_url(m)
     return jsonify(media)
@@ -604,6 +605,9 @@ def api_attach_media(post_id):
         abort(403)
     if not _m:
         return jsonify({'error': 'Media not found'}), 404
+    if _m.get('edit_status') == 'needs_editing':
+        return jsonify({'error': 'This file still needs editing. Finish it in Canva or the '
+                                 'video editor, then mark it Ready in the gallery.'}), 409
 
     # Refuse the mismatch here rather than letting the network refuse it hours
     # later with a generic message. The app knows both facts at this moment.
