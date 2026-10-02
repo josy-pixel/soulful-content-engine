@@ -26,7 +26,7 @@
         <div class="mb-3">
           <label class="form-label fw-semibold">Platform *</label>
           <div class="platform-grid">
-            {% for p in platforms %}
+            {% for p in bulk_content_types %}
             <label class="platform-tile" data-platform="{{ p }}">
               <input type="radio" name="platform" value="{{ p }}" hidden>
               <i class="bi {{ platform_icons.get(p,'bi-globe') }}" style="color:{{ platform_colors.get(p,'#6366f1') }}"></i>
@@ -34,6 +34,7 @@
             </label>
             {% endfor %}
           </div>
+          <small class="text-muted">Only the platforms and post types this system can publish.</small>
         </div>
 
         <div class="mb-3">
@@ -152,7 +153,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/run_pool.js') }}"></script>
 <script>
-const CONTENT_TYPES = {{ content_types | tojson }};
+const CONTENT_TYPES = {{ bulk_content_types | tojson }};
 const MAX_POSTS = {{ max_posts }};
 // Posts being written at once. Each is its own request of a few model calls, so
 // none comes near the server's time limit, and other people's requests get a turn
@@ -313,7 +314,7 @@ async function planWeek() {
     batch = {
       clientId: data.client_id,
       platform: data.platform,
-      contentType: contentType,
+      contentType: data.content_type,
       theme: data.theme,
       items: data.posts.map(p => ({ topic: p.topic, scheduled_date: p.scheduled_date, state: 'queued' })),
     };

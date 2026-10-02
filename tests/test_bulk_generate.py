@@ -20,6 +20,7 @@ import database as db
 
 
 CSRF = "test-csrf-token"
+PW = generate_password_hash("pw")      # hashed once: the hash is slow by design
 
 
 # ── a fake Claude that records every call ────────────────────────────────────
@@ -104,11 +105,11 @@ def data():
             pass
     conn.commit()
     conn.close()
-    admin = db.create_user("bulk-admin@t.co", generate_password_hash("pw"), role="admin")
-    manager = db.create_user("bulk-manager@t.co", generate_password_hash("pw"), role="manager")
+    admin = db.create_user("bulk-admin@t.co", PW, role="admin")
+    manager = db.create_user("bulk-manager@t.co", PW, role="manager")
     ca = db.create_client({"name": "Alpha Talent", "description": "wellness"})
     cb = db.create_client({"name": "Bravo Talent", "description": "fitness"})
-    member = db.create_user("bulk-client@t.co", generate_password_hash("pw"),
+    member = db.create_user("bulk-client@t.co", PW,
                             role="client", client_id=ca)
     return dict(admin=admin, manager=manager, ca=ca, cb=cb, member=member)
 
@@ -290,3 +291,53 @@ def test_the_page_writes_post_by_post_through_the_shared_pool(client, data):
     gallery = client.get("/clients/%d/gallery" % data["ca"]).data.decode()
     assert "js/run_pool.js" in gallery                        # extracted, not copied
     assert "async function runPool" not in gallery
+
+
+# ── only what something downstream can publish ────────────────────────────────
+
+def test_the_page_offers_only_publishable_platforms_and_types(client, data):
+    login_as(client, data["admin"])
+    page = client.get("/bulk-generate").data.decode()
+    offered = set(re.findall(r'data-platform="(\w+)"', page))
+    assert offered == {"instagram", "facebook"}
+    types = json.loads(re.search(r"const CONTENT_TYPES = (\{.*?\});", page).group(1))
+    assert types == {"instagram": ["photo", "video", "reel"],
+                     "facebook": ["photo", "video", "post"]}
+
+
+UNPUBLISHABLE = [("instagram", "story"), ("tiktok", "video"), ("linkedin", "post"),
+                 ("youtube", "video"), ("facebook", "reel"), ("instagram", None),
+                 ("instagram", "carousel"), (["instagram"], "photo")]
+
+
+@pytest.mark.parametrize("platform,content_type", UNPUBLISHABLE)
+def test_a_plan_for_something_nothing_publishes_is_refused(client, data, claude,
+                                                          platform, content_type):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan",
+                  plan_body(data["ca"], platform=platform, content_type=content_type))
+    assert r.status_code == 400 and r.get_json()["error"]
+    assert claude.calls == []
+
+
+@pytest.mark.parametrize("platform,content_type", UNPUBLISHABLE)
+def test_a_save_of_something_nothing_publishes_is_refused(client, data,
+                                                         platform, content_type):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save",
+                  save_body(data["ca"], platform=platform, content_type=content_type))
+    assert r.status_code == 400
+    assert db.get_posts() == []
+
+
+@pytest.mark.parametrize("platform,content_type", [("instagram", "reel"), ("facebook", "post")])
+def test_publishable_combinations_are_planned_and_saved(client, data, claude,
+                                                        platform, content_type):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan",
+                  plan_body(data["ca"], platform=platform, content_type=content_type))
+    assert r.status_code == 200 and r.get_json()["content_type"] == content_type
+    r = post_json(client, "/api/bulk-save",
+                  save_body(data["ca"], platform=platform, content_type=content_type))
+    assert r.status_code == 200
+    assert {(p["platform"], p["content_type"]) for p in db.get_posts()} == {(platform, content_type)}

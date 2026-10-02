@@ -746,9 +746,29 @@ def bulk_generate():
     all_clients = scoped_clients()
     preselect_client = current_scope() or request.args.get('client_id', type=int)
     return render_template('bulk_generate.html', clients=all_clients,
-                           platforms=PLATFORMS, content_types=CONTENT_TYPES,
+                           bulk_content_types=_bulk_content_types(),
                            create_statuses=CREATE_STATUSES, max_posts=BULK_MAX_POSTS,
                            preselect_client=preselect_client)
+
+
+def _bulk_content_types():
+    """Platform -> the content types a batch may use: what the app offers that
+    the publishing scenarios can actually send (media_rules). A week of posts
+    nothing downstream can publish would look ready and never go out."""
+    return {p: [t for t in CONTENT_TYPES.get(p, []) if media_rules.can_publish(p, t)[0]]
+            for p in PLATFORMS if p in media_rules.PUBLISHABLE}
+
+
+def _bulk_combo_error(platform, content_type):
+    """The plan and the save refuse the same combinations the page never offers."""
+    allowed = _bulk_content_types()
+    if not isinstance(platform, str) or platform not in allowed:
+        return ('Bulk generation covers %s only — nothing publishes %s posts from here yet.'
+                % (' and '.join(p.title() for p in allowed), str(platform or 'those').title()))
+    if content_type not in allowed[platform]:
+        return ('%s %s posts are not published by this system. Pick one of: %s.'
+                % (platform.title(), content_type or 'untyped', ', '.join(allowed[platform])))
+    return None
 
 
 def _bulk_batch_size(data):
@@ -779,10 +799,14 @@ def api_bulk_plan():
     # HARD RULE 1: never trust client_id from the body for a client user.
     client_id = enforce_client_id(data.get('client_id'))
     platform = data.get('platform')
+    content_type = data.get('content_type')
     theme = str(data.get('theme') or '').strip()
 
-    if not all([client_id, platform, theme]) or platform not in PLATFORMS:
-        return jsonify({'error': 'client_id, a valid platform, and a theme are required.'}), 400
+    if not all([client_id, platform, theme]):
+        return jsonify({'error': 'client_id, a platform, and a theme are required.'}), 400
+    err = _bulk_combo_error(platform, content_type)
+    if err:
+        return jsonify({'error': err}), 400
     days, per_day, err = _bulk_batch_size(data)
     if err:
         return jsonify({'error': err}), 400
@@ -827,6 +851,7 @@ def api_bulk_plan():
         'ok': True,
         'client_id': client_id,
         'platform': platform,
+        'content_type': content_type,
         'theme': theme,
         'posts': posts,
         'requested': count,
@@ -842,14 +867,15 @@ def api_bulk_save():
     # HARD RULE 1: a client user's posts are always created under THEIR client_id.
     client_id = enforce_client_id(data.get('client_id'))
     platform = data.get('platform')
-    content_type = data.get('content_type') or (CONTENT_TYPES.get(platform) or ['photo'])[0]
+    content_type = data.get('content_type')
     status = data.get('status', 'draft')
     posts = data.get('posts') or []
 
-    if not client_id or platform not in PLATFORMS:
-        return jsonify({'error': 'client_id and a valid platform are required.'}), 400
-    if content_type not in CONTENT_TYPES.get(platform, []):
-        return jsonify({'error': 'Invalid content type for this platform.'}), 400
+    if not client_id or not platform:
+        return jsonify({'error': 'client_id and a platform are required.'}), 400
+    err = _bulk_combo_error(platform, content_type)
+    if err:
+        return jsonify({'error': err}), 400
     if status not in CREATE_STATUSES:
         return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
     if not posts:
