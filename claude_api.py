@@ -3,6 +3,8 @@ import json
 import os
 from datetime import date
 
+import caption_rules
+
 PLATFORM_GUIDES = {
     'instagram': 'Instagram: up to 2200 chars but ideal is 150–300. Use line breaks for readability. Hashtags at end. Strong hook first line.',
     'facebook':  'Facebook: 40–80 chars gets best engagement but up to 500 works well. Conversational, spark discussion. End with a question.',
@@ -119,7 +121,8 @@ def generate_hashtags(client_name, brand_voice, platform, topic, caption):
             max_tokens=256,
             messages=[{'role': 'user', 'content': prompt}],
         )
-        return response.content[0].text.strip()
+        # Same rule as the voice engine's generator: see caption_rules.fit_hashtags.
+        return caption_rules.fit_hashtags(platform, caption, response.content[0].text.strip())
     except Exception:
         return ''
 

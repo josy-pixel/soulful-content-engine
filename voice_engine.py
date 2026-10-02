@@ -32,6 +32,7 @@ import logging
 
 import anthropic
 
+import caption_rules
 import config
 from claude_api import PLATFORM_GUIDES, LENGTH_GUIDE, EMOJI_GUIDE
 
@@ -284,7 +285,9 @@ def generate_hashtags(client_name, brand_voice, topic, caption):
             max_tokens=256,
             messages=[{'role': 'user', 'content': prompt}],
         )
-        return resp.content[0].text.strip()
+        # Not the caption's own tags again, and no more than the platform takes
+        # beside them — the scenario publishes caption and hashtags as one text.
+        return caption_rules.fit_hashtags(platform, caption, resp.content[0].text.strip())
     except Exception:
         return ''
 

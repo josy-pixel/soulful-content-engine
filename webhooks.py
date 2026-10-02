@@ -9,6 +9,7 @@ from datetime import datetime
 import database as db
 import s3_media
 import media_rules
+import caption_rules
 
 log = logging.getLogger('dispatch')
 
@@ -101,6 +102,12 @@ def dispatch_post(post, actor_user_id=None, actor_role=None, request_ip=None):
                                     media_rules.kind_of_filename(media_ref))
         if not ok:
             return False, why + ' Change the content type, or attach different media.'
+
+    # A caption the platform will refuse fails inside Make as a generic error and
+    # never reports back, so the post would sit "approved" and unposted.
+    ok, why = caption_rules.check(platform, post.get('caption'), post.get('hashtags'))
+    if not ok:
+        return False, why
 
     # Raw media from the ingest webhook is material for the editor, not a post. The
     # picker hides it and attaching refuses it; this catches a file sent back to
