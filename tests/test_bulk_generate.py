@@ -216,6 +216,16 @@ def test_each_post_is_its_own_request_of_a_few_calls(client, data, monkeypatch):
     assert len(fake.calls) <= 5
 
 
+def test_a_weekly_direction_sent_as_a_number_is_read_as_text(client, data, monkeypatch):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key-never-sent')
+    monkeypatch.setattr(anthropic, 'Anthropic', FakeClaude().client_cls)
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/generate-caption",
+                  {"client_id": data["ca"], "platform": "instagram",
+                   "topic": "Planned topic 0", "weekly_direction": 2026})
+    assert r.status_code == 200, r.data
+
+
 def test_the_weekly_direction_is_the_same_cached_rulebook_for_every_post(client, data, claude):
     login_as(client, data["admin"])
     for topic in ("First topic", "Second topic"):
