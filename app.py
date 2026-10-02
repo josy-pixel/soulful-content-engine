@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import secrets
+import sqlite3
 import tempfile
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
@@ -999,6 +1000,13 @@ def webhook_media_ingest():
         return jsonify({'error': str(e)}), e.status
     caption_hint = (data.get('caption_hint') or '').strip()
 
+    # A scenario that runs again sends the same post again: answer with the file
+    # already here instead of downloading and storing a second copy.
+    if source_url:
+        existing = db.get_media_by_source(cid, source_url)
+        if existing:
+            return jsonify({'ok': True, 'media_id': existing['id'], 'duplicate': True}), 200
+
     # Neither path holds the file in memory: werkzeug spools a sizeable upload to a
     # temp file, and a fetched link is streamed into one.
     spool = None
@@ -1044,10 +1052,18 @@ def webhook_media_ingest():
             spool.close()                                        # a TemporaryFile deletes itself
 
     filename = key.rsplit('/', 1)[-1]
-    media_id = db.add_media(cid, filename, secure_filename(original) or filename,
-                            media_rules.kind_of_filename(filename), size, caption_hint, '[]',
-                            storage='s3', s3_key=key,
-                            edit_status='needs_editing', source=source, source_url=source_url)
+    try:
+        media_id = db.add_media(cid, filename, secure_filename(original) or filename,
+                                media_rules.kind_of_filename(filename), size, caption_hint, '[]',
+                                storage='s3', s3_key=key,
+                                edit_status='needs_editing', source=source, source_url=source_url)
+    except sqlite3.IntegrityError:
+        # Two deliveries of the same post got past the check above; the index kept one.
+        existing = db.get_media_by_source(cid, source_url) if source_url else None
+        if not existing:
+            raise
+        s3_media.delete(key)
+        return jsonify({'ok': True, 'media_id': existing['id'], 'duplicate': True}), 200
     return jsonify({'ok': True, 'media_id': media_id}), 201
 
 

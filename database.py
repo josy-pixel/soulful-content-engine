@@ -314,6 +314,10 @@ def init_db():
         "ALTER TABLE client_media ADD COLUMN edit_status TEXT NOT NULL DEFAULT 'ready'",
         "ALTER TABLE client_media ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
         "ALTER TABLE client_media ADD COLUMN source_url TEXT DEFAULT ''",
+        # A scenario that runs again sends the same post again. One original post is
+        # one raw file per client; an upload with no source_url is never a duplicate.
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_media_source "
+        "ON client_media(client_id, source_url) WHERE source_url <> ''",
     ]:
         try:
             conn.execute(migration)
@@ -1197,6 +1201,15 @@ def get_client_media(client_id, media_type=None, edit_status=None):
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_media_by_source(client_id, source_url):
+    """The file already ingested from this original post for this client, if any."""
+    conn = get_db()
+    row = conn.execute('SELECT * FROM client_media WHERE client_id=? AND source_url=?',
+                       (client_id, source_url)).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_pending_edits(scope=None):
