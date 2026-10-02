@@ -967,32 +967,26 @@ def webhook_media_ingest():
     from a client's own Instagram/TikTok (via the official API, never scraped)
     or the open web. Lands as a raw source in that client's gallery, marked
     'needs_editing' — it still needs a pass through Canva or the video editor
-    before it's usable on a post. Authenticate with the client's own key
-    (X-Api-Key header, or "api_key"/"secret" in the body — same as
-    /webhook/publish).
+    before it's usable on a post. Authenticate with the client's own key in
+    the X-Api-Key header; the key decides which client the file belongs to.
 
     Either send the file directly (multipart, field "file"), or a JSON body
     with "media_url" for the server to fetch. Either way, these fields:
         source       "instagram" | "tiktok" | "web" (default "web")
         source_url   the original post/page, for the editor's context
         caption_hint the original caption, if any
-        client_id    required only on the legacy shared-secret path — a
-                     per-client key already implies its own client
     """
+    # Only a client's own key, and only in the header. The legacy shared secret
+    # carries no client — accepting it here would let whoever holds it file media
+    # under any client they name. Nothing calls this endpoint yet, so there is no
+    # old scenario to keep working. A key in a body or a query string ends up in logs.
+    key = (request.headers.get('X-Api-Key') or '').strip()
+    cid = db.client_id_for_api_key(key) if key else None
+    if cid is None or not db.get_client(cid):     # unknown, revoked, or client deleted
+        return jsonify({'error': 'Forbidden'}), 403
+
     is_multipart = bool(request.files)
     data = request.form.to_dict() if is_multipart else (request.get_json(silent=True) or {})
-
-    ok, cid, how = _inbound_caller(data)
-    if not ok:
-        return jsonify({'error': 'Forbidden'}), 403
-    if cid is None:
-        try:
-            cid = int(data.get('client_id')) if data.get('client_id') else None
-        except (TypeError, ValueError):
-            cid = None
-    if not cid or not db.get_client(cid):
-        return jsonify({'error': 'client_id is required and must be a known client '
-                                 '(or authenticate with a per-client key).'}), 400
 
     source = (data.get('source') or 'web').strip().lower()
     source_url = (data.get('source_url') or '').strip()
