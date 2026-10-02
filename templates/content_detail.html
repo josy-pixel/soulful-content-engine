@@ -208,15 +208,19 @@
       </div>
     </div>
 
-    {% if post.status == 'posted' and post.content_type in ('video', 'reel') %}
-    <!-- Reel repurposer -->
+    {% set can_repurpose = current_user.role in REEL_REPURPOSER_ROLES %}
+    {% if post.status == 'posted' and post.content_type in ('video', 'reel') and (can_repurpose or post.repurpose_brief) %}
+    <!-- Reel repurposer: the saved package is shown to anyone who can see the post;
+         the button into the tool only to the roles that may use it. -->
     <div class="card mt-4">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-arrow-repeat me-2"></i>Reel Repurposer</span>
+        {% if can_repurpose %}
         <a href="{{ url_for('reel_repurposer', client_id=post.client_id, post_id=post.id) }}"
            class="btn btn-sm btn-outline-primary">
           <i class="bi bi-magic me-1"></i>{% if post.repurpose_brief %}Regenerate{% else %}Repurpose this reel{% endif %}
         </a>
+        {% endif %}
       </div>
       {% if post.repurpose_brief %}
       <div class="card-body">

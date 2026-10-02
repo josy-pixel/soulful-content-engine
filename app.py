@@ -730,8 +730,17 @@ def api_save_caption():
 # ── Reel Repurposer ───────────────────────────────────────────────────────────
 # The reel-repurposer skill: diagnose and re-cut an EXISTING/underperforming
 # video using its own measured performance, rather than scripting a new one.
+#
+# Admin and manager only for now. Opening it to client users is adding 'client'
+# here: every route below still checks the post's own client, and the nav link
+# and the post-page button read this same tuple. A saved package stays visible on
+# the post page to anyone who can already see the post.
+REEL_REPURPOSER_ROLES = ('admin', 'manager')
+app.jinja_env.globals['REEL_REPURPOSER_ROLES'] = REEL_REPURPOSER_ROLES
+
 
 @app.route('/reel-repurposer')
+@roles_required(*REEL_REPURPOSER_ROLES)
 def reel_repurposer():
     all_clients = scoped_clients()
     preselect_client = current_scope() or request.args.get('client_id', type=int)
@@ -746,6 +755,7 @@ def reel_repurposer():
 
 
 @app.route('/api/reel-repurpose/candidates/<int:client_id>')
+@roles_required(*REEL_REPURPOSER_ROLES)
 @require_client_access('client_id')
 def api_repurpose_candidates(client_id):
     candidates = db.get_repurpose_candidates(client_id)
@@ -753,6 +763,7 @@ def api_repurpose_candidates(client_id):
 
 
 @app.route('/api/reel-repurpose/generate', methods=['POST'])
+@roles_required(*REEL_REPURPOSER_ROLES)
 def api_reel_repurpose_generate():
     data = request.get_json(silent=True) or {}
     post_id = data.get('post_id')
@@ -794,6 +805,7 @@ def api_reel_repurpose_generate():
 
 
 @app.route('/api/reel-repurpose/save', methods=['POST'])
+@roles_required(*REEL_REPURPOSER_ROLES)
 def api_reel_repurpose_save():
     data = request.get_json(silent=True) or {}
     post_id = data.get('post_id')

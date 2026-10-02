@@ -51,9 +51,11 @@
     <a href="{{ url_for('caption_generator') }}" class="nav-link {% if request.endpoint == 'caption_generator' %}active{% endif %}">
       <i class="bi bi-magic"></i> Caption Generator
     </a>
+    {% if current_user.is_authenticated and current_user.role in REEL_REPURPOSER_ROLES %}
     <a href="{{ url_for('reel_repurposer') }}" class="nav-link {% if request.endpoint == 'reel_repurposer' %}active{% endif %}">
       <i class="bi bi-arrow-repeat"></i> Reel Repurposer
     </a>
+    {% endif %}
     <a href="{{ url_for('content_list') }}" class="nav-link {% if 'content' in (request.endpoint or '') %}active{% endif %}">
       <i class="bi bi-collection-fill"></i> Content Library
     </a>
