@@ -835,7 +835,10 @@ def api_reel_repurpose_generate():
                                      extra_context=extra_context, platform=post['platform'],
                                      debug=config.DEBUG_ENGINE)
     if result.get('error'):
-        return jsonify({'error': result['error']}), 500
+        # 504: gave up waiting on Claude. 502: Claude's answer was cut off. Either
+        # way the body is JSON the page can show, never a worker killed mid-request.
+        status = 504 if result.get('timeout') else 502 if result.get('incomplete') else 500
+        return jsonify({'error': result['error']}), status
     return jsonify({'ok': True, 'package': result['package'],
                     'performance_summary': performance_summary})
 

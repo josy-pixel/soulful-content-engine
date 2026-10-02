@@ -483,3 +483,53 @@ def test_route_injects_the_clients_banned_words(client, data, claude):
     login_as(client, data["admin"])
     assert _generate(client, data["reel_a"]).status_code == 200
     assert "BANNED_ONE" in claude.system and DOC in claude.system
+
+
+# ── a package that did not finish is never offered as finished ──────────────
+
+import anthropic  # noqa: E402
+import httpx  # noqa: E402
+
+
+def test_one_call_bounded_under_the_worker_timeout_with_no_retries(client, data, claude):
+    login_as(client, data["admin"])
+    assert _generate(client, data["reel_a"]).status_code == 200
+    assert len(claude.calls) == 1
+    opts = claude.options[-1]
+    assert opts["max_retries"] == 0
+    assert 0 < opts["timeout"] < 180                   # gunicorn --timeout 180
+    assert claude.calls[0]["max_tokens"] == ve.REEL_REPURPOSE_MAX_TOKENS
+
+
+def test_a_truncated_package_is_refused_not_returned(client, data, claude):
+    claude.stop_reason = "max_tokens"
+    res = ve.build_reel_repurpose("Holly", {}, "", [], "0:00 x", "none", platform="facebook")
+    assert res.get("incomplete") and "package" not in res
+    login_as(client, data["admin"])
+    r = _generate(client, data["reel_a"])
+    assert r.status_code == 502
+    body = r.get_json()
+    assert "length limit" in body["error"] and "package" not in body
+
+
+def test_a_timeout_is_a_clean_json_504(client, data, claude):
+    claude.error = anthropic.APITimeoutError(
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+    login_as(client, data["admin"])
+    r = _generate(client, data["reel_a"])
+    assert r.status_code == 504
+    assert "didn't finish within 150 seconds" in r.get_json()["error"]
+
+
+def test_any_other_api_error_is_a_json_500(client, data, claude):
+    claude.error = anthropic.APIConnectionError(
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+    login_as(client, data["admin"])
+    r = _generate(client, data["reel_a"])
+    assert r.status_code == 500 and "Claude API error" in r.get_json()["error"]
+
+
+def test_an_empty_answer_is_an_error(client, data, claude):
+    claude.text = "   "
+    login_as(client, data["admin"])
+    assert _generate(client, data["reel_a"]).status_code == 500

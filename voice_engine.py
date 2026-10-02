@@ -470,6 +470,13 @@ Write in clear markdown with numbered headers matching the structure above. Be s
 """
 
 
+# One long generation, in-request. gunicorn kills the worker at 180 seconds, so the
+# call gives up first and the person gets a message rather than a dead request.
+# No retries: a retry starts the whole generation again inside the same budget.
+REEL_REPURPOSE_TIMEOUT = 150.0
+REEL_REPURPOSE_MAX_TOKENS = 6144
+
+
 def build_repurpose_voice(voice_document, sample_captions, brand_voice):
     """The talent's voice for the repurposer: the same material build_rulebook
     gives the caption writer — the document, real captions, voice notes and
@@ -537,7 +544,10 @@ def build_reel_repurpose(client_name, brand_voice, voice_document, sample_captio
     measured. platform: the post's platform; Facebook adds the Content
     Monetization guidance, every other platform gets none of it.
 
-    Returns {'package': ..., 'error': None} or {'error': ...}.
+    Returns {'package': ..., 'error': None} or {'error': ...}. A failure that
+    spent no usable output says which: 'timeout' (gave up waiting) or
+    'incomplete' (the output hit the token limit and was cut off — it is never
+    returned as a package, so it cannot be saved as a finished one).
     """
     client = _client()
     if not client:
@@ -559,17 +569,34 @@ def build_reel_repurpose(client_name, brand_voice, voice_document, sample_captio
                          "revisited):\n" + extra_context)
 
     try:
-        resp = client.messages.create(
+        resp = client.with_options(timeout=REEL_REPURPOSE_TIMEOUT, max_retries=0).messages.create(
             model=config.CAPTION_MODEL,
-            max_tokens=6144,
+            max_tokens=REEL_REPURPOSE_MAX_TOKENS,
             system=[{'type': 'text', 'text': system_text,
                      'cache_control': {'type': 'ephemeral'}}],
             messages=[{'role': 'user', 'content': user_message}],
         )
-        result = {'package': resp.content[0].text.strip(), 'error': None}
-        if debug:
-            result['usage'] = _usage(resp, 'reel_repurpose')
-            result['system_prompt'] = system_text
-        return result
+    except anthropic.APITimeoutError:
+        return {'error': "Claude didn't finish within %d seconds, so the request was "
+                         "stopped. Nothing was saved — try again, or shorten the source "
+                         "material." % REEL_REPURPOSE_TIMEOUT, 'timeout': True}
     except anthropic.APIError as e:
         return {'error': 'Claude API error: %s' % str(e)}
+
+    usage = _usage(resp, 'reel_repurpose')
+    if getattr(resp, 'stop_reason', None) == 'max_tokens':
+        log.warning('[voice] reel_repurpose hit max_tokens=%d; package refused as incomplete',
+                    REEL_REPURPOSE_MAX_TOKENS)
+        return {'error': "Claude stopped before the package was finished — it reached the "
+                         "length limit, so the end is missing. An incomplete package can't be "
+                         "saved. Try again, or shorten the source material.",
+                'incomplete': True}
+    package = ''.join(getattr(block, 'text', '') or '' for block in (resp.content or [])).strip()
+    if not package:
+        return {'error': 'Claude returned an empty package. Try again.'}
+
+    result = {'package': package, 'error': None}
+    if debug:
+        result['usage'] = usage
+        result['system_prompt'] = system_text
+    return result
