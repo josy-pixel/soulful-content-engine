@@ -829,7 +829,8 @@ def content_detail(post_id):
                            metrics=metrics, allowed_transitions=allowed_transitions,
                            statuses=STATUSES, post_media=post_media,
                            client_media=client_media,
-                           review_open=post['status'] in PRE_APPROVAL_STATUSES)
+                           review_open=post['status'] in PRE_APPROVAL_STATUSES,
+                           signoff_label=_signoff_label(post))
 
 
 @app.route('/content/<int:post_id>/edit', methods=['GET', 'POST'])
@@ -882,6 +883,32 @@ def content_status(post_id):
     return redirect(url_for('content_detail', post_id=post_id))
 
 
+def _audit_post(post, action, **metadata):
+    """Append a change to a post's caption or talent sign-off to audit_log, with
+    who made it. Machine routes have no signed-in user and are recorded as such."""
+    if getattr(current_user, 'is_authenticated', False):
+        actor, role = current_user.id, current_user.role
+    else:
+        actor, role = None, 'machine'
+    db.add_audit(actor, role, post['client_id'], 'content', post['id'], action,
+                 metadata=metadata or None, request_ip=request.remote_addr)
+
+
+def _signoff_label(post):
+    """The line under the sign-off checkbox. The talent is the client user; staff
+    may tick it on the talent's behalf (an OK given on WhatsApp), and the line
+    then says so — the two must never read the same."""
+    if not post.get('talent_approved'):
+        return 'Not yet confirmed'
+    when = ' · %s' % post['talent_approved_at'] if post.get('talent_approved_at') else ''
+    who = db.get_user_by_id(post['talent_approved_by']) if post.get('talent_approved_by') else None
+    if who is None:
+        return 'Approved' + when
+    if who['role'] == 'client':
+        return 'Approved by talent' + when
+    return 'Marked approved by %s (agency)%s' % (who['email'], when)
+
+
 @app.route('/api/content/<int:post_id>/review', methods=['PATCH'])
 @require_content_access('post_id')
 def api_content_review(post_id):
@@ -910,13 +937,18 @@ def api_content_review(post_id):
         return jsonify({'error': 'talent_approved must be true or false.'}), 400
 
     if 'caption' in data or 'hashtags' in data:
-        db.update_post_review(post_id,
-                              caption=data['caption'].strip() if 'caption' in data else None,
-                              hashtags=data['hashtags'].strip() if 'hashtags' in data else None)
+        before = db.update_post_review(post_id,
+                                       caption=data['caption'].strip() if 'caption' in data else None,
+                                       hashtags=data['hashtags'].strip() if 'hashtags' in data else None)
+        if before:
+            _audit_post(post, 'caption_edit', fields=sorted(before), before=before)
     if 'talent_approved' in data:
-        db.set_talent_approval(post_id, data['talent_approved'])
+        if db.set_talent_approval(post_id, data['talent_approved'], current_user.id):
+            _audit_post(post, 'talent_signoff' if data['talent_approved'] else 'talent_signoff_withdrawn')
 
-    return jsonify({'ok': True})
+    fresh = db.get_post(post_id)
+    return jsonify({'ok': True, 'talent_approved': bool(fresh['talent_approved']),
+                    'signoff_label': _signoff_label(fresh)})
 
 
 # ── Webhooks ───────────────────────────────────────────────────────────────────

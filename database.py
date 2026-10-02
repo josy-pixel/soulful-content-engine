@@ -307,6 +307,9 @@ def init_db():
         # reviewed it editorially.
         "ALTER TABLE content_posts ADD COLUMN talent_approved INTEGER DEFAULT 0",
         "ALTER TABLE content_posts ADD COLUMN talent_approved_at TEXT",
+        # Who ticked it: the talent (a client user), or staff marking it on the
+        # talent's behalf. The UI says which; the two must never read the same.
+        "ALTER TABLE content_posts ADD COLUMN talent_approved_by INTEGER",
         # ── Media storage backend ──
         # Existing rows stay 'local' and keep being served off the disk; only new
         # uploads go to S3. Nothing is migrated by this column alone.
@@ -960,29 +963,40 @@ def set_post_error(post_id, error_message):
 
 def update_post_review(post_id, caption=None, hashtags=None):
     """Lightweight caption/hashtags save for the inline review UI — unlike
-    update_post(), doesn't require topic/content_type/scheduled_date/etc."""
+    update_post(), doesn't require topic/content_type/scheduled_date/etc.
+    Returns {field: previous value} for what actually changed — empty when the
+    autosave resent the same text — so the caller can audit real edits only."""
     with write_db() as conn:                                # guard raises -> must not leak
         _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
         post = conn.execute('SELECT caption, hashtags FROM content_posts WHERE id=?', (post_id,)).fetchone()
         if not post:
-            return
-        conn.execute(
-            'UPDATE content_posts SET caption=?, hashtags=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-            (caption if caption is not None else post['caption'],
-             hashtags if hashtags is not None else post['hashtags'], post_id)
-        )
+            return {}
+        new = {'caption': caption if caption is not None else post['caption'],
+               'hashtags': hashtags if hashtags is not None else post['hashtags']}
+        before = {f: post[f] for f in new if (new[f] or '') != (post[f] or '')}
+        if before:
+            conn.execute(
+                'UPDATE content_posts SET caption=?, hashtags=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+                (new['caption'], new['hashtags'], post_id)
+            )
+        return before
 
 
-def set_talent_approval(post_id, approved):
+def set_talent_approval(post_id, approved, user_id=None):
     """Talent's own sign-off — independent of the admin/manager status
-    workflow (draft/needs_review/approved/...) and its publish dispatch."""
+    workflow (draft/needs_review/approved/...) and its publish dispatch.
+    user_id is whoever ticked it. Returns False when the post was already in
+    that state, so a double click is neither re-stamped nor audited twice."""
     with write_db() as conn:                                # guard raises -> must not leak
         _raise_if_deleted(conn, 'content_posts', post_id)   # write guard
-        conn.execute(
-            'UPDATE content_posts SET talent_approved=?, talent_approved_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        cur = conn.execute(
+            'UPDATE content_posts SET talent_approved=?, talent_approved_at=?, talent_approved_by=?, '
+            'updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(talent_approved, 0) != ?',
             (1 if approved else 0,
-             datetime.now().strftime('%Y-%m-%d %H:%M') if approved else None, post_id)
+             datetime.now().strftime('%Y-%m-%d %H:%M') if approved else None,
+             user_id if approved else None, post_id, 1 if approved else 0)
         )
+        return cur.rowcount > 0
 
 
 def get_posts_pending_approval(scope=None):

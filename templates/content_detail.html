@@ -99,9 +99,7 @@
                        {% if post.talent_approved %}checked{% endif %} {% if review_locked %}disabled{% endif %}>
                 <span class="fw-semibold">Approved by talent</span>
               </label>
-              <small class="text-muted d-block mt-1" id="talentApprovedMeta">
-                {% if post.talent_approved and post.talent_approved_at %}Approved {{ post.talent_approved_at }}{% else %}Not yet confirmed{% endif %}
-              </small>
+              <small class="text-muted d-block mt-1" id="talentApprovedMeta">{{ signoff_label }}</small>
             </div>
             {% if review_locked %}
             <small class="text-muted mt-2"><i class="bi bi-lock-fill me-1"></i>
@@ -608,6 +606,12 @@ if (captionInput && !captionInput.disabled) {
 const talentCheck = document.getElementById('talentApprovedCheck');
 const talentBox   = document.getElementById('talentApprovalBox');
 const talentMeta  = document.getElementById('talentApprovedMeta');
+// The server says who the sign-off is from (talent, or staff on their behalf).
+function showSignoff(approved, label) {
+  talentCheck.checked = approved;
+  talentBox.classList.toggle('approved', approved);
+  talentMeta.textContent = label;
+}
 if (talentCheck && !talentCheck.disabled) {
   talentCheck.addEventListener('change', async () => {
     const approved = talentCheck.checked;
@@ -620,7 +624,8 @@ if (talentCheck && !talentCheck.disabled) {
         body: JSON.stringify({ talent_approved: approved }),
       });
       if (!res.ok) throw new Error();
-      talentMeta.textContent = approved ? 'Approved just now' : 'Not yet confirmed';
+      const body = await res.json();
+      showSignoff(body.talent_approved, body.signoff_label);
     } catch (e) {
       talentMeta.textContent = 'Failed to save — try again';
       talentCheck.checked = !approved;
