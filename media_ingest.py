@@ -15,7 +15,6 @@ the file is stored and served as comes from the table below.
 """
 import http.client
 import ipaddress
-import logging
 import os
 import re
 import socket
@@ -24,8 +23,6 @@ from urllib.parse import urljoin, urlsplit
 
 import certifi
 import urllib3
-
-log = logging.getLogger('media_ingest')
 
 # Meta's CDNs — where the Instagram and Facebook Graph APIs serve media from.
 # Anything else is added on purpose, through MEDIA_INGEST_ALLOWED_HOSTS.
@@ -60,6 +57,9 @@ _EXT_RE = re.compile(r'^[a-z0-9]{2,5}$')
 
 # Where a file came from — the values the gallery and the queue know how to show.
 SOURCES = ('instagram', 'tiktok', 'web')
+# The JSON body only carries a link and a few words; the file itself never rides in it.
+MAX_JSON_BYTES = 64 * 1024
+MAX_CAPTION_CHARS = 5000
 
 _URL_RULE = 'media_url must be an https link on an allowed media host.'
 _UNSUPPORTED = ('Unsupported file type. Images: JPG, PNG, GIF, WebP. '
@@ -118,6 +118,15 @@ def clean_source_url(value):
         raise Refused(rule)
     if parts.scheme.lower() not in ('http', 'https') or not parts.netloc:
         raise Refused(rule)
+    return value
+
+
+def clean_caption(value):
+    """The original caption, kept with the file. Bounded: it is stored in the database,
+    which shares the small Render disk."""
+    value = (value or '').strip()
+    if len(value) > MAX_CAPTION_CHARS:
+        raise Refused('caption_hint is longer than %d characters.' % MAX_CAPTION_CHARS)
     return value
 
 

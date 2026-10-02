@@ -965,20 +965,21 @@ def webhook_publish():
 
 @app.route('/webhook/media-ingest', methods=['POST'])
 def webhook_media_ingest():
-    """Inbound endpoint — a Make.com scenario calls this with media it pulled
-    from a client's own Instagram/TikTok (via the official API, never scraped)
-    or the open web. Lands as a raw source in that client's gallery, marked
-    'needs_editing' — it still needs a pass through Canva or the video editor
-    before it's usable on a post. Authenticate with the client's own key in
-    the X-Api-Key header; the key decides which client the file belongs to.
+    """Inbound endpoint — a Make.com scenario (or a manual call) sends media
+    from a client's own accounts. It lands as a raw source in that client's
+    gallery, marked 'needs_editing' — it still needs a pass through Canva or
+    the video editor before it can go on a post. Authenticate with the client's
+    own key in the X-Api-Key header; the key decides which client the file
+    belongs to.
 
     Either send the file directly (multipart, field "file"), or a JSON body
     with "media_url" for the server to fetch — an https link on an allowed
     media host (MEDIA_INGEST_ALLOWED_HOSTS; Meta's CDNs by default, see
     media_ingest.py). Stored in S3 only. Either way, these fields:
         source       "instagram" | "tiktok" | "web" (default "web")
-        source_url   the original post/page, for the editor's context
-        caption_hint the original caption, if any
+        source_url   the original post/page (http/https), for the editor's
+                     context; the same source_url twice is one file
+        caption_hint the original caption, if any (up to 5000 characters)
     """
     # Only a client's own key, and only in the header. The legacy shared secret
     # carries no client — accepting it here would let whoever holds it file media
@@ -995,14 +996,17 @@ def webhook_media_ingest():
         return jsonify({'error': 'Media ingest is not configured on this server.'}), 503
 
     is_multipart = request.mimetype == 'multipart/form-data'
+    if not is_multipart and (request.content_length or 0) > media_ingest.MAX_JSON_BYTES:
+        return jsonify({'error': 'Request body too large. Send the file itself as a '
+                                 'multipart upload, or a media_url.'}), 413
     data = request.form if is_multipart else (request.get_json(silent=True) or {})
 
     try:
         source = media_ingest.clean_source(data.get('source'))
         source_url = media_ingest.clean_source_url(data.get('source_url'))
+        caption_hint = media_ingest.clean_caption(data.get('caption_hint'))
     except media_ingest.Refused as e:
         return jsonify({'error': str(e)}), e.status
-    caption_hint = (data.get('caption_hint') or '').strip()
 
     # A scenario that runs again sends the same post again: answer with the file
     # already here instead of downloading and storing a second copy.
