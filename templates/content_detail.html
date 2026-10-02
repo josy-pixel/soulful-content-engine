@@ -262,7 +262,7 @@
         </div>
 
         {% if allowed_transitions %}
-        <form method="POST" action="{{ url_for('content_status', post_id=post.id) }}">
+        <form method="POST" action="{{ url_for('content_status', post_id=post.id) }}" id="statusForm">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="mb-2">
             <label class="form-label fw-semibold small">Move to</label>
@@ -577,32 +577,69 @@ const POST_CONTENT_TYPE = {{ (post.content_type or "post") | tojson }};
 const captionInput  = document.getElementById('captionInput');
 const hashtagsInput = document.getElementById('hashtagsInput');
 const saveStatus    = document.getElementById('saveStatus');
-let reviewTimer;
+let reviewTimer = null;    // an edit waiting out the 800ms pause
+let reviewSaving = null;   // the save in flight, resolving to true/false
+
+// Saves run one after another, so a slow earlier save can never land last.
+function saveReview() {
+  clearTimeout(reviewTimer);
+  reviewTimer = null;
+  saveStatus.textContent = 'Saving…';
+  const run = (reviewSaving || Promise.resolve()).then(async () => {
+    try {
+      const res = await fetch(`/api/content/${POST_ID}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption: captionInput.value, hashtags: hashtagsInput.value }),
+      });
+      const body = await res.json().catch(() => ({}));
+      saveStatus.textContent = res.ok ? 'Saved' : (body.error || 'Failed to save');
+      // A changed caption voids the sign-off — show that, not a stale tick.
+      if (res.ok) showSignoff(body.talent_approved, body.signoff_label);
+      return res.ok;
+    } catch (e) {
+      saveStatus.textContent = 'Failed to save';
+      return false;
+    }
+  });
+  reviewSaving = run;
+  run.then(() => { if (reviewSaving === run) reviewSaving = null; });
+  return run;
+}
 
 if (captionInput && !captionInput.disabled) {
   function scheduleReviewSave() {
     clearTimeout(reviewTimer);
     saveStatus.textContent = 'Editing…';
-    reviewTimer = setTimeout(async () => {
-      saveStatus.textContent = 'Saving…';
-      try {
-        const res = await fetch(`/api/content/${POST_ID}/review`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caption: captionInput.value, hashtags: hashtagsInput.value }),
-        });
-        const body = await res.json().catch(() => ({}));
-        saveStatus.textContent = res.ok ? 'Saved' : (body.error || 'Failed to save');
-        // A changed caption voids the sign-off — show that, not a stale tick.
-        if (res.ok) showSignoff(body.talent_approved, body.signoff_label);
-      } catch (e) {
-        saveStatus.textContent = 'Failed to save';
-      }
-    }, 800);
+    reviewTimer = setTimeout(saveReview, 800);
   }
   captionInput.addEventListener('input', scheduleReviewSave);
   hashtagsInput.addEventListener('input', scheduleReviewSave);
 }
+
+// Approving sends whatever caption is SAVED. An edit still waiting for its
+// autosave is saved first, and the status is left alone if that save fails —
+// otherwise "fix a typo, click Approve" would publish the typo.
+const statusForm = document.getElementById('statusForm');
+if (statusForm) {
+  statusForm.addEventListener('submit', async (e) => {
+    if (!reviewTimer && !reviewSaving) return;
+    e.preventDefault();
+    const btn = statusForm.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    const ok = await (reviewTimer ? saveReview() : reviewSaving);
+    if (ok) {
+      statusForm.submit();
+    } else {
+      btn.disabled = false;
+      alert('The caption could not be saved, so the status was not changed. ' + saveStatus.textContent);
+    }
+  });
+}
+// Leaving with an edit not yet saved would drop it without a word.
+window.addEventListener('beforeunload', (e) => {
+  if (reviewTimer || reviewSaving) { e.preventDefault(); e.returnValue = ''; }
+});
 
 // ── Talent approval checkbox ────────────────────────────────────────────────
 const talentCheck = document.getElementById('talentApprovedCheck');
