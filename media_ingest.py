@@ -228,7 +228,10 @@ def check_url(url, suffixes):
     path = parts.path or '/'
     if parts.query:
         path += '?' + parts.query
-    return host, path, addresses[0]                 # the fragment never leaves
+    # IPv4 first: a name that lists its IPv6 address first would otherwise fail on
+    # a server with no IPv6 route. Every address was checked above either way.
+    address = next((a for a in addresses if ':' not in a), addresses[0])
+    return host, path, address                      # the fragment never leaves
 
 
 def open_pinned(address, host, path, timeout):
@@ -286,11 +289,15 @@ def fetch_to_file(url, out, max_bytes):
             declared = (resp.headers.get('Content-Length') or '').strip()
             if declared.isdigit() and int(declared) > max_bytes:
                 raise TooLarge(_TOO_LARGE, 'Content-Length %s' % declared)
+            # urllib3 2.x has read1; 1.26 (what botocore pins on older Pythons) does
+            # not, but the http.client response under it does. The body is identity-
+            # encoded (checked above), so reading below urllib3 skips no decoding.
+            read1 = getattr(resp, 'read1', None) or resp._fp.read1
             size = 0
             while True:
                 if time.monotonic() > deadline:
                     raise FetchFailed('deadline passed after %d bytes from %s' % (size, host))
-                chunk = resp.read1(CHUNK)          # one read — a slow drip cannot hide in it
+                chunk = read1(CHUNK)               # one read — a slow drip cannot hide in it
                 if not chunk:
                     break
                 size += len(chunk)

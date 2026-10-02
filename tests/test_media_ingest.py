@@ -317,6 +317,30 @@ def test_the_connection_goes_to_the_address_that_was_checked(client, data, s3, n
     assert net.connects == [(PUBLIC, CDN, "/x.jpg")]
 
 
+def test_an_ipv4_address_is_preferred_when_ipv6_is_listed_first(client, data, s3, net):
+    net.dns[CDN] = ["2a03:2880:f12f:83:face:b00c:0:25de", PUBLIC]
+    net.routes[(CDN, "/x.jpg")] = ok()
+    assert ingest(client, data["key_a"], "https://%s/x.jpg" % CDN).status_code == 201
+    assert net.connects == [(PUBLIC, CDN, "/x.jpg")]
+
+
+def test_a_response_without_read1_is_read_through_its_http_client_body(client, data, s3, net):
+    """urllib3 1.26 responses have no read1; the stream underneath them does."""
+    class Legacy:
+        status, headers, closed = 200, {"Content-Type": "image/jpeg"}, False
+
+        def __init__(self):
+            self._fp = FakeResp(chunks=[b"\xff\xd8", b"\xff\xe0jpeg"])
+
+        def close(self):
+            self.closed = True
+
+    net.routes[(CDN, "/legacy.jpg")] = Legacy()
+    assert ingest(client, data["key_a"], "https://%s/legacy.jpg" % CDN).status_code == 201
+    [stored] = s3.values()
+    assert stored["body"] == b"\xff\xd8\xff\xe0jpeg"
+
+
 def test_the_fragment_trick_neither_picks_the_target_nor_the_type(client, data, s3, net):
     """'#.jpg' once made any path look like an image. The fragment is never sent and
     never read as an extension; an internal address is refused before connecting."""
