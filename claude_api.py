@@ -202,13 +202,19 @@ def plan_week(client_name, description, theme, platform, count,
     client = anthropic.Anthropic(api_key=api_key)
 
     if performance_rows:
+        # Rows arrive best-performing first (db.get_recent_performance).
         perf_lines = []
         for r in performance_rows[:10]:
-            stats = ', '.join(
-                f'{k}={r[k]}' for k in ('likes', 'comments', 'shares', 'reach', 'views')
-                if r.get(k) is not None
-            )
-            perf_lines.append(f"- [{r.get('posted_date', '')[:10]}] {r.get('topic', '')} ({stats})")
+            if r.get('likes') is None and r.get('reach') is None:
+                stats = 'no metrics yet'
+            else:
+                stats = ', '.join(
+                    f'{k}={r[k]}' for k in ('likes', 'comments', 'shares', 'saves', 'reach', 'views')
+                    if r.get(k) is not None
+                )
+                if r.get('engagement_rate') is not None:
+                    stats += f", engagement rate={r['engagement_rate']}%"
+            perf_lines.append(f"- [{(r.get('posted_date') or '')[:10]}] {r.get('topic', '')} ({stats})")
         perf_text = '\n'.join(perf_lines)
     else:
         perf_text = 'No recent performance data available.'
@@ -220,7 +226,7 @@ def plan_week(client_name, description, theme, platform, count,
         f"{(' — ' + description) if description else ''}"
         f"{(' — every post is a ' + content_type) if content_type else ''}.\n\n"
         f"THIS WEEK'S DIRECTION:\n{theme}\n\n"
-        f"WHAT WORKED RECENTLY (last 7 days of performance):\n{perf_text}\n\n"
+        f"WHAT WORKED RECENTLY (last 7 days, best-performing first):\n{perf_text}\n\n"
         f"CURRENT TRENDING THEMES TO CONSIDER (use only what genuinely fits — never force one):\n{trends_text}\n\n"
         f"Plan {count} distinct posts across the week — one clear, specific topic per post, "
         f"each different enough that the week doesn't repeat itself, together forming one "

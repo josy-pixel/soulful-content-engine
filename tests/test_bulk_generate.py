@@ -558,3 +558,70 @@ def test_the_plan_prompt_carries_no_dead_cache_marker(client, data, claude, monk
     login_as(client, data["admin"])
     post_json(client, "/api/bulk-plan", plan_body(data["ca"]))
     assert isinstance(seen["system"], str)       # a plain prompt, no cache_control block
+
+
+# ── recent performance: one row per post, latest snapshot, best first ─────────
+
+def _posted(cid, topic):
+    pid = db.create_post({"client_id": cid, "platform": "instagram", "topic": topic, "caption": "c"})
+    db.update_post_status(pid, "posted")
+    return pid
+
+
+def _snapshot(pid, recorded_at, **metrics):
+    db.add_performance(pid, metrics)
+    conn = db.get_db()
+    conn.execute("UPDATE performance_metrics SET recorded_at = ? WHERE id = "
+                 "(SELECT MAX(id) FROM performance_metrics WHERE post_id = ?)", (recorded_at, pid))
+    conn.commit()
+    conn.close()
+
+
+def test_each_post_appears_once_with_its_latest_snapshot(data):
+    pid = _posted(data["ca"], "steady")
+    _snapshot(pid, "2026-01-01 10:00:00", likes=1, reach=10)
+    _snapshot(pid, "2026-01-02 10:00:00", likes=7, reach=10)
+    _snapshot(pid, "2026-01-02 10:00:00", likes=9, reach=10)     # same second: the later row wins
+    rows = db.get_recent_performance(data["ca"])
+    assert len(rows) == 1
+    assert rows[0]["likes"] == 9
+
+
+def test_deleted_unposted_old_and_other_clients_posts_are_left_out(data):
+    keep = _posted(data["ca"], "keep")
+    gone = _posted(data["ca"], "deleted")
+    db.delete_post(gone)
+    db.create_post({"client_id": data["ca"], "platform": "instagram", "topic": "draft", "caption": "c"})
+    old = _posted(data["ca"], "old")
+    conn = db.get_db()
+    conn.execute("UPDATE content_posts SET posted_date = datetime('now', '-30 days') WHERE id = ?", (old,))  # raw-query-ok: backdating a test row
+    conn.commit()
+    conn.close()
+    _posted(data["cb"], "someone else's")
+    assert [r["topic"] for r in db.get_recent_performance(data["ca"])] == ["keep"]
+    assert keep
+
+
+def test_what_worked_is_ranked_by_engagement_rate_with_unmeasured_posts_last(data):
+    unmeasured = _posted(data["ca"], "unmeasured")
+    big = _posted(data["ca"], "big reach, 5%")
+    _snapshot(big, "2026-01-01 10:00:00", likes=40, comments=10, reach=1000)
+    best = _posted(data["ca"], "small reach, 12%")
+    _snapshot(best, "2026-01-01 10:00:00", likes=10, comments=2, reach=100)
+    rows = db.get_recent_performance(data["ca"])
+    assert [r["topic"] for r in rows] == ["small reach, 12%", "big reach, 5%", "unmeasured"]
+    assert rows[0]["engagement_rate"] == 12.0 and rows[2]["engagement_rate"] is None
+    assert unmeasured
+
+
+def test_the_plan_reads_performance_best_first_and_names_unmeasured_posts(client, data, claude):
+    _posted(data["ca"], "unmeasured post")
+    best = _posted(data["ca"], "best post")
+    _snapshot(best, "2026-01-01 10:00:00", likes=10, reach=100)
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-plan", plan_body(data["ca"]))
+    assert r.get_json()["performance_used"] == 2
+    prompt = _plan_call(claude)["user"]
+    assert prompt.index("best post") < prompt.index("unmeasured post")
+    assert "unmeasured post (no metrics yet)" in prompt
+    assert "engagement rate=10.0%" in prompt

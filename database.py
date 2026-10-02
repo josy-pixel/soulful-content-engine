@@ -995,23 +995,34 @@ def get_performance(post_id):
 
 
 def get_recent_performance(client_id, days=7):
-    """Posted content for this client in the last N days, each carrying its most
-    recent metrics snapshot — the 'what worked this week' input for planning a
-    new batch. Only the latest performance_metrics row per post is used, same as
-    the post detail page's most-recent-entry display."""
+    """Posted content for this client in the last N days, each with its latest
+    metrics snapshot — the 'what worked' input for planning a new batch.
+
+    One row per post: its latest snapshot by recorded_at, the higher id breaking
+    a tie. Matching on MAX(recorded_at) alone returned a post twice whenever two
+    snapshots landed in the same second. Best first, by the engagement rate the
+    Performance page shows — (likes + comments + shares) / reach — then by raw
+    engagement; posts with no metrics yet come last, still listed so the plan
+    knows what was just posted."""
     conn = get_db()
     rows = conn.execute('''
         SELECT p.topic, p.platform, p.content_type, p.posted_date,
-               lm.likes, lm.comments, lm.shares, lm.saves, lm.views, lm.reach, lm.impressions
+               m.likes, m.comments, m.shares, m.saves, m.views, m.reach, m.impressions,
+               CASE WHEN m.reach > 0 THEN ROUND(
+                   (COALESCE(m.likes, 0) + COALESCE(m.comments, 0) + COALESCE(m.shares, 0))
+                   * 100.0 / m.reach, 2) END AS engagement_rate
         FROM v_content_active p
-        LEFT JOIN (
-            SELECT m1.* FROM performance_metrics m1
-            WHERE m1.recorded_at = (
-                SELECT MAX(m2.recorded_at) FROM performance_metrics m2 WHERE m2.post_id = m1.post_id
-            )
-        ) lm ON lm.post_id = p.id
+        LEFT JOIN performance_metrics m ON m.id = (
+            SELECT m2.id FROM performance_metrics m2
+            WHERE m2.post_id = p.id
+            ORDER BY m2.recorded_at DESC, m2.id DESC
+            LIMIT 1
+        )
         WHERE p.client_id = ? AND p.status = 'posted' AND p.posted_date >= datetime('now', ?)
-        ORDER BY p.posted_date DESC
+        ORDER BY m.id IS NULL,
+                 engagement_rate DESC,
+                 COALESCE(m.likes, 0) + COALESCE(m.comments, 0) + COALESCE(m.shares, 0) DESC,
+                 p.posted_date DESC
     ''', (client_id, f'-{int(days)} days')).fetchall()
     conn.close()
     return [dict(r) for r in rows]
