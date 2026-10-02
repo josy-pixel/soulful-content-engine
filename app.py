@@ -771,6 +771,15 @@ def _bulk_combo_error(platform, content_type):
     return None
 
 
+def _bulk_client_id(data):
+    """The batch's client as an int, or None. HARD RULE 1: a client user's id
+    always comes from their session (enforce_client_id), never from the body."""
+    try:
+        return int(enforce_client_id(data.get('client_id')))
+    except (TypeError, ValueError):
+        return None
+
+
 def _bulk_batch_size(data):
     """(days, per_day, error). A batch bigger than the cap is refused, not
     quietly trimmed — the person asked for a number and should hear why not."""
@@ -797,7 +806,7 @@ def api_bulk_plan():
     if not isinstance(data, dict):
         return jsonify({'error': 'Send the plan request as a JSON object.'}), 400
     # HARD RULE 1: never trust client_id from the body for a client user.
-    client_id = enforce_client_id(data.get('client_id'))
+    client_id = _bulk_client_id(data)
     platform = data.get('platform')
     content_type = data.get('content_type')
     theme = str(data.get('theme') or '').strip()
@@ -860,16 +869,41 @@ def api_bulk_plan():
     })
 
 
+def _bulk_post_row(p):
+    """(row, problem) for one post of a batch. Only its own words and slot are
+    read from it: status, client, platform and type belong to the batch."""
+    if not isinstance(p, dict):
+        return None, 'is not a post'
+    topic, caption, hashtags = p.get('topic'), p.get('caption'), p.get('hashtags') or ''
+    if not (isinstance(topic, str) and topic.strip() and isinstance(caption, str) and caption.strip()):
+        return None, 'needs a topic and a caption'
+    if not isinstance(hashtags, str):
+        return None, 'has hashtags that are not text'
+    when = p.get('scheduled_date') or None
+    if when is not None:
+        try:
+            when = datetime.strptime(str(when), '%Y-%m-%dT%H:%M').strftime('%Y-%m-%dT%H:%M')
+        except ValueError:
+            return None, 'has a scheduled date that is not a date and time'
+    return {'topic': topic.strip(), 'caption': caption.strip(),
+            'hashtags': hashtags.strip(), 'scheduled_date': when}, None
+
+
 @app.route('/api/bulk-save', methods=['POST'])
 @roles_required(*BULK_GENERATE_ROLES)
 def api_bulk_save():
-    data = request.get_json(silent=True) or {}
+    """Create the reviewed batch: every post, or — if any of them is wrong —
+    none, with the reason. A half-saved week is easy to miss and is doubled by
+    the save that retries it."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Send the batch as a JSON object.'}), 400
     # HARD RULE 1: a client user's posts are always created under THEIR client_id.
-    client_id = enforce_client_id(data.get('client_id'))
+    client_id = _bulk_client_id(data)
     platform = data.get('platform')
     content_type = data.get('content_type')
     status = data.get('status', 'draft')
-    posts = data.get('posts') or []
+    posts = data.get('posts')
 
     if not client_id or not platform:
         return jsonify({'error': 'client_id and a platform are required.'}), 400
@@ -878,27 +912,25 @@ def api_bulk_save():
         return jsonify({'error': err}), 400
     if status not in CREATE_STATUSES:
         return jsonify({'error': 'A post cannot be created past the approval gate.'}), 400
-    if not posts:
-        return jsonify({'error': 'No posts to save.'}), 400
+    if not isinstance(posts, list) or not posts:
+        return jsonify({'error': 'No posts to save — send them as a list.'}), 400
+    if len(posts) > BULK_MAX_POSTS:
+        return jsonify({'error': 'A batch is at most %d posts; this one has %d.'
+                                 % (BULK_MAX_POSTS, len(posts))}), 400
 
-    created = []
-    for p in posts:
-        topic = (p.get('topic') or '').strip()
-        caption = (p.get('caption') or '').strip()
-        if not topic or not caption:
-            continue
-        created.append(db.create_post({
-            'client_id': client_id,
-            'platform': platform,
-            'content_type': content_type,
-            'topic': topic,
-            'caption': caption,
-            'hashtags': (p.get('hashtags') or '').strip(),
-            'status': status,
-            'scheduled_date': p.get('scheduled_date') or None,
-            'notes': 'Created via bulk weekly build.',
-        }))
+    rows = []
+    for n, p in enumerate(posts, 1):
+        row, problem = _bulk_post_row(p)
+        if problem:
+            return jsonify({'error': 'Post %d %s. Nothing was saved.' % (n, problem)}), 400
+        rows.append(dict(row, client_id=client_id, platform=platform,
+                         content_type=content_type, status=status,
+                         notes='Created via bulk weekly build.'))
 
+    if not db.get_client(client_id):          # v_clients_active: a deleted client is gone
+        return jsonify({'error': 'Client not found.'}), 404
+
+    created = db.create_posts(rows)
     return jsonify({'ok': True, 'created': created, 'count': len(created)})
 
 

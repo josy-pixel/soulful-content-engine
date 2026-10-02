@@ -884,10 +884,10 @@ def add_audit(actor_user_id, actor_role, tenant_client_id, entity_type, entity_i
     conn.close()
 
 
-def create_post(data):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''
+def _insert_post(conn, data):
+    """One post and its 'Post created' history row, on the caller's connection
+    and inside the caller's transaction."""
+    c = conn.execute('''
         INSERT INTO content_posts (client_id,platform,content_type,topic,caption,hashtags,image_url,hook,status,scheduled_date,notes)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)
     ''', (
@@ -900,9 +900,22 @@ def create_post(data):
     post_id = c.lastrowid
     conn.execute('INSERT INTO approval_history (post_id,from_status,to_status,notes) VALUES (?,?,?,?)',
                  (post_id, None, data.get('status', 'draft'), 'Post created'))
+    return post_id
+
+
+def create_post(data):
+    conn = get_db()
+    post_id = _insert_post(conn, data)
     conn.commit()
     conn.close()
     return post_id
+
+
+def create_posts(rows):
+    """Create several posts as one unit: every row, or — if any insert fails —
+    none. A batch that half-saved would be doubled by the save that retries it."""
+    with write_db() as conn:
+        return [_insert_post(conn, data) for data in rows]
 
 
 def update_post(post_id, data):

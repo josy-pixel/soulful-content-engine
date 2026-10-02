@@ -341,3 +341,152 @@ def test_publishable_combinations_are_planned_and_saved(client, data, claude,
                   save_body(data["ca"], platform=platform, content_type=content_type))
     assert r.status_code == 200
     assert {(p["platform"], p["content_type"]) for p in db.get_posts()} == {(platform, content_type)}
+
+
+# ── the save: the gate, the batch's own fields, and all or nothing ────────────
+
+NOT_CREATABLE = [st for st in flask_app.STATUSES if st not in flask_app.CREATE_STATUSES]
+
+
+@pytest.mark.parametrize("status", NOT_CREATABLE + ["", None, ["draft"]])
+def test_no_post_of_a_batch_is_born_past_the_approval_gate(client, data, status):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"], status=status))
+    assert r.status_code == 400
+    assert db.get_posts() == []
+
+
+@pytest.mark.parametrize("status", flask_app.CREATE_STATUSES)
+def test_a_batch_is_saved_in_a_creatable_status(client, data, status):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"], status=status))
+    assert r.status_code == 200 and r.get_json()["count"] == 2
+    posts = db.get_posts()
+    assert {p["status"] for p in posts} == {status}
+    assert {p["scheduled_date"] for p in posts} == {"2026-10-05T09:00"}
+    assert {p["notes"] for p in posts} == {"Created via bulk weekly build."}
+
+
+def test_what_one_post_says_about_status_client_or_platform_is_ignored(client, data):
+    login_as(client, data["admin"])
+    forged = dict(ITEM, status="approved", client_id=data["cb"], platform="facebook",
+                  content_type="post")
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"], posts=[forged, forged]))
+    assert r.status_code == 200
+    posts = db.get_posts()
+    assert len(posts) == 2
+    assert {(p["client_id"], p["status"], p["platform"], p["content_type"]) for p in posts} \
+        == {(data["ca"], "draft", "instagram", "photo")}
+
+
+def test_opening_the_gate_to_talents_keeps_their_client_id_their_own(data, claude):
+    """BULK_GENERATE_ROLES may one day include 'client'. The routes themselves still
+    overwrite a forged client_id with the talent's own — called here past the
+    role decorator, as they would run once the gate opens."""
+    import auth
+    from flask_login import login_user
+    member = auth.User(db.get_user_by_id(data["member"]))
+    forged_save = save_body(data["cb"], posts=[dict(ITEM, client_id=data["cb"])])
+    with flask_app.app.test_request_context("/api/bulk-save", method="POST", json=forged_save):
+        login_user(member)
+        r = flask_app.api_bulk_save.__wrapped__()
+    assert r.status_code == 200
+    assert {p["client_id"] for p in db.get_posts()} == {data["ca"]}
+    with flask_app.app.test_request_context("/api/bulk-plan", method="POST",
+                                            json=plan_body(data["cb"])):
+        login_user(member)
+        r = flask_app.api_bulk_plan.__wrapped__()
+    assert r.get_json()["client_id"] == data["ca"]
+    plan_prompt = [c for c in claude.calls if c["kind"] == "plan"][0]["user"]
+    assert "Alpha Talent" in plan_prompt and "Bravo Talent" not in plan_prompt
+
+
+def test_a_save_without_the_csrf_token_is_refused(client, data):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"]), csrf=False)
+    assert r.status_code == 400
+    assert db.get_posts() == []
+
+
+MALFORMED = [
+    {"posts": "a string"}, {"posts": {"topic": "t", "caption": "c"}}, {"posts": None},
+    {"posts": []}, {"posts": ["just text"]}, {"posts": [dict(ITEM), 7]},
+    {"posts": [dict(ITEM), dict(ITEM, caption="  ")]}, {"posts": [dict(ITEM, topic=None)]},
+    {"posts": [dict(ITEM, caption=["a list"])]}, {"posts": [dict(ITEM, hashtags=5)]},
+    {"posts": [dict(ITEM, scheduled_date="next tuesday")]},
+    {"posts": [dict(ITEM, scheduled_date=20261005)]},
+]
+
+
+@pytest.mark.parametrize("over", MALFORMED)
+def test_a_malformed_batch_is_400_and_saves_nothing(client, data, over):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"], **over))
+    assert r.status_code == 400 and r.is_json and r.get_json()["error"]
+    assert db.get_posts() == []
+
+
+@pytest.mark.parametrize("body", [["a", "list"], "text", 5])
+def test_a_save_body_that_is_not_an_object_is_400(client, data, body):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", body)
+    assert r.status_code == 400 and r.is_json
+
+
+def test_a_batch_over_the_cap_is_refused_and_the_cap_is_allowed(client, data):
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"], posts=[dict(ITEM)] * 15))
+    assert r.status_code == 400
+    assert db.get_posts() == []
+    r = post_json(client, "/api/bulk-save", save_body(data["ca"], posts=[dict(ITEM)] * 14))
+    assert r.status_code == 200 and r.get_json()["count"] == 14
+
+
+def test_saving_to_a_deleted_client_is_404(client, data):
+    db.soft_delete_client(data["cb"])
+    login_as(client, data["admin"])
+    r = post_json(client, "/api/bulk-save", save_body(data["cb"]))
+    assert r.status_code == 404 and r.is_json
+    conn = db.get_db()
+    n = conn.execute("SELECT COUNT(*) FROM content_posts").fetchone()[0]   # raw-query-ok: counts deleted too
+    conn.close()
+    assert n == 0
+
+
+@pytest.fixture()
+def boom_on_third_post():
+    """A real database failure partway through a batch: the third insert aborts."""
+    conn = db.get_db()
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS bulk_boom BEFORE INSERT ON content_posts
+                    WHEN NEW.topic = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END""")
+    conn.commit()
+    conn.close()
+    yield
+    conn = db.get_db()
+    conn.execute("DROP TRIGGER IF EXISTS bulk_boom")
+    conn.commit()
+    conn.close()
+
+
+def test_a_batch_is_saved_whole_or_not_at_all(client, data, boom_on_third_post):
+    login_as(client, data["admin"])
+    posts = [dict(ITEM, topic="one"), dict(ITEM, topic="two"), dict(ITEM, topic="boom"),
+             dict(ITEM, topic="four")]
+    with pytest.raises(Exception):
+        post_json(client, "/api/bulk-save", save_body(data["ca"], posts=posts))
+    conn = db.get_db()
+    posts_left = conn.execute("SELECT COUNT(*) FROM content_posts").fetchone()[0]   # raw-query-ok: counts every row
+    history_left = conn.execute("SELECT COUNT(*) FROM approval_history").fetchone()[0]
+    conn.close()
+    assert (posts_left, history_left) == (0, 0)
+    # and the connection was not left holding the write lock
+    assert db.create_post({"client_id": data["ca"], "platform": "instagram",
+                           "topic": "after", "caption": "c"})
+
+
+@pytest.mark.parametrize("cid", [None, "", "abc", [1], {"id": 1}])
+def test_a_batch_without_a_usable_client_id_is_400(client, data, claude, cid):
+    login_as(client, data["admin"])
+    assert post_json(client, "/api/bulk-plan", plan_body(cid)).status_code == 400
+    assert post_json(client, "/api/bulk-save", save_body(cid)).status_code == 400
+    assert claude.calls == [] and db.get_posts() == []
