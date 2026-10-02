@@ -62,6 +62,9 @@
     <a href="{{ url_for('media_library') }}" class="nav-link {% if request.endpoint in ('media_library','client_gallery') %}active{% endif %}">
       <i class="bi bi-images"></i> {% if is_client %}My Media{% else %}Media{% endif %}
     </a>
+    <a href="{{ url_for('editing_queue') }}" class="nav-link {% if request.endpoint == 'editing_queue' %}active{% endif %}">
+      <i class="bi bi-scissors"></i> Editing Queue
+    </a>
     <a href="{{ url_for('scheduling') }}" class="nav-link {% if request.endpoint == 'scheduling' %}active{% endif %}">
       <i class="bi bi-calendar3"></i> Scheduling
     </a>

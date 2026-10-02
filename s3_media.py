@@ -83,6 +83,14 @@ def presign_upload(key, content_type=None):
     )
 
 
+def upload(key, fileobj, content_type):
+    """Stream an open file into the bucket — for a server-to-server sender (the
+    ingest webhook) rather than a browser, where the presigned POST above keeps the
+    bytes off this server. Read in parts, so a large video is never held in memory.
+    `content_type` is ours, never the sender's: it is what S3 serves the file as."""
+    client().upload_fileobj(fileobj, BUCKET, key, ExtraArgs={'ContentType': content_type})
+
+
 def presign_view(key, expires=None):
     """A link that works for a while and then stops working."""
     return client().generate_presigned_url(

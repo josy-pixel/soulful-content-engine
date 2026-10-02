@@ -315,6 +315,18 @@ def init_db():
         # uploads go to S3. Nothing is migrated by this column alone.
         "ALTER TABLE client_media ADD COLUMN storage TEXT NOT NULL DEFAULT 'local'",
         "ALTER TABLE client_media ADD COLUMN s3_key TEXT",
+        # ── Editing pipeline: media pulled in from elsewhere (Instagram/TikTok via
+        # Make.com, or the open web) is a raw source, not a post-ready asset — it
+        # needs a pass through Canva or the video editor first. A manual gallery
+        # upload is the finished result of that process already, so it still
+        # defaults to 'ready' and needs no extra step.
+        "ALTER TABLE client_media ADD COLUMN edit_status TEXT NOT NULL DEFAULT 'ready'",
+        "ALTER TABLE client_media ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+        "ALTER TABLE client_media ADD COLUMN source_url TEXT DEFAULT ''",
+        # A scenario that runs again sends the same post again. One original post is
+        # one raw file per client; an upload with no source_url is never a duplicate.
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_media_source "
+        "ON client_media(client_id, source_url) WHERE source_url <> ''",
     ]:
         try:
             conn.execute(migration)
@@ -1331,28 +1343,61 @@ def add_trends(rows):
 # ── Media Gallery ──────────────────────────────────────────────────────────────
 
 def add_media(client_id, filename, original_name, media_type, file_size=0, caption_hint='', tags='[]',
-              storage='local', s3_key=None):
+              storage='local', s3_key=None, edit_status='ready', source='manual', source_url=''):
     """Register a media row. `storage` says where the bytes actually live:
-    'local' means UPLOAD_PATH on disk, 's3' means the bucket under `s3_key`."""
+    'local' means UPLOAD_PATH on disk, 's3' means the bucket under `s3_key`.
+    `edit_status` is 'ready' for a normal upload (already the finished asset)
+    or 'needs_editing' for a raw source pulled in via the ingest webhook."""
     with write_db() as conn:
         c = conn.cursor()
         c.execute(
             'INSERT INTO client_media (client_id,filename,original_name,media_type,file_size,'
-            'caption_hint,tags,storage,s3_key) VALUES (?,?,?,?,?,?,?,?,?)',
+            'caption_hint,tags,storage,s3_key,edit_status,source,source_url) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
             (client_id, filename, original_name, media_type, file_size, caption_hint, tags,
-             storage, s3_key)
+             storage, s3_key, edit_status, source, source_url)
         )
         return c.lastrowid
 
 
-def get_client_media(client_id, media_type=None):
+def get_client_media(client_id, media_type=None, edit_status=None):
     conn = get_db()
     query = 'SELECT * FROM client_media WHERE client_id=?'
     params = [client_id]
     if media_type:
         query += ' AND media_type=?'
         params.append(media_type)
+    if edit_status:
+        query += ' AND edit_status=?'
+        params.append(edit_status)
     query += ' ORDER BY created_at DESC'
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_media_by_source(client_id, source_url):
+    """The file already ingested from this original post for this client, if any."""
+    conn = get_db()
+    row = conn.execute('SELECT * FROM client_media WHERE client_id=? AND source_url=?',
+                       (client_id, source_url)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_pending_edits(scope=None):
+    """Raw media still needing a pass through Canva or the video editor, across
+    every client (or one, for a client-portal user) — oldest first, so nothing
+    sits forgotten. Feeds the Editing Queue page."""
+    conn = get_db()
+    query = ('SELECT m.*, c.name AS client_name, c.logo_color '
+             'FROM client_media m JOIN v_clients_active c ON c.id = m.client_id '
+             "WHERE m.edit_status = 'needs_editing'")
+    params = []
+    if scope is not None:
+        query += ' AND m.client_id = ?'
+        params.append(scope)
+    query += ' ORDER BY m.created_at ASC'
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -1480,12 +1525,18 @@ def get_media(media_id):
     return dict(row) if row else None
 
 
-def update_media(media_id, caption_hint='', tags='[]'):
+def update_media(media_id, caption_hint='', tags='[]', edit_status=None):
     conn = get_db()
-    conn.execute(
-        'UPDATE client_media SET caption_hint=?, tags=? WHERE id=?',
-        (caption_hint, tags, media_id)
-    )
+    if edit_status:
+        conn.execute(
+            'UPDATE client_media SET caption_hint=?, tags=?, edit_status=? WHERE id=?',
+            (caption_hint, tags, edit_status, media_id)
+        )
+    else:
+        conn.execute(
+            'UPDATE client_media SET caption_hint=?, tags=? WHERE id=?',
+            (caption_hint, tags, media_id)
+        )
     conn.commit()
     conn.close()
 

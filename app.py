@@ -2,7 +2,10 @@ import os
 import json
 import uuid
 import secrets
+import sqlite3
+import tempfile
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -13,6 +16,7 @@ import config
 import webhooks
 import s3_media
 import media_rules
+import media_ingest
 import auth
 import security
 from security import (current_scope, enforce_client_id, require_content_access,
@@ -389,6 +393,17 @@ def client_gallery(client_id):
                            unused=sum(1 for m in media if not m['uses']))
 
 
+@app.route('/editing-queue')
+def editing_queue():
+    """Raw media pulled in from Instagram/TikTok/the web, across every client
+    (or just one, for a client-portal user) — still needs Canva or the video
+    editor before it can go on a post. Oldest first, so nothing gets lost."""
+    pending = db.get_pending_edits(scope=current_scope())
+    for m in pending:
+        m['url'] = _media_display_url(m)
+    return render_template('editing_queue.html', pending=pending)
+
+
 @app.route('/media')
 def media_library():
     """The way in. A client lands in their own library; an admin picks whose to open.
@@ -525,9 +540,13 @@ def api_media_update(media_id):
     if not security.can_see_client(media['client_id']):   # object-level tenant check
         abort(403)
     data = request.get_json(silent=True) or {}
+    edit_status = data.get('edit_status')
+    if edit_status and edit_status not in ('ready', 'needs_editing'):
+        return jsonify({'error': 'Invalid edit_status.'}), 400
     db.update_media(media_id,
                     caption_hint=data.get('caption_hint', media.get('caption_hint', '')),
-                    tags=data.get('tags', media.get('tags', '[]')))
+                    tags=data.get('tags', media.get('tags', '[]')),
+                    edit_status=edit_status)
     return jsonify({'ok': True})
 
 
@@ -582,7 +601,8 @@ def api_media_delete(media_id):
 @require_client_access('client_id')
 def api_client_media(client_id):
     media_type = request.args.get('type')
-    media = db.get_client_media(client_id, media_type or None)
+    # Feeds the post pickers, so finished files only: raw media waits in the editing queue.
+    media = db.get_client_media(client_id, media_type or None, edit_status='ready')
     for m in media:
         m['url'] = _media_display_url(m)
     return jsonify(media)
@@ -600,6 +620,9 @@ def api_attach_media(post_id):
         abort(403)
     if not _m:
         return jsonify({'error': 'Media not found'}), 404
+    if _m.get('edit_status') == 'needs_editing':
+        return jsonify({'error': 'This file still needs editing. Finish it in Canva or the '
+                                 'video editor, then mark it Ready in the gallery.'}), 409
 
     # Refuse the mismatch here rather than letting the network refuse it hours
     # later with a generic message. The app knows both facts at this moment.
@@ -1273,6 +1296,118 @@ def webhook_publish():
     db.update_post_status(int(post_id), 'posted', notes, changed_by='make.com',
                           posted_url=posted_url or None)
     return jsonify({'ok': True, 'post_id': post_id, 'status': 'posted'})
+
+
+@app.route('/webhook/media-ingest', methods=['POST'])
+def webhook_media_ingest():
+    """Inbound endpoint — a Make.com scenario (or a manual call) sends media
+    from a client's own accounts. It lands as a raw source in that client's
+    gallery, marked 'needs_editing' — it still needs a pass through Canva or
+    the video editor before it can go on a post. Authenticate with the client's
+    own key in the X-Api-Key header; the key decides which client the file
+    belongs to.
+
+    Either send the file directly (multipart, field "file"), or a JSON body
+    with "media_url" for the server to fetch — an https link on an allowed
+    media host (MEDIA_INGEST_ALLOWED_HOSTS; Meta's CDNs by default, see
+    media_ingest.py). Stored in S3 only. Either way, these fields:
+        source       "instagram" | "tiktok" | "web" (default "web")
+        source_url   the original post/page (http/https), for the editor's
+                     context; the same source_url twice is one file
+        caption_hint the original caption, if any (up to 5000 characters)
+    """
+    # Only a client's own key, and only in the header. The legacy shared secret
+    # carries no client — accepting it here would let whoever holds it file media
+    # under any client they name. Nothing calls this endpoint yet, so there is no
+    # old scenario to keep working. A key in a body or a query string ends up in logs.
+    api_key = (request.headers.get('X-Api-Key') or '').strip()
+    cid = db.client_id_for_api_key(api_key) if api_key else None
+    if cid is None or not db.get_client(cid):     # unknown, revoked, or client deleted
+        return jsonify({'error': 'Forbidden'}), 403
+
+    # The bucket or nowhere. The Render disk is 1 GB and holds the database too;
+    # raw reels landing there would fill it and take the database down with them.
+    if not s3_media.enabled():
+        return jsonify({'error': 'Media ingest is not configured on this server.'}), 503
+
+    is_multipart = request.mimetype == 'multipart/form-data'
+    if not is_multipart and (request.content_length or 0) > media_ingest.MAX_JSON_BYTES:
+        return jsonify({'error': 'Request body too large. Send the file itself as a '
+                                 'multipart upload, or a media_url.'}), 413
+    data = request.form if is_multipart else (request.get_json(silent=True) or {})
+
+    try:
+        source = media_ingest.clean_source(data.get('source'))
+        source_url = media_ingest.clean_source_url(data.get('source_url'))
+        caption_hint = media_ingest.clean_caption(data.get('caption_hint'))
+    except media_ingest.Refused as e:
+        return jsonify({'error': str(e)}), e.status
+
+    # A scenario that runs again sends the same post again: answer with the file
+    # already here instead of downloading and storing a second copy.
+    if source_url:
+        existing = db.get_media_by_source(cid, source_url)
+        if existing:
+            return jsonify({'ok': True, 'media_id': existing['id'], 'duplicate': True}), 200
+
+    # Neither path holds the file in memory: werkzeug spools a sizeable upload to a
+    # temp file, and a fetched link is streamed into one.
+    spool = None
+    try:
+        if is_multipart:
+            f = request.files.get('file')
+            if not f or not f.filename:
+                return jsonify({'error': 'No file provided.'}), 400
+            mime, ext = media_ingest.resolve_type(f.mimetype, media_ingest.ext_of(f.filename))
+            body = f.stream
+            body.seek(0, os.SEEK_END)
+            size = body.tell()
+            body.seek(0)
+            original = f.filename
+        else:
+            media_url = (data.get('media_url') or '').strip()
+            if not media_url:
+                return jsonify({'error': 'Provide either a "file" upload or a "media_url".'}), 400
+            spool = body = tempfile.TemporaryFile()
+            content_type, final_url, size = media_ingest.fetch_to_file(
+                media_url, spool, app.config['MAX_CONTENT_LENGTH'])
+            path = urlsplit(final_url).path
+            mime, ext = media_ingest.resolve_type(content_type, media_ingest.ext_of(path))
+            body.seek(0)
+            original = path.rsplit('/', 1)[-1]
+        if not size:
+            return jsonify({'error': 'No media data received.'}), 400
+
+        key = s3_media.build_key(cid, 'ingest.' + ext)          # server-side, from the key's client
+        try:
+            s3_media.upload(key, body, mime)
+        except Exception:                                        # noqa: BLE001 - boto raises many kinds
+            log.exception('media-ingest: storing %s for client %s failed', key, cid)
+            return jsonify({'error': 'Could not store the media file. Try again later.'}), 502
+    except media_ingest.Refused as e:
+        log.warning('media-ingest refused for client %s: %s (%s)', cid, e, e.detail)
+        return jsonify({'error': str(e)}), e.status
+    except media_ingest.FetchFailed as e:
+        log.warning('media-ingest fetch failed for client %s: %s', cid, e)
+        return jsonify({'error': 'Could not fetch the media file from media_url.'}), 502
+    finally:
+        if spool is not None:
+            spool.close()                                        # a TemporaryFile deletes itself
+
+    filename = key.rsplit('/', 1)[-1]
+    try:
+        media_id = db.add_media(cid, filename, secure_filename(original) or filename,
+                                media_rules.kind_of_filename(filename), size, caption_hint, '[]',
+                                storage='s3', s3_key=key,
+                                edit_status='needs_editing', source=source, source_url=source_url)
+    except sqlite3.IntegrityError:
+        # Two deliveries of the same post got past the check above; the index kept one.
+        existing = db.get_media_by_source(cid, source_url) if source_url else None
+        if not existing:
+            raise
+        s3_media.delete(key)
+        return jsonify({'ok': True, 'media_id': existing['id'], 'duplicate': True}), 200
+    return jsonify({'ok': True, 'media_id': media_id}), 201
 
 
 @app.route('/webhook/test/<int:post_id>', methods=['POST'])

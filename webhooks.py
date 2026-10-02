@@ -102,6 +102,17 @@ def dispatch_post(post, actor_user_id=None, actor_role=None, request_ip=None):
         if not ok:
             return False, why + ' Change the content type, or attach different media.'
 
+    # Raw media from the ingest webhook is material for the editor, not a post. The
+    # picker hides it and attaching refuses it; this catches a file sent back to
+    # editing after it was attached, and a raw file's link pasted in by hand.
+    raw = db.get_client_media(client_id, edit_status='needs_editing')
+    if raw:
+        attached = {m['id'] for m in db.get_post_media(post['id'])}
+        raw = [m for m in raw if m['id'] in attached or (media_ref and m['filename'] in media_ref)]
+    if raw:
+        return False, ('"%s" still needs editing. Finish it and mark it Ready in the '
+                       'gallery, or attach a different file.' % raw[0]['original_name'])
+
     webhook = db.get_client_webhook(client_id)
 
     if webhook is None:
